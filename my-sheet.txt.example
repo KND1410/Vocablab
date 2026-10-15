@@ -1,0 +1,23 @@
+# VocabLab — link list for YOUR Google Sheet
+#
+# Copy this file to my-sheet.txt and replace the link and the tab names below.
+# `node tests/browser-smoke.mjs --live` loads exactly that file, and you can
+# also copy EVERYTHING below into:
+#   Settings ⚙ → Google Sheet → "⭐ Sheet link — no key" → the box → "Load sheet"
+#
+# The names after the link are your tabs (one topic each). Keeping them listed
+# makes loading work even if your browser blocks Google requests (e.g. when
+# index.html is opened by double-clicking). When you add / rename / remove a tab,
+# just edit the list here (or press ↻ Reload after adding it).
+#
+# TIP: if you serve the app over http://localhost:8080 instead of double-clicking
+# index.html, you can delete all the tab-name lines below and keep only the sheet
+# link — VocabLab then detects every tab (including brand-new ones) by itself.
+# On a double-clicked file:// page it asks the public r.jina.ai reader for the
+# same list, so the link alone usually works there too.
+
+https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=sharing
+
+Travel
+Work
+Food

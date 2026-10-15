@@ -1,0 +1,8 @@
+# Your own sheet link + tab names — copy my-sheet.txt.example to create it.
+my-sheet.txt
+
+# Throwaway diagnostics / OS junk
+_diag.html
+.DS_Store
+Thumbs.db
+*.log
