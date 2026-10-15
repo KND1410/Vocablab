@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VocabLab — Learn vocabulary from your Google Sheet</title>
+<meta name="description" content="Turn any Google Sheet of vocabulary into AI-made quizzes: multiple choice, fill in the blank, and translation drills.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📚</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-logo">📚</span>
+    <span class="brand-name">VocabLab</span>
+  </div>
+  <div class="top-actions">
+    <span id="srcBadge" class="pill pill-muted" title="Current vocabulary source">No deck loaded</span>
+    <button id="btnHelp" class="icon-btn" title="Help &amp; setup guide" aria-label="Help">?</button>
+    <button id="btnTheme" class="icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme">🌙</button>
+    <button id="btnSettings" class="icon-btn" title="Settings" aria-label="Settings">⚙️</button>
+  </div>
+</header>
+
+<div class="app-shell">
+  <!-- ======================= SIDEBAR ======================= -->
+  <aside class="sidebar">
+    <section class="card">
+      <div class="card-head">
+        <h2>Source</h2>
+        <button id="btnReload" class="btn btn-ghost btn-sm" title="Reload vocabulary from the source">↻ Reload</button>
+      </div>
+      <p id="srcName" class="src-name">Nothing loaded yet</p>
+      <p id="srcMeta" class="muted small">Connect a Google Sheet or load the demo deck.</p>
+      <button id="btnChangeSource" class="btn btn-subtle btn-sm btn-block" style="margin-top:.5rem">Change source…</button>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Topics</h2>
+        <div class="mini-actions">
+          <button id="btnAllTopics" class="btn btn-ghost btn-xs">All</button>
+          <button id="btnNoTopics" class="btn btn-ghost btn-xs">None</button>
+        </div>
+      </div>
+      <input id="topicSearch" class="input input-sm" type="search" placeholder="Filter topics…">
+      <ul id="topicList" class="topic-list" role="list"></ul>
+      <p id="selectedSummary" class="muted small"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Quiz setup</h2></div>
+
+      <div class="field">
+        <label class="field-label">Question types</label>
+        <div class="chip-row">
+          <label class="chip"><input id="typeMc" type="checkbox" checked><span>Multiple choice</span></label>
+          <label class="chip"><input id="typeBlank" type="checkbox" checked><span>Fill in the blank</span></label>
+          <label class="chip"><input id="typeTranslate" type="checkbox" checked><span>Translate (typed)</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="selDirection">Direction</label>
+        <select id="selDirection" class="input input-sm">
+          <option value="mixed" selected>Mixed (both ways)</option>
+          <option value="t2m">Target ➜ Vietnamese</option>
+          <option value="m2t">Vietnamese ➜ Target</option>
+        </select>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="selCount">Questions</label>
+          <select id="selCount" class="input input-sm">
+            <option value="10">10</option>
+            <option value="15">15</option>
+            <option value="20" selected>20</option>
+            <option value="30">30</option>
+            <option value="50">50</option>
+            <option value="0">All words</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="selSource">Generator</label>
+          <select id="selSource" class="input input-sm">
+            <option value="auto" selected>Auto (AI if key)</option>
+            <option value="ai">AI only</option>
+            <option value="builtin">Built-in (offline)</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="btnStart" class="btn btn-primary btn-block" disabled>Start quiz</button>
+      <button id="btnFlashcards" class="btn btn-subtle btn-block" style="margin-top:.5rem" disabled>🃏 Flashcards</button>
+    </section>
+
+    <section class="card stats-card">
+      <div class="stat"><span id="statWords" class="stat-num">0</span><span class="stat-label">words</span></div>
+      <div class="stat"><span id="statMastered" class="stat-num">0</span><span class="stat-label">mastered</span></div>
+      <div class="stat"><span id="statAcc" class="stat-num">–</span><span class="stat-label">accuracy</span></div>
+    </section>
+  </aside>
+
+  <!-- ======================= MAIN ======================= -->
+  <main class="main">
+
+    <!-- Welcome -->
+    <section id="screenWelcome" class="screen">
+      <div class="hero">
+        <h1>Learn vocabulary <span class="grad">from your own Google Sheet</span></h1>
+        <p class="muted">Every tab of your sheet becomes a topic. VocabLab turns your words into multiple choice,
+          fill-in-the-blank and translation quizzes — with AI-written example sentences (free Gemini / Groq /
+          OpenRouter / Ollama), and a solid built-in generator as backup.</p>
+      </div>
+
+      <div class="quick-cards">
+        <button class="quick-card" id="btnDemo">
+          <span class="qc-ico">🎁</span>
+          <strong>Try the demo deck</strong>
+          <span class="muted small">3 topics × 12 words — works instantly, no setup.</span>
+        </button>
+        <button class="quick-card" id="btnQuickSheet">
+          <span class="qc-ico">📊</span>
+          <strong>Connect my Google Sheet</strong>
+          <span class="muted small">Just paste the sheet link — every tab becomes a topic, no key needed.</span>
+        </button>
+        <button class="quick-card" id="btnQuickAi">
+          <span class="qc-ico">✨</span>
+          <strong>Add a free AI key</strong>
+          <span class="muted small">Gemini, Groq, OpenRouter, Mistral — or local Ollama, no key at all.</span>
+        </button>
+      </div>
+
+      <details class="card details-card" open>
+        <summary>Google Sheet format (what VocabLab reads)</summary>
+        <table class="fmt-table">
+          <thead><tr><th>A</th><th>B</th><th>C <span class="muted">(optional)</span></th><th>D <span class="muted">(optional)</span></th></tr></thead>
+          <tbody>
+            <tr><td>Vocab</td><td>Vietnamese</td><td>Pronunciation</td><td>Example</td></tr>
+            <tr><td>gare</td><td>nhà ga</td><td>/ɡaʁ/</td><td>Le train part de la gare.</td></tr>
+            <tr><td>billet</td><td>vé</td><td>/bi.jɛ/</td><td>J'ai acheté un billet aller-retour.</td></tr>
+          </tbody>
+        </table>
+        <ul class="small muted fmt-notes">
+          <li>Row 1 should be headers — VocabLab recognises names like <em>Vocab / Français / French</em> for the word column and <em>Vietnamese / Tiếng Việt / Nghĩa / Vietnamien</em> for the meaning. No header? Falls back to column 1 = vocab, column 2 = Vietnamese.</li>
+          <li>Extra columns are picked up automatically when named: pronunciation, example sentence, part of speech…</li>
+          <li>One tab per topic (Travel, Work, …). Hidden tabs and charts are skipped.</li>
+          <li>Share the sheet as <em>“Anyone with the link → Viewer”</em> (or use the Apps Script mode in Help — no Google Cloud account needed).</li>
+        </ul>
+      </details>
+    </section>
+
+    <!-- Quiz -->
+    <section id="screenQuiz" class="screen" hidden>
+      <div class="quiz-top">
+        <div class="progress"><div id="progressBar" class="progress-fill" style="width:0%"></div></div>
+        <div class="quiz-top-row">
+          <span id="qProgressText" class="muted small">–</span>
+          <span class="quiz-chips">
+            <span id="qStreak" class="pill pill-muted" hidden>🔥 <span>0</span></span>
+            <span id="qScore" class="pill pill-ok">0 ✓</span>
+            <button id="btnExitQuiz" class="btn btn-ghost btn-xs" title="End this quiz">✕ End</button>
+          </span>
+        </div>
+      </div>
+
+      <div id="qCard" class="card qcard">
+        <div class="qmeta">
+          <span id="qTypeBadge" class="pill pill-accent">Multiple choice</span>
+          <span id="qTopicBadge" class="pill pill-muted" hidden></span>
+          <button id="btnSpeakPrompt" class="icon-btn icon-btn-sm" title="Listen" hidden>🔊</button>
+        </div>
+        <p id="qPrompt" class="qprompt"></p>
+        <p id="qHintBox" class="qhint" hidden></p>
+
+        <div id="qOptions" class="options" hidden></div>
+
+        <div id="qInputRow" class="input-row" hidden>
+          <input id="qInput" class="input qinput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type your answer…">
+          <button id="btnSubmit" class="btn btn-primary">Check</button>
+        </div>
+        <button id="btnDontKnow" class="btn btn-ghost btn-sm" style="align-self:flex-start">I don't know</button>
+
+        <div id="qFeedback" class="feedback" hidden>
+          <div class="fb-head">
+            <span id="fbIcon" class="fb-icon">✓</span>
+            <div>
+              <p id="fbTitle" class="fb-title">Correct!</p>
+              <p id="fbBody" class="fb-body"></p>
+            </div>
+          </div>
+          <div id="fbWord" class="wordbox">
+            <div class="wordbox-main">
+              <span id="fbTerm" class="wordbox-term"></span>
+              <button id="fbSpeak" class="icon-btn icon-btn-sm" title="Listen">🔊</button>
+            </div>
+            <div id="fbPron" class="wordbox-pron muted small"></div>
+            <div id="fbMeaning" class="wordbox-meaning"></div>
+            <div id="fbExample" class="wordbox-example muted small" hidden></div>
+          </div>
+          <button id="btnNext" class="btn btn-primary btn-block">Next question <span class="kbd-hint">Enter ↵</span></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section id="screenResults" class="screen" hidden>
+      <div class="card results-card">
+        <div class="ring-wrap">
+          <svg class="ring" viewBox="0 0 120 120" role="img" aria-label="Score">
+            <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+            <circle id="resRing" class="ring-fg" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="ring-center">
+            <span id="resPct">0%</span>
+            <span class="muted small" id="resFraction">0/0</span>
+          </div>
+        </div>
+        <div class="results-info">
+          <h2 id="resTitle">Nice work!</h2>
+          <p id="resMeta" class="muted"></p>
+          <div id="resBreakdown" class="breakdown"></div>
+          <div class="btn-row">
+            <button id="btnRetryMistakes" class="btn btn-primary" hidden>Practice mistakes</button>
+            <button id="btnNewQuiz" class="btn btn-subtle">New quiz</button>
+            <button id="btnResultsFlashcards" class="btn btn-ghost">🃏 Flashcards</button>
+          </div>
+        </div>
+      </div>
+      <div id="resMistakes" class="card" hidden>
+        <h3>Words to review</h3>
+        <ul id="resMistakeList" class="mistake-list"></ul>
+      </div>
+    </section>
+
+    <!-- Flashcards -->
+    <section id="screenFlashcards" class="screen" hidden>
+      <div class="fc-top">
+        <span id="fcProgress" class="muted small">1 / 1</span>
+        <div class="btn-row">
+          <button id="btnFcShuffle" class="btn btn-ghost btn-sm">🔀 Shuffle</button>
+          <button id="btnFcExit" class="btn btn-ghost btn-sm">✕ Exit</button>
+        </div>
+      </div>
+      <div id="fcCard" class="fc-card" tabindex="0" role="button" aria-label="Flip card">
+        <div class="fc-inner">
+          <div class="fc-face fc-front">
+            <span id="fcTerm" class="fc-term"></span>
+            <span id="fcPron" class="fc-pron muted"></span>
+            <button id="fcSpeak" class="icon-btn" title="Listen" onclick="event.stopPropagation()">🔊</button>
+          </div>
+          <div class="fc-face fc-back">
+            <span id="fcMeaning" class="fc-meaning"></span>
+            <span id="fcExample" class="fc-example muted"></span>
+          </div>
+        </div>
+      </div>
+      <p class="muted small center">Click / press Space to flip</p>
+      <div class="fc-actions">
+        <button id="btnFcAgain" class="btn btn-subtle btn-block">😅 Again</button>
+        <button id="btnFcGood" class="btn btn-primary btn-block">👍 Got it</button>
+      </div>
+      <div class="btn-row center-row">
+        <button id="btnFcPrev" class="btn btn-ghost">‹ Prev</button>
+        <button id="btnFcNext" class="btn btn-ghost">Next ›</button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ======================= SETTINGS DIALOG ======================= -->
+<dialog id="settingsDialog" class="dialog">
+  <form method="dialog" class="dialog-head">
+    <h2>Settings</h2>
+    <button class="icon-btn" value="close" aria-label="Close">✕</button>
+  </form>
+  <div class="tabs" role="tablist">
+    <button class="tab-btn active" data-tab="ai" role="tab">✨ AI</button>
+    <button class="tab-btn" data-tab="sheet" role="tab">📊 Google Sheet</button>
+    <button class="tab-btn" data-tab="data" role="tab">🗄 Data</button>
+  </div>
+
+  <!-- AI tab -->
+  <div class="tab-pane active" data-pane="ai">
+    <div class="field">
+      <label class="field-label" for="selProvider">AI provider</label>
+      <select id="selProvider" class="input">
+        <option value="gemini">Google Gemini (free tier — default)</option>
+        <option value="openai">OpenAI-compatible — Groq, OpenRouter, Mistral, Ollama…</option>
+      </select>
+    </div>
+
+    <div id="paneGemini">
+      <div class="field">
+        <label class="field-label" for="inpGeminiKey">Gemini API key <span class="muted">(free)</span></label>
+        <div class="input-row">
+          <input id="inpGeminiKey" class="input" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
+          <button id="btnToggleKey" class="btn btn-subtle btn-sm" type="button">Show</button>
+        </div>
+        <p class="muted small">Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
+          Stored only in this browser — requests go straight to Google.</p>
+      </div>
+    </div>
+
+    <div id="paneOai" hidden>
+      <div class="field">
+        <label class="field-label">Quick presets</label>
+        <div class="chip-row">
+          <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://api.groq.com/openai/v1" data-model="openai/gpt-oss-120b">Groq (fast, generous)</button>
+          <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://openrouter.ai/api/v1" data-model="openrouter/free">OpenRouter (many models)</button>
+          <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://api.mistral.ai/v1" data-model="mistral-small-latest">Mistral</button>
+          <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://api.cloudflare.com/client/v4/accounts/REPLACE_WITH_ACCOUNT_ID/ai/v1" data-model="@cf/openai/gpt-oss-20b">Cloudflare Workers AI</button>
+          <button class="btn btn-subtle btn-xs preset" type="button" data-base="http://localhost:11434/v1" data-model="llama3.2">Ollama (local, no key)</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="inpOaiBase">Base URL</label>
+        <input id="inpOaiBase" class="input" type="text" placeholder="https://api.groq.com/openai/v1" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label class="field-label" for="inpOaiKey">API key <span class="muted">(not needed for local Ollama)</span></label>
+        <div class="input-row">
+          <input id="inpOaiKey" class="input" type="password" placeholder="gsk_… or sk-or-v1-…" autocomplete="off" spellcheck="false">
+          <button id="btnToggleOaiKey" class="btn btn-subtle btn-sm" type="button">Show</button>
+        </div>
+        <p class="muted small">Free keys:
+          <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a> ·
+          <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> ·
+          <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener">Mistral</a>.
+          Stored only in this browser — requests go straight to the provider.</p>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="input-row">
+        <button id="btnTestKey" class="btn btn-subtle" type="button">Test &amp; load models</button>
+        <input id="inpModel" class="input input-sm grow" list="modelList" placeholder="model id" aria-label="Model" autocomplete="off" spellcheck="false">
+        <datalist id="modelList">
+          <option value="gemini-flash-latest"></option>
+        </datalist>
+        <button id="btnRefreshModels" class="btn btn-ghost btn-sm" type="button" title="Refresh model list">↻</button>
+      </div>
+      <p id="aiStatus" class="muted small">Questions are generated with a free AI model — the built-in generator is the backup.</p>
+      <p class="muted small">Requests used today: <strong id="usageToday">0</strong> · Cached questions: <strong id="cachedCount">0</strong>
+        <button id="btnClearQCache" class="btn btn-ghost btn-xs" type="button">Clear cache</button></p>
+    </div>
+    <hr class="sep">
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label" for="inpTargetLang">Language you are learning</label>
+        <input id="inpTargetLang" class="input" type="text" placeholder="French" value="French">
+      </div>
+      <div class="field">
+        <label class="field-label" for="inpTargetCode">Speech voice (BCP-47)</label>
+        <input id="inpTargetCode" class="input" type="text" placeholder="fr-FR" value="fr-FR">
+      </div>
+    </div>
+    <label class="switch-row"><input id="chkAutoPlay" type="checkbox" checked> Auto-play pronunciation when a word is revealed</label>
+  </div>
+
+  <!-- Sheet tab -->
+  <div class="tab-pane" data-pane="sheet">
+    <div id="fileWarn" class="notice" hidden>
+      <strong>This page was opened as a local file (<code>file://</code>).</strong>
+      Chrome and Edge block requests to Google from <code>file://</code> pages, so your sheet may not load.
+      Run <code>python3 -m http.server 8080</code> in the app folder and open
+      <code>http://localhost:8080</code> — or just open this page in Firefox.
+      VocabLab also loads the words with a script-tag method that works from <code>file://</code>, and lists your tabs
+      through the public <code>r.jina.ai</code> reader (nothing to install). If that reader cannot be reached,
+      put your tab names on separate lines under the sheet link — or serve the folder over <code>http://</code>
+      and they are detected automatically.
+    </div>
+    <div class="mode-cards">
+      <label class="mode-card"><input type="radio" name="sheetMode" value="links" checked>
+        <div><strong>⭐ Sheet link — no key, zero setup</strong><span class="muted small">Paste your sheet link; every tab (topic) is detected automatically and new tabs appear by themselves.</span></div></label>
+      <label class="mode-card"><input type="radio" name="sheetMode" value="script">
+        <div><strong>Apps Script web app</strong><span class="muted small">No Google Cloud needed. Paste a small script once, get one URL.</span></div></label>
+      <label class="mode-card"><input type="radio" name="sheetMode" value="api">
+        <div><strong>Google Sheets API</strong><span class="muted small">Needs a free Google Cloud API key. Auto-loads every tab.</span></div></label>
+      <label class="mode-card"><input type="radio" name="sheetMode" value="demo">
+        <div><strong>Demo deck</strong><span class="muted small">Try the app with sample vocabulary.</span></div></label>
+    </div>
+
+    <div class="mode-pane" data-pane="api">
+      <div class="field">
+        <label class="field-label" for="inpSheetUrl">Google Sheet link or ID</label>
+        <input id="inpSheetUrl" class="input" type="text" placeholder="https://docs.google.com/spreadsheets/d/…">
+      </div>
+      <div class="field">
+        <label class="field-label" for="inpSheetApiKey">API key <span class="muted">(Google Cloud — not the Gemini key)</span></label>
+        <input id="inpSheetApiKey" class="input" type="text" placeholder="AIza…" autocomplete="off" spellcheck="false">
+        <p class="muted small">No key, and don't want to create one? Switch to the <strong>⭐ Sheet link</strong> mode above —
+          it needs nothing from Google Cloud and detects your tabs automatically.</p>
+      </div>
+      <button id="btnLoadApi" class="btn btn-primary" type="button">Load all tabs</button>
+      <details class="small muted" style="margin-top:.6rem">
+        <summary>How to get a Sheets API key (2 min)</summary>
+        <ol class="setup-steps">
+          <li>Share the sheet: <em>Share → Anyone with the link → Viewer</em>.</li>
+          <li>Open <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" target="_blank" rel="noopener">Google Cloud → enable Sheets API</a> (free).</li>
+          <li>In <em>Credentials → Create API key</em>, copy the key and paste it above.</li>
+        </ol>
+      </details>
+    </div>
+
+    <div class="mode-pane" data-pane="script" hidden>
+      <div class="field">
+        <label class="field-label" for="inpScriptUrl">Web app URL</label>
+        <input id="inpScriptUrl" class="input" type="text" placeholder="https://script.google.com/macros/s/…/exec">
+      </div>
+      <button id="btnLoadScript" class="btn btn-primary" type="button">Load all tabs</button>
+      <details class="small muted" style="margin-top:.6rem">
+        <summary>How to deploy the script (3 min, no Google Cloud)</summary>
+        <ol class="setup-steps">
+          <li>In your sheet: <em>Extensions → Apps Script</em>, paste the code from the <a href="#" id="lnkShowScript">Help dialog</a>.</li>
+          <li><em>Deploy → New deployment → Web app</em>. Execute as <em>Me</em>, access <em>Anyone</em>.</li>
+          <li>Copy the <code>/exec</code> URL here.</li>
+        </ol>
+      </details>
+    </div>
+
+    <div class="mode-pane" data-pane="links" hidden>
+      <div class="field">
+        <label class="field-label" for="inpLinks">Sheet link (tabs are auto-detected) — or one link / tab name per line</label>
+        <textarea id="inpLinks" class="input" rows="6" spellcheck="false"
+          placeholder="https://docs.google.com/spreadsheets/d/1jbA32_VjL1qLxKayyh_YoM0sb1xGX9a-dt4uwZLlEiY/edit&#10;&#10;# Optional — load only some tabs, one name per line:&#10;Travel&#10;Work&#10;&#10;# …or the classic form:&#10;Travel | https://docs.google.com/spreadsheets/d/e/…/pub?output=csv"></textarea>
+      </div>
+      <button id="btnLoadLinks" class="btn btn-primary" type="button">Load sheet</button>
+      <p class="muted small"><strong>Just paste your sheet link</strong> (share it as “Anyone with the link → Viewer”).
+        VocabLab finds every tab by itself — no key, no publishing. When you add a new tab in Google Sheets,
+        press <em>↻ Reload</em> and it shows up here.</p>
+      <p class="muted small">Put tab names on separate lines under the link to load only those topics — this is also
+        the fallback when the browser blocks Google requests (for example a double-clicked <code>file://</code> page):
+        VocabLab then still fetches the words with its script-tag method. <code>Topic name | URL</code> lines
+        (published CSV or <code>#gid=…</code> links) work as well.</p>
+    </div>
+
+    <div class="mode-pane" data-pane="demo" hidden>
+      <p class="muted small">The demo deck has 3 topics (Travel, Work, Food &amp; Dining) with 12 words each — great for testing without any setup.</p>
+      <button id="btnLoadDemo" class="btn btn-primary" type="button">Load demo deck</button>
+    </div>
+
+    <p id="sheetStatus" class="muted small"></p>
+    <div id="sheetWarnings" class="notice small" hidden></div>
+  </div>
+
+  <!-- Data tab -->
+  <div class="tab-pane" data-pane="data">
+    <p id="dataInfo" class="muted small"></p>
+    <div class="btn-col">
+      <button id="btnClearDeck" class="btn btn-subtle" type="button">Forget cached vocabulary</button>
+      <button id="btnClearMastery" class="btn btn-subtle" type="button">Reset progress &amp; stats</button>
+      <button id="btnClearAll" class="btn btn-danger-ghost" type="button">Clear everything (keys, deck, progress)</button>
+    </div>
+    <p class="muted small">All data lives in this browser's localStorage. Nothing is sent anywhere except your own
+      Google Sheet and the AI provider you configure, using your key.</p>
+  </div>
+</dialog>
+
+<!-- ======================= HELP DIALOG ======================= -->
+<dialog id="helpDialog" class="dialog">
+  <form method="dialog" class="dialog-head">
+    <h2>Help &amp; setup</h2>
+    <button class="icon-btn" value="close" aria-label="Close">✕</button>
+  </form>
+  <div class="help-body">
+    <h3>1 · Sheet layout</h3>
+    <p class="muted small">One tab per topic. First row = headers (optional). VocabLab auto-detects these columns
+      (English or Vietnamese names):</p>
+    <table class="fmt-table small">
+      <thead><tr><th>Column</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Vocab / Từ vựng / Word</td><td>word or phrase you are learning <em>(required)</em></td></tr>
+        <tr><td>Vietnamese / Nghĩa / Meaning</td><td>Vietnamese meaning <em>(required)</em></td></tr>
+        <tr><td>Pronunciation / Phát âm / Pinyin</td><td>spoken hint, shown on the word card</td></tr>
+        <tr><td>Example / Ví dụ</td><td>example sentence (also used for fill-in-the-blank)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>2 · How VocabLab reads your sheet</h3>
+    <p class="muted small"><strong>Option A — Sheets API key (automatic, needs a key):</strong> share sheet as
+      “Anyone with the link”, create a free API key with the Sheets API enabled, paste both in
+      Settings → Google Sheet. Every tab loads automatically.</p>
+    <p class="muted small"><strong>Option B — Apps Script (no Google Cloud):</strong> in your sheet open
+      <em>Extensions → Apps Script</em>, paste this, then <em>Deploy → New deployment → Web app</em>
+      (Execute as <em>Me</em>, access <em>Anyone</em>) and paste the <code>/exec</code> URL in Settings:</p>
+    <div class="code-block"><pre id="scriptCode">function doGet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var out = ss.getSheets().map(function (sh) {
+    return {
+      title: sh.getName(),
+      values: sh.getDataRange().getDisplayValues()
+    };
+  });
+  return ContentService
+    .createTextOutput(JSON.stringify(out))
+    .setMimeType(ContentService.MimeType.JSON);
+}</pre><button id="btnCopyScript" class="btn btn-subtle btn-sm" type="button">Copy</button></div>
+    <p class="muted small"><strong>Option C — Sheet link (easiest, no key):</strong> share the sheet as
+      <em>“Anyone with the link → Viewer”</em>, then in Settings → Google Sheet → <em>Sheet link</em> paste just
+      the sheet link. VocabLab downloads the sheet's own preview to detect every tab (topic) — new tabs appear
+      automatically after <em>↻ Reload</em>. On a double-clicked <code>file://</code> page, where that download is
+      blocked, it asks the public <code>r.jina.ai</code> reader for the same tab list instead (still no key, nothing
+      to type), and otherwise reuses the tab list remembered from the last load. To load only some topics, put tab
+      names on separate lines under the link; <code>Topic name | URL</code> lines (published CSV or
+      <code>#gid=…</code>) also work.</p>
+
+    <h3>3 · AI questions</h3>
+    <p class="muted small">Pick a provider in Settings → AI. <strong>Google Gemini</strong> is the default — paste a free
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Gemini API key</a>. You can also choose
+      <strong>OpenAI-compatible</strong>, which works with free tiers of
+      <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a>,
+      <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> (models ending in
+      <code>:free</code>), <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener">Mistral</a>,
+      Cloudflare Workers AI — or a local <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a>
+      (no key; run it with <code>OLLAMA_ORIGINS=*</code>). Use the quick presets, then “Test &amp; load models”.
+      Questions are generated in small batches and cached, so replays barely use quota. If the key is missing or
+      quota runs out, the built-in generator takes over automatically — the app never gets stuck.</p>
+
+    <h3>Keyboard shortcuts</h3>
+    <ul class="small muted">
+      <li><span class="kbd">1</span>–<span class="kbd">4</span> answer multiple choice · <span class="kbd">Enter</span> check / next</li>
+      <li><span class="kbd">Space</span> flip flashcard · <span class="kbd">←</span>/<span class="kbd">→</span> move between cards</li>
+    </ul>
+
+    <h3>Troubleshooting</h3>
+    <ul class="small muted">
+      <li><strong>403 from Sheets</strong> — the sheet isn't shared as “Anyone with the link”, or the API key has restrictions that block the Sheets API.</li>
+      <li><strong>“API has not been used / disabled”</strong> — enable the Google Sheets API for your key's project.</li>
+      <li><strong>AI errors</strong> — check the key in Settings → AI (“Test &amp; load models”), or switch Generator to <em>Built-in</em>.</li>
+      <li><strong>CORS / can't reach provider</strong> — Gemini, Groq, OpenRouter and Mistral allow browser calls; for local Ollama run it with <code>OLLAMA_ORIGINS=*</code> and serve this page over <code>http(s)://</code>.</li>
+      <li><strong>429 quota</strong> — free-tier limit hit; wait a minute, or the app will fall back to built-in questions.</li>
+      <li><strong>Network errors</strong> — if you opened the file directly (<code>file://</code>), try serving the folder
+        (<code>python3 -m http.server</code>) or hosting it. Some browsers restrict cross-site requests from local files.</li>
+    </ul>
+  </div>
+</dialog>
+
+<!-- ======================= OVERLAY (loading / generating) ======================= -->
+<div id="overlay" class="overlay" hidden>
+  <div class="overlay-card">
+    <h3 id="loadTitle">Working…</h3>
+    <p id="loadMsg" class="muted small"></p>
+    <div class="progress"><div id="loadBar" class="progress-fill" style="width:0%"></div></div>
+    <button id="btnCancelLoad" class="btn btn-ghost btn-sm" type="button">Cancel</button>
+  </div>
+</div>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<script src="js/util.js"></script>
+<script src="js/demo.js"></script>
+<script src="js/sources.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/generator.js"></script>
+<script src="js/quiz.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
