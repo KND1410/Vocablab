@@ -740,6 +740,46 @@ eq(Ai.pickDefaultModel([{ id: 'some/small-model' }, { id: 'x/y:free' }], 'openai
 eq(Ai.pickDefaultModel([], 'openai'), 'openrouter/free', 'openai default without a model list');
 eq(Ai.pickDefaultModel([{ id: 'gemini-2.5-flash' }, { id: 'gemini-2.5-pro' }], 'gemini'), 'gemini-2.5-flash', 'gemini default unchanged');
 
+/* ---------- Keys copied from the wrong dashboard ---------- */
+section('API keys');
+eq(Ai.normalizeKey('  AIzaSyDemo  '), 'AIzaSyDemo', 'surrounding spaces dropped');
+eq(Ai.normalizeKey('"gsk_demo"'), 'gsk_demo', 'quotes from a web page dropped');
+eq(Ai.normalizeKey('Bearer gsk_demo'), 'gsk_demo', 'a pasted “Bearer ” prefix is dropped');
+eq(Ai.normalizeKey('Bearer: "gsk_demo"\n'), 'gsk_demo', '“Bearer:”, quotes and a newline all peel off');
+eq(Ai.normalizeKey('gsk_de\u200Bmo'), 'gsk_demo', 'invisible characters removed');
+eq(Ai.normalizeKey(null), '', 'a missing key is an empty string');
+eq(Ai.oai.headers('https://api.groq.com/openai/v1', 'Bearer  "gsk_x" ').Authorization, 'Bearer gsk_x',
+  'the request always carries the cleaned key');
+eq(Ai.keyFormat('groq'), 'gsk_…', 'Groq says what its keys look like');
+eq(Ai.keyFormat('mistral'), '', 'no invented format for providers we cannot verify');
+eq(Ai.providerForBase('https://api.groq.com/openai/v1/').id, 'groq', 'a base URL identifies its provider');
+eq(Ai.providerForBase('http://127.0.0.1:11434/v1').id, 'ollama', 'a local base URL identifies Ollama');
+eq(Ai.providerForBase('https://together.example/v1'), null, 'a custom base URL belongs to no known provider');
+const wrongKey = Ai.keyShapeWarning('groq', 'sk-or-v1-abcdef');
+ok(/OpenRouter/.test(wrongKey) && /Groq/.test(wrongKey), 'an OpenRouter key in the Groq field names both providers');
+ok(/console\.groq\.com\/keys/.test(wrongKey), 'the warning says where the right key comes from');
+eq(Ai.keyShapeWarning('groq', 'gsk_aRealLookingGroqKey'), '', 'a matching key raises nothing');
+eq(Ai.keyShapeWarning('openrouter', 'sk-or-v1-abcdef'), '', 'an OpenRouter key on OpenRouter is fine');
+ok(/OpenRouter/.test(Ai.keyShapeWarning('deepseek', 'sk-or-v1-abcdef')),
+  'its own prefix (“sk-”) does not shadow the provider that really issued it');
+eq(Ai.keyShapeWarning('deepseek', 'sk-0123456789abcdef'), '', 'a DeepSeek key on DeepSeek is fine');
+eq(Ai.keyShapeWarning('openai', 'sk-or-v1-abcdef'), '', 'a custom endpoint never second-guesses the key');
+ok(/Gemini/.test(Ai.keyShapeWarning('groq', 'AIzaSyDemo')), 'a Gemini key in the Groq field is named');
+ok(/space or line break/.test(Ai.keyShapeWarning('groq', 'gsk_a b')), 'an embedded space is called out');
+const aiSrc = fs.readFileSync(path.join(root, 'js/ai.js'), 'utf8');
+ok(/rejected this key \(401\/403\)/.test(aiSrc) && /providerForBase\(opts\.base/.test(aiSrc),
+  'a 401 names the provider whose dashboard issued the key');
+// Groq really answers 401 “Invalid API Key”; that reason must reach the learner.
+aiFetch = async function () { return fakeResponse(JSON.stringify({ error: { message: 'Invalid API Key' } }), 401); };
+let keyErr = null;
+try { await Ai.listModels({ provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', key: 'sk-or-v1-nope' }); }
+catch (e) { keyErr = e; }
+ok(keyErr && /Groq rejected this key \(401\/403\)/.test(keyErr.friendly), 'the 401 says which provider refused it');
+ok(keyErr && /Invalid API Key/.test(keyErr.friendly), "the provider's own reason is shown, not hidden");
+ok(keyErr && /console\.groq\.com\/keys/.test(keyErr.friendly), 'the 401 links to a fresh key');
+ok(keyErr && /gsk_/.test(keyErr.friendly), 'the 401 says what a Groq key looks like');
+aiFetch = null;
+
 /* ---------- AI transport errors (the “Ollama without a key” report) ---------- */
 section('AI transport errors');
 // Nothing listening on the port: the message must say to start the server.
@@ -1026,6 +1066,8 @@ ok(/E\.inpGeminiKey\.addEventListener\('input'/.test(appSrc) && /E\.inpOaiKey\.a
   'a pasted key counts even if the field never loses focus');
 ok(/function useProvider\(/.test(appSrc) && /function loadConn\(/.test(appSrc) && /function rememberConn\(/.test(appSrc),
   'each provider keeps its own key, base URL and model');
+ok(/normalizeStoredKeys\(\)/.test(appSrc) && /Ai\.normalizeKey\(settings\.oaiKey\)/.test(appSrc),
+  'keys saved before the cleanup are repaired on load, not left to fail');
 ok(/Switch to Groq \(free\)/.test(appSrc), 'a provider out of quota offers a one-click switch');
 ok(/daily quota per project/.test(appSrc), 'the Gemini hint explains what its free tier really is');
 ok(/pick another provider in Settings → AI/.test(fs.readFileSync(path.join(root, 'js/ai.js'), 'utf8')),

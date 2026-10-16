@@ -371,6 +371,26 @@ function buildProbe(deadPort, blockedPort) {
     '    await wait(40);',
     '    out("back to gemini: gemini-pane=" + !byId("paneGemini").hidden + " oai-pane=" + !byId("paneOai").hidden);',
     '',
+    '    /* A key copied from another provider is why a 401 happens; the app has to',
+    '       say that at paste time, not after a failed round trip. */',
+    '    byId("selProvider").value = "groq";',
+    '    byId("selProvider").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    await wait(40);',
+    '    byId("inpOaiKey").value = "sk-or-v1-" + "0".repeat(64);',
+    '    byId("inpOaiKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    await wait(40);',
+    '    out("wrong key: hidden=" + byId("aiIssue").hidden + " names=" + /OpenRouter/.test(byId("aiIssue").textContent) +',
+    '        "/" + /Groq/.test(byId("aiIssue").textContent));',
+    '    byId("inpOaiKey").value = "gsk_" + "0".repeat(52);',
+    '    byId("inpOaiKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    await wait(40);',
+    '    out("right key: hidden=" + byId("aiIssue").hidden +',
+    '        " saved=" + JSON.parse(localStorage.getItem("vocablab.settings")).oaiKey.length);',
+    '    byId("inpOaiKey").value = "Bearer " + "gsk_" + "0".repeat(52);',
+    '    byId("inpOaiKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    await wait(40);',
+    '    out("bearer key: saved=" + JSON.stringify(JSON.parse(localStorage.getItem("vocablab.settings")).oaiKey.slice(0, 12)));',
+    '',
     '    /* Ollama (or any local server) with nothing listening: no key needed, but the',
     '       failure has to say what to do — and the quiz must still run. */',
     '    byId("selProvider").value = "openai";',
@@ -520,6 +540,15 @@ check(/^deepseek again: key="sk-deepseek-test" stored=\["deepseek","groq"\]/m.te
   (log.match(/^deepseek again: .*/m) || [''])[0]);
 check(/^back to gemini: gemini-pane=true oai-pane=false/m.test(log),
   'switching back to Gemini shows the Gemini key field', (log.match(/^back to gemini: .*/m) || [''])[0]);
+check(/^wrong key: hidden=false names=true\/true/m.test(log),
+  'a key belonging to another provider is identified at paste time',
+  (log.match(/^wrong key: .*/m) || [''])[0]);
+check(/^right key: hidden=true saved=56/m.test(log),
+  'a matching key clears the warning and is what gets saved',
+  (log.match(/^right key: .*/m) || [''])[0]);
+check(/^bearer key: saved="gsk_00000000"/m.test(log),
+  'a key pasted with “Bearer ” in front is stored as the bare key',
+  (log.match(/^bearer key: .*/m) || [''])[0]);
 check(/^dead AI: toast="[^"]*AI generation issue — built-in questions cover the rest\.[^"]*nothing is running there[^"]*not a web service[^"]*ollama serve/m.test(log),
   'a local AI server with nothing listening explains how to start it',
   (log.match(/^dead AI: toast=.*/m) || [''])[0]);
