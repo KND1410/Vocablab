@@ -236,7 +236,9 @@ Notes:
   option shows its translation underneath (`évoluer` → `tiến triển, thay đổi,
   phát triển`; a Vietnamese option shows the French word it belongs to). A wrong
   pick still teaches you all the other words — and the translations stay hidden
-  until you answer, so they never give the answer away.
+  until you answer, so they never give the answer away. Every option is a word
+  your sheet defines: if the AI writes an option your sheet does not have, the
+  app swaps it for one of your own words, so nothing is ever left untranslated.
 - **🔊 pronunciation** uses your browser's speech synthesis — set the voice code
   in Settings → AI (`fr-FR`, `de-DE`, `ja-JP`, …); “Auto-play” reads the word
   when a card is revealed.

@@ -574,9 +574,11 @@
       'ITEMS (JSON):\n' + JSON.stringify(payload, null, 1) + '\n\n' +
       'Rules:\n' +
       '• Copy the answer text EXACTLY as written in ITEMS (keep Vietnamese diacritics).\n' +
-      '• type "mc": 4 unique options with exactly one correct (= the answer). Distractors must be plausible ' +
-      'same-kind words but clearly wrong. Never use a synonym or near-synonym of the answer, and never reuse a ' +
-      'meaning from another ITEM that could also be read as the answer. prompt = question text: for term2meaning put the term, for meaning2term put the meaning.\n' +
+      '• type "mc": 4 unique options with exactly one correct (= the answer). Take the 3 distractors from the ' +
+      'terms/meanings of the other ITEMs — the learner\'s own words — and never invent vocabulary that is not in ' +
+      'ITEMS. Distractors must be plausible same-kind words but clearly wrong: never a synonym or near-synonym ' +
+      'of the answer, and never text from another ITEM that could also be read as the answer. ' +
+      'prompt = question text: for term2meaning put the term, for meaning2term put the meaning.\n' +
       '• type "blank": write one natural ' + targetLang + ' sentence (6–14 words) containing the term, then replace the term with ___. ' +
       'hint must start with "Meaning: " followed by the Vietnamese meaning. prompt = the sentence. answer = the term.\n' +
       '• type "translate": term2meaning → prompt = term, answer = meaning; meaning2term → prompt = meaning, answer = term. ' +
