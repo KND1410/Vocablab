@@ -5,9 +5,9 @@ fill-in-the-blank and typed translation. Built for learning **French** (Vietname
 meanings out of the box), but works with any language.
 
 - Every **tab** of your sheet becomes a **topic**.
-- Questions are written by a **free AI model** — Gemini by default, or Groq /
-  OpenRouter / Mistral / a local Ollama — with a solid built-in generator
-  when there is no key / no quota left.
+- Questions are written by an **AI model you choose** — Google Gemini, Groq,
+  Cerebras, OpenRouter, Mistral, DeepSeek, Cloudflare or a local Ollama — with a
+  solid built-in generator when there is no key / no quota left.
 - No build step, no backend, no dependencies: a static page + your browser.
 
 ```
@@ -155,26 +155,38 @@ Things to know:
 
 ## 3 · AI questions (free models)
 
-Open **Settings → AI** and pick a provider. All of them have free tiers; keys are
-stored in your browser only and requests go straight from your browser to the
-provider.
+Open **Settings → AI** and pick a provider from the menu — the menu *is* the whole
+list, not a choice between Gemini and “something else”. Keys are stored in your
+browser only and requests go straight from your browser to the provider. Each
+provider remembers its own base URL, key and model, so you can switch back and
+forth without retyping anything.
 
 | Provider | Free tier | Base URL (OpenAI-compatible mode) | Key from |
 |---|---|---|---|
-| **Google Gemini** *(default)* | Flash models, daily allowance | built in — select *Google Gemini* | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| **Google Gemini** *(default)* | Flash models, daily allowance **per project** | built in — select *Google Gemini* | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | **Groq** | ~30 req/min · 1000 req/day · very fast | `https://api.groq.com/openai/v1` | [console.groq.com/keys](https://console.groq.com/keys) |
+| **Cerebras** | free trial credit, then pay as you go · fastest | `https://api.cerebras.ai/v1` | [cloud.cerebras.ai](https://cloud.cerebras.ai) |
 | **OpenRouter** | every model ending in `:free` + the `openrouter/free` router | `https://openrouter.ai/api/v1` | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | **Mistral** | free “Experiment” plan | `https://api.mistral.ai/v1` | [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) |
+| **DeepSeek** | paid — no free tier, but only cents per quiz | `https://api.deepseek.com/v1` | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
 | **Cloudflare Workers AI** | daily free allowance | `https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1` | Cloudflare dashboard |
 | **Ollama (local)** | free forever, **no key** — but the app must be installed and running on your computer | `http://localhost:11434/v1` | — |
+| **Other OpenAI-compatible** | whatever that service offers | paste any base URL | that service |
+
+Picking one fills in its Base URL and a current default model; press **Test &
+load models** to replace that with whatever the provider really serves right now
+(the model box is a searchable list). The line under the menu says where to get
+the key and what the offer actually is — free, free trial, or paid. Ran out of
+Gemini's daily quota? Pick another provider instead of making a new project:
+Groq, Cerebras and OpenRouter have free tiers of their own, and a `429` offers a
+one-click switch.
 
 **Google Gemini (default):** get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey),
 paste it, press **Test key & load models**.
 
-**Groq / OpenRouter / Mistral / Cloudflare:** choose provider *OpenAI-compatible →
-tap a quick preset*, paste the key, press **Test & load models**. The model box
-works as a searchable list — or type any model id (e.g. `@cf/openai/gpt-oss-20b`
-on Cloudflare).
+**Groq / Cerebras / OpenRouter / Mistral / DeepSeek / Cloudflare:** pick the
+provider, paste its key, press **Test & load models**. For Cloudflare, put your
+account ID where the preset says `REPLACE_WITH_ACCOUNT_ID`.
 
 **Ollama (fully local, private)** — install it first
 ([ollama.com/download](https://ollama.com/download)); it is a program on your own
@@ -185,7 +197,7 @@ ollama serve                      # start it (OLLAMA_ORIGINS=* lets the browser 
 ollama pull llama3.2              # or any model you like
 ```
 
-then pick the *Ollama (local app)* preset (no API key needed). Check it works by
+then pick the *Ollama (local app)* provider (no API key needed). Check it works by
 opening `http://localhost:11434/api/tags` in a new tab — if that fails, the app
 will fail too. If VocabLab reports *“nothing is running there”*, it couldn't find
 anything on that port (not installed, not started, or another port); *“a server
@@ -201,7 +213,8 @@ How it keeps you inside the free tier:
   provider/model, so replays and reviews cost **0 requests**.
 - **Retries/fallback** — rate limits and 5xx are retried briefly, JSON mode falls
   back to plain prompting, then the built-in generator fills the gaps so a quiz is
-  never blocked.
+  never blocked. A provider that is out of quota tells you to switch provider (or
+  switches for you in one click) instead of leaving you stuck.
 - **Counter** — Settings → AI shows requests used today and cache size.
 
 Notes:
@@ -253,7 +266,7 @@ Keyboard: `1`–`4` answer · `Enter` check/next · `Space` flip card · `←`/`
 
 | Tab | What's there |
 |---|---|
-| **AI** | provider (Gemini / OpenAI-compatible), keys, model list, requests used today, question cache, target language + voice, auto-play |
+| **AI** | provider menu (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, target language + voice, auto-play |
 | **Google Sheet** | the three connection modes, load buttons, setup help |
 | **Data** | cached deck info, forget deck, reset progress, wipe everything |
 
@@ -269,7 +282,7 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 | `403` from Sheets (API mode) | Sheet is not “Anyone with the link”, or the API key is restricted and doesn't allow the Sheets API |
 | “Missing Sheets API key” | That mode needs a Google Cloud key — switch to **⭐ Sheet link — no key** instead |
 | “Could not open the sheet” (Sheet link mode) | Set sharing to “Anyone with the link → Viewer” |
-| `429` from the AI provider | Free-tier limit; wait a minute — the app falls back to built-in questions meanwhile |
+| `429` from the AI provider | Free-tier limit. Wait a minute, or pick another provider in Settings → AI (Groq, Cerebras and OpenRouter are free too) — the error offers a one-click switch, and the app falls back to built-in questions meanwhile |
 | Provider rejects the key (`401`/`403`) | Re-check the key; on OpenRouter use a `:free` model, on Cloudflare include your account ID in the Base URL |
 | Can't reach the provider (CORS/network) | The message says which side is broken. *“nothing is running there”* → for a local server: it isn't installed/started (`ollama serve`, then `ollama pull <model>`; check `http://localhost:11434/api/tags` in a new tab); *“a server answered, but it blocked this page”* → CORS: restart Ollama with `OLLAMA_ORIGINS=*` and serve the page over `http(s)://`, not `file://`. Gemini, Groq, OpenRouter and Mistral need no CORS setup |
 | A renamed tab shows up twice | Only happens with a manual tab-name list: Google serves the *first* tab for an unknown name. Delete/rename that line, or use the link-only mode for auto-detection |

@@ -10,6 +10,67 @@
 
   const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
+  /**
+   * The providers Settings → AI offers. Google speaks its own API; every other
+   * entry is OpenAI-compatible, so a provider is just a base URL, one default
+   * model and somewhere to get a key — they all work the same way.
+   * Model names change often: “Test & load models” asks the provider what it
+   * really serves and picks the best of that list, so these are only starting
+   * points. `cost` is what the provider's offer really is, not marketing.
+   */
+  const PROVIDERS = [
+    {
+      id: 'gemini', label: 'Google Gemini — free tier', transport: 'gemini',
+      base: '', model: 'gemini-flash-latest', keyUrl: 'https://aistudio.google.com/apikey',
+      cost: 'free'
+    },
+    {
+      id: 'groq', label: 'Groq — free tier, very fast', transport: 'openai',
+      base: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b',
+      keyUrl: 'https://console.groq.com/keys', cost: 'free'
+    },
+    {
+      id: 'cerebras', label: 'Cerebras — very fast, trial credit', transport: 'openai',
+      base: 'https://api.cerebras.ai/v1', model: 'gpt-oss-120b',
+      keyUrl: 'https://cloud.cerebras.ai', cost: 'trial'
+    },
+    {
+      id: 'openrouter', label: 'OpenRouter — many free models', transport: 'openai',
+      base: 'https://openrouter.ai/api/v1', model: 'openrouter/free',
+      keyUrl: 'https://openrouter.ai/keys', cost: 'free'
+    },
+    {
+      id: 'mistral', label: 'Mistral — free tier', transport: 'openai',
+      base: 'https://api.mistral.ai/v1', model: 'mistral-small-latest',
+      keyUrl: 'https://console.mistral.ai/api-keys', cost: 'free'
+    },
+    {
+      id: 'deepseek', label: 'DeepSeek — paid, very cheap', transport: 'openai',
+      base: 'https://api.deepseek.com/v1', model: 'deepseek-flash',
+      keyUrl: 'https://platform.deepseek.com/api_keys', cost: 'paid'
+    },
+    {
+      id: 'cloudflare', label: 'Cloudflare Workers AI', transport: 'openai',
+      base: 'https://api.cloudflare.com/client/v4/accounts/REPLACE_WITH_ACCOUNT_ID/ai/v1',
+      model: '@cf/openai/gpt-oss-20b', keyUrl: 'https://dash.cloudflare.com/profile/api-tokens',
+      cost: 'free', needsAccountId: true
+    },
+    {
+      id: 'ollama', label: 'Ollama — local app, no key', transport: 'openai',
+      base: 'http://localhost:11434/v1', model: 'llama3.2',
+      keyUrl: 'https://ollama.com', cost: 'local'
+    },
+    {
+      id: 'openai', label: 'Other OpenAI-compatible…', transport: 'openai',
+      base: '', model: '', keyUrl: '', cost: ''
+    }
+  ];
+
+  function providerById(id) {
+    for (const p of PROVIDERS) if (p.id === id) return p;
+    return null;
+  }
+
   const RESPONSE_SCHEMA = {
     type: 'object',
     properties: {
@@ -133,7 +194,8 @@
     } else if (res.status === 404) {
       err.friendly = 'Model not found (404) — pick a different model in Settings → AI.';
     } else if (res.status === 429) {
-      err.friendly = 'Free-tier limit reached (429). Wait a minute and retry, or let VocabLab fall back to built-in questions.';
+      err.friendly = 'Gemini free-tier limit reached (429). Wait a minute, or pick another provider in Settings → AI — ' +
+        'Groq, Cerebras and OpenRouter all have free tiers. Built-in questions cover the rest meanwhile.';
     } else if (res.status >= 500) {
       err.friendly = 'Gemini had a server error (' + res.status + '). Try again shortly.';
     } else {
@@ -315,7 +377,8 @@
           ? '\n• Local Ollama: download the model first — ollama pull ' + (opts.model || 'llama3.2')
           : '\n• Check the Base URL and the model ID in Settings → AI.');
     } else if (res.status === 429) {
-      err.friendly = 'Free-tier rate limit reached (429). Groq and OpenRouter reset within a minute; VocabLab falls back to built-in questions meanwhile.';
+      err.friendly = 'Rate limit reached (429) by this provider. Wait a minute, or switch provider in Settings → AI — ' +
+        'Groq, Cerebras and OpenRouter have free tiers. Built-in questions cover the rest meanwhile.';
     } else if (res.status >= 500) {
       err.friendly = 'The provider had a server error (' + res.status + '). Try again shortly.';
     } else {
@@ -711,6 +774,8 @@
   }
 
   global.Ai = {
+    providers: PROVIDERS,
+    providerById: providerById,
     listModels: listModels,
     pickDefaultModel: pickDefaultModel,
     prettifyModel: prettifyModel,
