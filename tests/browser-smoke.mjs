@@ -390,6 +390,11 @@ function buildProbe(deadPort, blockedPort) {
     '    byId("inpOaiKey").dispatchEvent(new Event("input", { bubbles: true }));',
     '    await wait(40);',
     '    out("bearer key: saved=" + JSON.stringify(JSON.parse(localStorage.getItem("vocablab.settings")).oaiKey.slice(0, 12)));',
+    '    byId("inpOaiKey").value = "grok_" + "1".repeat(32) + "_" + "2".repeat(64);',
+    '    byId("inpOaiKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    await wait(40);',
+    '    out("grok key: names=" + /gsk_/.test(byId("aiIssue").textContent) + "/" + /56/.test(byId("aiIssue").textContent) +',
+    '        "/" + /102/.test(byId("aiIssue").textContent));',
     '',
     '    /* Ollama (or any local server) with nothing listening: no key needed, but the',
     '       failure has to say what to do — and the quiz must still run. */',
@@ -529,7 +534,7 @@ check(/typed submit: feedback=true title="Correct!"/m.test(log), 'a correct type
 check(/typed dont-know: feedback=true/m.test(log), '"I don\'t know" reveals the answer');
 check(/Quiz\.grade\(user case\)=correct/m.test(log), 'comma-list meaning accepts one of its items');
 check(/Quiz\.sameAnswer\(variant\)=true/m.test(log), 'an alternative option matches the answer');
-check(/^providers: ids=\["gemini","groq","cerebras","openrouter","mistral","deepseek","cloudflare","ollama","openai"\]/m.test(log),
+check(/^providers: ids=\["gemini","groq","cerebras","openrouter","mistral","deepseek","xai","cloudflare","ollama","openai"\]/m.test(log),
   'Settings → AI lists the whole provider list, not just Gemini', (log.match(/^providers: .*/m) || [''])[0]);
 check(/^deepseek picked: base=https:\/\/api\.deepseek\.com\/v1 model=deepseek-flash gemini-pane=false oai-pane=true hint-has-link=true/m.test(log),
   'picking DeepSeek fills in its base URL, model and key link', (log.match(/^deepseek picked: .*/m) || [''])[0]);
@@ -549,6 +554,9 @@ check(/^right key: hidden=true saved=56/m.test(log),
 check(/^bearer key: saved="gsk_00000000"/m.test(log),
   'a key pasted with “Bearer ” in front is stored as the bare key',
   (log.match(/^bearer key: .*/m) || [''])[0]);
+check(/^grok key: names=true\/true\/true/m.test(log),
+  'a “grok_” key on Groq says which console it must come from instead',
+  (log.match(/^grok key: .*/m) || [''])[0]);
 check(/^dead AI: toast="[^"]*AI generation issue — built-in questions cover the rest\.[^"]*nothing is running there[^"]*not a web service[^"]*ollama serve/m.test(log),
   'a local AI server with nothing listening explains how to start it',
   (log.match(/^dead AI: toast=.*/m) || [''])[0]);
