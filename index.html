@@ -132,7 +132,7 @@
         <button class="quick-card" id="btnQuickAi">
           <span class="qc-ico">✨</span>
           <strong>Add a free AI key</strong>
-          <span class="muted small">Gemini, Groq, OpenRouter, Mistral — or local Ollama, no key at all.</span>
+          <span class="muted small">Gemini, Groq, OpenRouter or Mistral — a free key is enough. (Prefer no key? Ollama, but you install and run it yourself.)</span>
         </button>
       </div>
 
@@ -316,8 +316,10 @@
           <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://openrouter.ai/api/v1" data-model="openrouter/free">OpenRouter (many models)</button>
           <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://api.mistral.ai/v1" data-model="mistral-small-latest">Mistral</button>
           <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://api.cloudflare.com/client/v4/accounts/REPLACE_WITH_ACCOUNT_ID/ai/v1" data-model="@cf/openai/gpt-oss-20b">Cloudflare Workers AI</button>
-          <button class="btn btn-subtle btn-xs preset" type="button" data-base="http://localhost:11434/v1" data-model="llama3.2">Ollama (local, no key)</button>
+          <button class="btn btn-subtle btn-xs preset" type="button" data-base="http://localhost:11434/v1" data-model="llama3.2">Ollama (local app — no key)</button>
         </div>
+        <p class="muted small">Ollama runs on <em>your</em> computer: it has to be installed and started there
+          before this preset can work. The other presets are free web services — they only need a key.</p>
       </div>
       <div class="field">
         <label class="field-label" for="inpOaiBase">Base URL</label>
@@ -338,6 +340,7 @@
     </div>
 
     <div class="field">
+      <div id="aiIssue" class="notice notice-issue" hidden></div>
       <div class="input-row">
         <button id="btnTestKey" class="btn btn-subtle" type="button">Test &amp; load models</button>
         <input id="inpModel" class="input input-sm grow" list="modelList" placeholder="model id" aria-label="Model" autocomplete="off" spellcheck="false">
@@ -533,8 +536,8 @@
     <ul class="small muted">
       <li><strong>403 from Sheets</strong> — the sheet isn't shared as “Anyone with the link”, or the API key has restrictions that block the Sheets API.</li>
       <li><strong>“API has not been used / disabled”</strong> — enable the Google Sheets API for your key's project.</li>
-      <li><strong>AI errors</strong> — check the key in Settings → AI (“Test &amp; load models”), or switch Generator to <em>Built-in</em>.</li>
-      <li><strong>CORS / can't reach provider</strong> — Gemini, Groq, OpenRouter and Mistral allow browser calls; for local Ollama run it with <code>OLLAMA_ORIGINS=*</code> and serve this page over <code>http(s)://</code>.</li>
+      <li><strong>AI errors</strong> — check the key in Settings → AI (“Test &amp; load models”), or switch Generator to <em>Built-in</em>. The app keeps the whole explanation in Settings → AI.</li>
+      <li><strong>Ollama / local server</strong> — Ollama is a program on your computer, not a web service: install it (<a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a>), run <code>ollama serve</code>, then <code>ollama pull llama3.2</code>. “nothing is running there” means VocabLab couldn't find it on that port; “a server answered, but it blocked this page” means CORS (<code>OLLAMA_ORIGINS=*</code>, and serve this page over <code>http(s)://</code>).</li>
       <li><strong>429 quota</strong> — free-tier limit hit; wait a minute, or the app will fall back to built-in questions.</li>
       <li><strong>Network errors</strong> — if you opened the file directly (<code>file://</code>), try serving the folder
         (<code>python3 -m http.server</code>) or hosting it. Some browsers restrict cross-site requests from local files.</li>

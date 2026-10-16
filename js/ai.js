@@ -223,17 +223,79 @@
     });
   }
 
-  function networkError(baseUrl) {
+  /** The page's own origin, for CORS hints (file:// pages send Origin: null). */
+  function pageOrigin() {
+    try {
+      if (typeof location !== 'undefined') {
+        if (location.origin && location.origin !== 'null') return location.origin;
+        if (location.protocol === 'file:') return 'null';
+      }
+    } catch (e) { /* ignore */ }
+    return 'unknown';
+  }
+
+  /**
+   * Did anything answer at all? A CORS refusal still proves the server is up,
+   * which is the difference between “start Ollama” and “let Ollama accept me”.
+   * The reply is opaque on purpose — we only care that the connection worked.
+   */
+  async function hostAnswers(baseUrl) {
+    let timer = null, ctrl = null;
+    try {
+      if (typeof AbortController === 'function') {
+        ctrl = new AbortController();
+        timer = setTimeout(function () { ctrl.abort(); }, 4000);
+      }
+      await fetch(baseUrl + '/models', {
+        mode: 'no-cors', cache: 'no-store', signal: ctrl ? ctrl.signal : undefined
+      });
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  async function networkError(baseUrl, model) {
     let host = baseUrl;
     try { host = new URL(baseUrl).host; } catch (e) { /* keep raw */ }
+    const local = isLocalBaseUrl(baseUrl);
+    const answers = await hostAnswers(baseUrl);
+    const lines = [];
+    if (answers) {
+      // Something is listening: the browser could not *read* the answer (CORS).
+      lines.push('Could not use ' + host + ' — a server answered, but it blocked this page.');
+      if (local) {
+        lines.push('• Local Ollama only accepts pages it trusts — restart it with OLLAMA_ORIGINS=*');
+        lines.push('• It has to allow this page’s origin: ' + pageOrigin() + '. A file:// page sends “null”, which Ollama refuses — serve the folder over http (python3 -m http.server 8000) instead');
+        lines.push('• Then press “Test & load models” in Settings → AI');
+      } else {
+        lines.push('• The service is up but refuses browser calls from this page. Try a provider that allows them — Gemini, Groq, OpenRouter or Mistral');
+      }
+    } else if (local) {
+      // Nothing on that port at all — the usual cause is simply “not installed”.
+      const scheme = /^https:/i.test(baseUrl) ? 'https' : 'http';
+      lines.push('Could not reach ' + host + ' — nothing is running there.');
+      lines.push('• Ollama is a program on your computer, not a web service — install it once: https://ollama.com/download');
+      lines.push('• Start it in a terminal: ollama serve    (and fetch a model once: ollama pull ' + (model || 'llama3.2') + ')');
+      lines.push('• Check it in a new tab: ' + scheme + '://' + host + '/api/tags — if that fails, swap localhost and 127.0.0.1');
+      lines.push('• If that tab works but VocabLab still cannot, the browser is blocking this page — serve VocabLab over http://, or pick another provider');
+      lines.push('• Rather not set it up? Set Generator to Built-in, or use a free Gemini/Groq key');
+    } else {
+      lines.push('Could not reach ' + host + '.');
+      lines.push('• Check the Base URL and your internet connection.');
+      lines.push('• Gemini, Groq, OpenRouter and Mistral allow browser calls; a local server needs its CORS opened.');
+    }
     const err = new Error('Network error while contacting ' + host);
-    err.friendly = 'Could not reach ' + host + '.\n• Check the Base URL and your internet connection.' +
-      '\n• Gemini, Groq, OpenRouter and Mistral allow browser calls; for local Ollama run it with OLLAMA_ORIGINS=*' +
-      '\n• If you opened this page as a file:// URL, serve the folder instead (python3 -m http.server).';
+    err.friendly = lines.join('\n');
+    err.network = true;
+    err.hint = answers ? 'cors' : (local ? 'offline' : 'unreachable');
     return err;
   }
 
-  async function oaiHttpError(res, context) {
+  async function oaiHttpError(res, context, opts) {
+    opts = opts || {};
     let detail = '';
     try {
       const body = await res.json();
@@ -248,7 +310,10 @@
     } else if (res.status === 402) {
       err.friendly = 'The provider says there are no credits for this model (402). On OpenRouter, pick a “:free” model such as openrouter/free.';
     } else if (res.status === 404) {
-      err.friendly = 'Endpoint or model not found (404). Check the Base URL and the model ID in Settings → AI.';
+      err.friendly = 'Endpoint or model not found (404)' + (detail ? ' — ' + detail : '') +
+        (isLocalBaseUrl(opts.base || '')
+          ? '\n• Local Ollama: download the model first — ollama pull ' + (opts.model || 'llama3.2')
+          : '\n• Check the Base URL and the model ID in Settings → AI.');
     } else if (res.status === 429) {
       err.friendly = 'Free-tier rate limit reached (429). Groq and OpenRouter reset within a minute; VocabLab falls back to built-in questions meanwhile.';
     } else if (res.status >= 500) {
@@ -276,9 +341,9 @@
       res = await fetch(base + '/models', { headers: oaiHeaders(base, cfg.key), signal: cfg.signal });
     } catch (e) {
       if (e && e.name === 'AbortError') throw e;
-      throw networkError(base);
+      throw await networkError(base, cfg.model);
     }
-    if (!res.ok) throw await oaiHttpError(res, 'AI provider (list models)');
+    if (!res.ok) throw await oaiHttpError(res, 'AI provider (list models)', { base: base, model: cfg.model });
     const data = await res.json();
     const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
     const models = list
@@ -302,9 +367,9 @@
       });
     } catch (e) {
       if (e && e.name === 'AbortError') throw e;
-      throw networkError(base);
+      throw await networkError(base, cfg.model);
     }
-    if (!res.ok) throw await oaiHttpError(res, 'AI provider (chat)');
+    if (!res.ok) throw await oaiHttpError(res, 'AI provider (chat)', { base: base, model: cfg.model });
     const data = await res.json();
     usageBump(1);
     return oaiExtractText(data);
@@ -510,7 +575,8 @@
       'Rules:\n' +
       '• Copy the answer text EXACTLY as written in ITEMS (keep Vietnamese diacritics).\n' +
       '• type "mc": 4 unique options with exactly one correct (= the answer). Distractors must be plausible ' +
-      'same-kind words but clearly wrong. prompt = question text: for term2meaning put the term, for meaning2term put the meaning.\n' +
+      'same-kind words but clearly wrong. Never use a synonym or near-synonym of the answer, and never reuse a ' +
+      'meaning from another ITEM that could also be read as the answer. prompt = question text: for term2meaning put the term, for meaning2term put the meaning.\n' +
       '• type "blank": write one natural ' + targetLang + ' sentence (6–14 words) containing the term, then replace the term with ___. ' +
       'hint must start with "Meaning: " followed by the Vietnamese meaning. prompt = the sentence. answer = the term.\n' +
       '• type "translate": term2meaning → prompt = term, answer = meaning; meaning2term → prompt = meaning, answer = term. ' +
@@ -569,6 +635,12 @@
           options.push(answer);
         }
         options = Util.uniq(options);
+        // A near-synonym of the answer reads like a second correct option, so
+        // drop it (the question falls back to the built-in generator when too
+        // few options remain and the model ignored the prompt rule).
+        options = options.filter(function (o) {
+          return norm(o) === norm(answer) || !Util.tooSimilarMeaning(o, answer);
+        });
         if (options.length < 3) { match.used = false; continue; }
         options = Util.shuffle(options);
       }

@@ -158,6 +158,71 @@
     };
   }
 
+  /**
+   * Peel multiple-choice options that could also be the right answer. Applied
+   * to every question — freshly generated, built-in, or cached — so only one
+   * option can ever be graded correct. A question is rebuilt with the built-in
+   * generator when no single right answer survives.
+   */
+  function sanitizeQuestion(q, item, pool) {
+    if (!q || q.type !== 'mc' || !Array.isArray(q.options)) return q;
+    const words = pool || [];
+    const meaning2term = q.direction === 'meaning2term';
+    const sameText = function (a, b) {
+      return Util.normalizeForCompare(Util.stripDiacritics(a)) === Util.normalizeForCompare(Util.stripDiacritics(b));
+    };
+    /** A deck word with this term and the same meaning is a second right answer. */
+    const alsoRight = function (option) {
+      for (const w of words) {
+        if (!w.term || !w.meaning) continue;
+        if (!sameAnswer(w.term, option)) continue;
+        if (Util.tooSimilarMeaning(w.meaning, item.meaning)) return true;
+      }
+      return false;
+    };
+    const kept = [];
+    let answerKept = false;
+    for (const o of Util.uniq(q.options)) {
+      if (sameText(o, q.answer)) {
+        if (answerKept) continue;                       // never two answer slots
+        answerKept = true;
+        kept.push(o);
+        continue;
+      }
+      if (sameAnswer(o, q.answer)) continue;             // e.g. one item of a meaning list
+      if (Util.tooSimilarMeaning(o, q.answer)) continue; // e.g. “có tác động đến” vs “tác động đến”
+      if (meaning2term && alsoRight(o)) continue;        // a word with the same meaning
+      kept.push(o);
+    }
+    if (answerKept && kept.length >= 3) {
+      return kept.length === q.options.length ? q : Object.assign({}, q, { options: kept });
+    }
+    const rebuilt = builtinFor(item, pool, ['mc', 'translate', 'blank']);
+    return Object.assign({}, rebuilt, { source: rebuilt.source || 'builtin' });
+  }
+
+  /**
+   * Answers the sheet itself treats as the same: another word that shares this
+   * meaning. Accepting either one means a shared meaning never leaves the
+   * learner stuck being told their (correct) answer is wrong. Only the canonical
+   * answer is taught back to them.
+   */
+  function alsoAccepted(item, pool, direction) {
+    if (!pool || !pool.length) return [];
+    const meaning2term = direction === 'meaning2term';
+    const answer = meaning2term ? item.term : item.meaning;
+    const out = [];
+    for (const w of pool) {
+      if (!w.term || !w.meaning) continue;
+      if (!Util.tooSimilarMeaning(w.meaning, item.meaning)) continue;
+      const text = meaning2term ? w.term : w.meaning;
+      if (!text || sameAnswer(text, answer)) continue;
+      if (out.indexOf(text) === -1) out.push(text);
+      if (out.length >= 3) break;
+    }
+    return out;
+  }
+
   function builtinFor(item, pool, preferTypes) {
     const order = (preferTypes || []).concat(['translate', 'mc', 'blank']);
     const tried = Object.create(null);
@@ -200,6 +265,7 @@
 
     const out = [];
     const pending = [];
+    let swapped = 0;
     const cacheSnapshot = wantAi ? Util.lsGet('qcache', {}) : {};
 
     for (const item of items) {
@@ -243,7 +309,7 @@
           if (!allowFallback) throw e;
           aiError = e;
           for (const item of batch) {
-            const q = Object.assign({}, builtinFor(item, pool, ['translate', 'mc', 'blank']), { source: 'builtin' });
+            const q = Object.assign({}, builtinFor(item, pool, [item.type]), { source: 'builtin' });
             out.push({ question: q, item: item });
           }
         }
@@ -267,13 +333,26 @@
     }
 
     const questions = out.map(function (o, i) {
-      return Object.assign({}, o.question, {
+      const safe = sanitizeQuestion(o.question, o.item, pool);
+      if (safe !== o.question) swapped += 1;
+      const q = Object.assign({}, safe, {
         id: Util.uid() + '-' + i,
         word: wordFromItem(o.item)
       });
+      // A typed answer may use any wording the sheet itself gives this meaning.
+      if (q.type === 'translate') {
+        const also = alsoAccepted(o.item, pool, q.direction);
+        if (also.length) {
+          q.also = also;
+          q.alsoNote = 'More than one word in your sheet shares this meaning — «' +
+            q.answer + '» and «' + also.join('» / «') + '» both count.';
+        }
+      }
+      return q;
     });
 
-    return { questions: questions, aiUsed: aiUsed, aiError: aiError, aiWanted: wantAi };
+    if (swapped) aiUsed = Math.max(0, aiUsed - swapped);
+    return { questions: questions, aiUsed: aiUsed, aiError: aiError, aiWanted: wantAi, swapped: swapped };
   }
 
   /* ---------- Session ordering ---------- */
@@ -363,6 +442,15 @@
         };
       }
     }
+    // The sheet itself gives another word this meaning — either one is right.
+    for (const alt of (question.also || [])) {
+      const hit = answerCandidates(alt).some(function (c) {
+        return c === input || Util.normalizeForCompare(Util.stripDiacritics(c)) === inputNoAccent;
+      });
+      if (hit) {
+        return { verdict: 'correct', correctAnswer: question.answer, note: question.alsoNote || '' };
+      }
+    }
     // Near miss (typo) detection.
     let best = Infinity;
     for (const c of candidates) {
@@ -383,6 +471,26 @@
     return 'Translate';
   }
 
+  /**
+   * The other-language text of a multiple-choice option, so a wrong pick can be
+   * explained (“you picked «agir sur» — it means «tác động đến»”). Returns up to
+   * two texts: a sheet may give the same meaning to several words.
+   */
+  function counterpart(text, direction, words) {
+    const picked = String(text == null ? '' : text).trim();
+    if (!picked || !words || !words.length) return [];
+    const from = direction === 'meaning2term' ? 'term' : 'meaning';
+    const to = from === 'term' ? 'meaning' : 'term';
+    const out = [];
+    for (const w of words) {
+      if (!w[from] || !sameAnswer(w[from], picked)) continue;
+      const other = String(w[to] == null ? '' : w[to]).trim();
+      if (other && out.indexOf(other) === -1) out.push(other);
+      if (out.length >= 2) break;
+    }
+    return out;
+  }
+
   global.Quiz = {
     AI_BATCH: AI_BATCH,
     masteryKey: masteryKey, masteryAll: masteryAll, wordStats: wordStats,
@@ -391,6 +499,7 @@
     flattenDeck: flattenDeck, selectWords: selectWords, planItems: planItems,
     buildPool: buildPool, makeSession: makeSession,
     grade: grade, answerCandidates: answerCandidates, sameAnswer: sameAnswer,
+    counterpart: counterpart,
     cacheCount: cacheCount, clearCache: clearCache,
     typeLabel: typeLabel
   };

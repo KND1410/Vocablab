@@ -46,7 +46,7 @@
       'settingsDialog', 'selProvider', 'paneGemini', 'inpGeminiKey', 'btnToggleKey',
       'paneOai', 'inpOaiBase', 'inpOaiKey', 'btnToggleOaiKey',
       'btnTestKey', 'inpModel', 'modelList', 'btnRefreshModels',
-      'aiStatus', 'usageToday', 'cachedCount', 'btnClearQCache', 'inpTargetLang', 'inpTargetCode', 'chkAutoPlay',
+      'aiStatus', 'aiIssue', 'usageToday', 'cachedCount', 'btnClearQCache', 'inpTargetLang', 'inpTargetCode', 'chkAutoPlay',
       'inpSheetUrl', 'inpSheetApiKey', 'btnLoadApi', 'inpScriptUrl', 'btnLoadScript', 'inpLinks', 'btnLoadLinks',
       'btnLoadDemo', 'sheetStatus', 'lnkShowScript', 'dataInfo', 'btnClearDeck', 'btnClearMastery',
       'btnClearAll', 'helpDialog', 'scriptCode', 'btnCopyScript', 'overlay', 'loadTitle', 'loadMsg',
@@ -355,8 +355,12 @@
       if (setup.source === 'ai' && !aiReady()) {
         U.toast('No ' + providerName() + ' key set — using built-in questions. Add one in Settings → AI.', 'warn');
       } else if (result.aiError) {
-        U.toast('AI generation issue (' + (result.aiError.friendly || result.aiError.message).split('\n')[0] + ') — some questions use the built-in generator.', 'warn');
+        const err = result.aiError;
+        const detail = err.friendly || err.message || 'AI generation failed.';
+        showAiIssue(detail, err.hint === 'offline');
+        U.toast('AI generation issue — built-in questions cover the rest.\n' + detail, 'warn', 14000);
       } else if (result.aiUsed) {
+        showAiIssue('');
         U.toast((activeProvider() === 'openai' ? 'The AI provider' : 'Gemini') + ' wrote ' + result.aiUsed + ' questions.', 'ok');
       }
       updateUsageUI();
@@ -407,7 +411,8 @@
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'option';
-        btn.innerHTML = '<span class="opt-letter">' + 'ABCD'[i % 4] + '</span><span>' + U.esc(option) + '</span>';
+        btn.innerHTML = '<span class="opt-letter">' + 'ABCD'[i % 4] + '</span>' +
+          '<span class="opt-main"><span class="opt-text">' + U.esc(option) + '</span></span>';
         btn.addEventListener('click', function () { answerMc(option, i); });
         E.qOptions.appendChild(btn);
       });
@@ -442,6 +447,7 @@
       if (Quiz.sameAnswer(text, q.answer)) btn.classList.add('correct');
       else if (i === index) btn.classList.add('wrong');
       else btn.classList.add('dim');
+      revealTranslation(btn, text, q.direction);
     });
     finishAnswer(Quiz.grade(q, value), value);
   }
@@ -488,8 +494,9 @@
       title = "Not quite";
       body = 'Correct answer: <strong>' + U.esc(result.correctAnswer) + '</strong>' +
         (q.explanation ? '<br>' + U.esc(q.explanation) : '');
-    } else if (!body) {
-      body = 'Nice one.';
+    } else {
+      if (!body) body = 'Nice one.';
+      if (result.note) body += '<br>' + U.esc(result.note);
     }
     E.fbTitle.textContent = title;
     E.fbBody.innerHTML = body;
@@ -505,6 +512,23 @@
     if (settings.autoPlay) U.speak(q.word.term, settings.targetCode);
     setTimeout(function () { E.btnNext.focus(); }, 60);
     updateStatsUI();
+  }
+
+  /**
+   * After answering, show what each option means in the other language, right
+   * under the option: a card of `cardiaque` gets `tim mạch` underneath, and a
+   * Vietnamese option shows the French word it belongs to. Options the sheet
+   * never defines (some AI-written distractors) simply stay as they are.
+   */
+  function revealTranslation(btn, text, direction) {
+    const others = Quiz.counterpart(text, direction, allWords());
+    if (!others.length) return;
+    const main = btn.querySelector('.opt-main');
+    if (!main) return;
+    const line = document.createElement('span');
+    line.className = 'opt-sub';
+    line.textContent = others.join(' · ');
+    main.appendChild(line);
   }
 
   function nextQuestion() {
@@ -703,6 +727,37 @@
     }
   }
 
+  /**
+   * Keep the full “what to do about it” text of an AI failure in Settings → AI,
+   * with a way out when a locally-run provider simply isn't there.
+   */
+  function showAiIssue(text, offerSwitch) {
+    const msg = String(text || '').trim();
+    if (!E.aiIssue) return;
+    E.aiIssue.textContent = msg; // also drops any previous action button
+    E.aiIssue.hidden = !msg;
+    if (!msg || !offerSwitch) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-subtle btn-sm';
+    btn.id = 'btnAiUseKey';
+    btn.style.marginTop = '.5rem';
+    btn.textContent = 'Use a free Gemini/Groq key instead';
+    btn.addEventListener('click', useKeyProvider);
+    E.aiIssue.appendChild(btn);
+  }
+
+  /** Leave a local server that isn't there and point the user at a free key. */
+  function useKeyProvider() {
+    settings.aiProvider = 'gemini';
+    saveSettings();
+    syncAiUI();
+    showAiIssue('');
+    E.aiStatus.textContent = 'Get a free key at aistudio.google.com/apikey (or Groq: console.groq.com/keys), paste it above, then press “Test key & load models”.';
+    if (E.inpGeminiKey) E.inpGeminiKey.focus();
+    U.toast('Switched to Gemini — paste your free key, then press “Test key & load models”.', 'ok');
+  }
+
   function populateModels(models) {
     E.modelList.innerHTML = '';
     models.forEach(function (m) {
@@ -732,6 +787,7 @@
     E.aiStatus.textContent = 'Testing connection…';
     try {
       const models = await Ai.listModels({ provider: provider, key: activeKey(), baseUrl: activeBase() });
+      showAiIssue('');
       if (!models.length) {
         E.aiStatus.textContent = 'Connection works, but no chat models were listed. Type a model ID in the box, then start a quiz.';
         return;
@@ -740,8 +796,10 @@
       E.aiStatus.textContent = '✓ Works — ' + models.length + ' models available. Using: ' + activeModel();
       U.toast((provider === 'openai' ? 'The AI provider' : 'Gemini') + ' works. Model: ' + activeModel(), 'ok');
     } catch (e) {
-      E.aiStatus.textContent = '✕ ' + (e.friendly || e.message);
-      U.toast(e.friendly || e.message, 'bad');
+      const detail = e.friendly || e.message;
+      E.aiStatus.textContent = '✕ ' + detail;
+      showAiIssue(detail, e.hint === 'offline');
+      U.toast(detail, 'bad', 12000);
     }
   }
 
@@ -896,7 +954,11 @@
         if (/REPLACE_WITH_ACCOUNT_ID/.test(settings.oaiBase)) {
           E.aiStatus.textContent = 'Preset loaded — replace REPLACE_WITH_ACCOUNT_ID in the Base URL with your Cloudflare account ID, paste the key, then test.';
         } else if (Ai.isLocalBaseUrl(settings.oaiBase)) {
-          E.aiStatus.textContent = 'Preset loaded — no API key needed. Make sure Ollama is running and allows this page (OLLAMA_ORIGINS=*).';
+          const local = typeof location !== 'undefined' && location.protocol === 'file:';
+          E.aiStatus.textContent = 'Preset loaded — no API key needed, but Ollama must be installed and running on this computer (ollama serve; then “Test & load models”).' +
+            (local
+              ? ' This page is a file:// URL, which Ollama refuses by default: restart Ollama with OLLAMA_ORIGINS=*, or serve the folder over http (python3 -m http.server 8000) and open it there.'
+              : ' If it blocks this page, restart Ollama with OLLAMA_ORIGINS=*.');
         } else {
           E.aiStatus.textContent = 'Preset loaded — paste your API key above, then press “Test & load models”.';
         }
