@@ -283,7 +283,7 @@
   /** How we talk to it: Google's API, or OpenAI-compatible. */
   function activeProvider() { return providerDef(activeProviderId()).transport; }
   function activeKey() {
-    return String(activeProvider() === 'openai' ? (settings.oaiKey || '') : (settings.geminiKey || '')).trim();
+    return Ai.normalizeKey(activeProvider() === 'openai' ? settings.oaiKey : settings.geminiKey);
   }
   function activeBase() { return activeProvider() === 'openai' ? (settings.oaiBase || '') : ''; }
   function baseKey(base) { return String(base || '').trim().replace(/\/+$/, '').toLowerCase(); }
@@ -317,13 +317,15 @@
   function rememberConn() {
     const id = activeProviderId();
     if (id === 'gemini') return;
-    connStore()[id] = { base: settings.oaiBase || '', key: settings.oaiKey || '', model: settings.oaiModel || '' };
+    connStore()[id] = {
+      base: settings.oaiBase || '', key: Ai.normalizeKey(settings.oaiKey), model: settings.oaiModel || ''
+    };
   }
   function loadConn(id) {
     const def = providerDef(id);
     const saved = connStore()[id] || {};
     settings.oaiBase = saved.base || def.base || '';
-    settings.oaiKey = saved.key || '';
+    settings.oaiKey = Ai.normalizeKey(saved.key);
     settings.oaiModel = saved.model || def.model || defaultModelForBase(settings.oaiBase);
   }
   /** Older settings only knew 'openai' + a base URL: name the provider we recognise. */
@@ -335,6 +337,19 @@
         saveSettings();
         return;
       }
+    }
+  }
+  /**
+   * Keys saved before the field cleaned them up (e.g. “Bearer gsk_…”, quotes,
+   * a stray newline) would keep failing with 401. Clean them in place once.
+   */
+  function normalizeStoredKeys() {
+    const oai = Ai.normalizeKey(settings.oaiKey);
+    const gem = Ai.normalizeKey(settings.geminiKey);
+    if (oai !== (settings.oaiKey || '') || gem !== (settings.geminiKey || '')) {
+      settings.oaiKey = oai;
+      settings.geminiKey = gem;
+      saveSettings();
     }
   }
   // Ready when a key exists — or, for local servers (Ollama), when the base URL is localhost.
@@ -410,7 +425,7 @@
         U.toast('AI generation issue — built-in questions cover the rest.\n' + detail, 'warn', 14000);
       } else if (result.aiUsed) {
         showAiIssue('');
-        U.toast((activeProvider() === 'openai' ? providerDef(activeProviderId()).label : 'Gemini') + ' wrote ' + result.aiUsed + ' questions.', 'ok');
+        U.toast((activeProvider() === 'openai' ? providerDef(activeProviderId()).short : 'Gemini') + ' wrote ' + result.aiUsed + ' questions.', 'ok');
       }
       updateUsageUI();
       showScreen('quiz');
@@ -799,8 +814,10 @@
     const cost = def.cost === 'paid' ? ' — paid, but only a few cents per quiz'
       : def.cost === 'trial' ? ' — free trial credit, then pay as you go'
         : ' — free';
-    return 'Get a key at ' + linkTo(def.keyUrl) + cost + '. Each provider keeps its own key, so you can switch back and ' +
-      'forth without retyping. Stored only in this browser — requests go straight to the provider.';
+    const fmt = def.keyPrefix ? ' ' + def.short + ' keys look like “' + def.keyPrefix + '…”.' : '';
+    return 'Get a key at ' + linkTo(def.keyUrl) + cost + '.' + fmt +
+      ' Each provider keeps its own key, so you can switch back and forth without retyping. ' +
+      'Stored only in this browser — requests go straight to the provider.';
   }
 
   /** The status line under the test button, after picking a provider. */
@@ -817,7 +834,7 @@
     } else if (id === 'gemini') {
       E.aiStatus.textContent = 'Gemini selected — paste your free key above, then press “Test key & load models”.';
     } else {
-      E.aiStatus.textContent = def.label + ' selected — paste its key above, then press “Test & load models”.';
+      E.aiStatus.textContent = def.short + ' selected — paste its key above, then press “Test & load models”.';
     }
   }
 
@@ -830,7 +847,9 @@
     saveSettings();
     syncAiUI();
     showAiIssue('');
+    keyShapeShown = '';
     providerStatus(id);
+    warnKeyShape();
     focusActiveKey();
   }
 
@@ -887,8 +906,31 @@
     useProvider(id);
     U.toast(id === 'gemini'
       ? 'Switched to Gemini — paste your free key, then press “Test key & load models”.'
-      : def.label + ' selected — get a key at ' + def.keyUrl + ', paste it, then press “Test & load models”.',
+      : def.short + ' selected — get a key at ' + def.keyUrl + ', paste it, then press “Test & load models”.',
       'ok');
+  }
+
+  /**
+   * The moment a key is pasted, say if it can't be the selected provider's —
+   * waiting for the 401 it would earn only hides that fact behind a status code.
+   */
+  let keyShapeShown = '';
+  function warnKeyShape() {
+    const issue = Ai.keyShapeWarning(activeProviderId(), activeKey());
+    if (issue) {
+      keyShapeShown = issue;
+      showAiIssue(issue);
+      E.aiStatus.textContent = '✕ ' + issue;
+      return;
+    }
+    // Nothing wrong any more — clear the warning we put there ourselves.
+    if (keyShapeShown && E.aiIssue && E.aiIssue.textContent === keyShapeShown) {
+      keyShapeShown = '';
+      showAiIssue('');
+      E.aiStatus.textContent = activeProvider() === 'gemini'
+        ? 'Key saved — press “Test key & load models” to check it and load the model list.'
+        : 'Key saved — press “Test & load models” to check it and load the model list.';
+    }
   }
 
   function populateModels(models) {
@@ -912,12 +954,16 @@
     const provider = activeProvider();
     if (provider === 'openai') {
       settings.oaiBase = E.inpOaiBase.value.trim();
-      settings.oaiKey = E.inpOaiKey.value.trim();
+      settings.oaiKey = Ai.normalizeKey(E.inpOaiKey.value);
     } else {
-      settings.geminiKey = E.inpGeminiKey.value.trim();
+      settings.geminiKey = Ai.normalizeKey(E.inpGeminiKey.value);
     }
     saveSettings();
-    E.aiStatus.textContent = 'Testing connection…';
+    // A key pasted from the wrong dashboard can never work, so say so before
+    // spending a round trip on the 401 it would earn.
+    const shape = Ai.keyShapeWarning(activeProviderId(), activeKey());
+    if (shape) { E.aiStatus.textContent = 'Testing connection… (' + shape.split(' — ')[0] + ')'; }
+    else E.aiStatus.textContent = 'Testing connection…';
     try {
       const models = await Ai.listModels({ provider: provider, key: activeKey(), baseUrl: activeBase() });
       showAiIssue('');
@@ -927,12 +973,14 @@
       }
       populateModels(models);
       E.aiStatus.textContent = '✓ Works — ' + models.length + ' models available. Using: ' + activeModel();
-      U.toast(providerDef(activeProviderId()).label + ' works. Model: ' + activeModel(), 'ok');
+      U.toast(providerDef(activeProviderId()).short + ' works. Model: ' + activeModel(), 'ok');
     } catch (e) {
       const detail = e.friendly || e.message;
-      E.aiStatus.textContent = '✕ ' + detail;
-      showAiIssue(detail, e.hint === 'offline');
-      U.toast(detail, 'bad', 12000);
+      // The shape problem explains this failure better than the 401 does.
+      const message = shape && /401|403|rejected this key/.test(detail) ? shape : detail;
+      E.aiStatus.textContent = '✕ ' + message;
+      showAiIssue(message, e.hint === 'offline');
+      U.toast(message, 'bad', 12000);
     }
   }
 
@@ -1055,7 +1103,11 @@
     });
     // A pasted key has to count even if the field never loses focus, so save on
     // input as well as on change.
-    function keepGeminiKey() { settings.geminiKey = E.inpGeminiKey.value.trim(); saveSettings(); }
+    function keepGeminiKey() {
+      settings.geminiKey = Ai.normalizeKey(E.inpGeminiKey.value);
+      saveSettings();
+      warnKeyShape();
+    }
     E.inpGeminiKey.addEventListener('input', keepGeminiKey);
     E.inpGeminiKey.addEventListener('change', keepGeminiKey);
     E.btnToggleKey.addEventListener('click', function () {
@@ -1082,9 +1134,10 @@
       syncAiUI();
     });
     function keepOaiKey() {
-      settings.oaiKey = E.inpOaiKey.value.trim();
+      settings.oaiKey = Ai.normalizeKey(E.inpOaiKey.value);
       rememberConn();
       saveSettings();
+      warnKeyShape();
     }
     E.inpOaiKey.addEventListener('input', keepOaiKey);
     E.inpOaiKey.addEventListener('change', keepOaiKey);
@@ -1224,6 +1277,7 @@
     // Name a provider saved before the list existed, and remember its connection
     // so switching providers can bring it back later.
     migrateProvider();
+    normalizeStoredKeys();
     rememberConn();
     syncSettingsUI();
     bindEvents();

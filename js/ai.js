@@ -20,55 +20,126 @@
    */
   const PROVIDERS = [
     {
-      id: 'gemini', label: 'Google Gemini — free tier', transport: 'gemini',
+      id: 'gemini', label: 'Google Gemini — free tier', short: 'Google Gemini', transport: 'gemini',
       base: '', model: 'gemini-flash-latest', keyUrl: 'https://aistudio.google.com/apikey',
-      cost: 'free'
+      keyPrefix: 'AIza', cost: 'free'
     },
     {
-      id: 'groq', label: 'Groq — free tier, very fast', transport: 'openai',
+      id: 'groq', label: 'Groq — free tier, very fast', short: 'Groq', transport: 'openai',
       base: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b',
-      keyUrl: 'https://console.groq.com/keys', cost: 'free'
+      keyUrl: 'https://console.groq.com/keys', keyPrefix: 'gsk_', cost: 'free'
     },
     {
-      id: 'cerebras', label: 'Cerebras — very fast, trial credit', transport: 'openai',
+      id: 'cerebras', label: 'Cerebras — very fast, trial credit', short: 'Cerebras', transport: 'openai',
       base: 'https://api.cerebras.ai/v1', model: 'gpt-oss-120b',
-      keyUrl: 'https://cloud.cerebras.ai', cost: 'trial'
+      keyUrl: 'https://cloud.cerebras.ai', keyPrefix: '', cost: 'trial'
     },
     {
-      id: 'openrouter', label: 'OpenRouter — many free models', transport: 'openai',
+      id: 'openrouter', label: 'OpenRouter — many free models', short: 'OpenRouter', transport: 'openai',
       base: 'https://openrouter.ai/api/v1', model: 'openrouter/free',
-      keyUrl: 'https://openrouter.ai/keys', cost: 'free'
+      keyUrl: 'https://openrouter.ai/keys', keyPrefix: 'sk-or-', cost: 'free'
     },
     {
-      id: 'mistral', label: 'Mistral — free tier', transport: 'openai',
+      id: 'mistral', label: 'Mistral — free tier', short: 'Mistral', transport: 'openai',
       base: 'https://api.mistral.ai/v1', model: 'mistral-small-latest',
-      keyUrl: 'https://console.mistral.ai/api-keys', cost: 'free'
+      keyUrl: 'https://console.mistral.ai/api-keys', keyPrefix: '', cost: 'free'
     },
     {
-      id: 'deepseek', label: 'DeepSeek — paid, very cheap', transport: 'openai',
+      id: 'deepseek', label: 'DeepSeek — paid, very cheap', short: 'DeepSeek', transport: 'openai',
       base: 'https://api.deepseek.com/v1', model: 'deepseek-flash',
-      keyUrl: 'https://platform.deepseek.com/api_keys', cost: 'paid'
+      keyUrl: 'https://platform.deepseek.com/api_keys', keyPrefix: 'sk-', cost: 'paid'
     },
     {
-      id: 'cloudflare', label: 'Cloudflare Workers AI', transport: 'openai',
+      id: 'cloudflare', label: 'Cloudflare Workers AI', short: 'Cloudflare Workers AI', transport: 'openai',
       base: 'https://api.cloudflare.com/client/v4/accounts/REPLACE_WITH_ACCOUNT_ID/ai/v1',
       model: '@cf/openai/gpt-oss-20b', keyUrl: 'https://dash.cloudflare.com/profile/api-tokens',
-      cost: 'free', needsAccountId: true
+      keyPrefix: '', cost: 'free', needsAccountId: true
     },
     {
-      id: 'ollama', label: 'Ollama — local app, no key', transport: 'openai',
+      id: 'ollama', label: 'Ollama — local app, no key', short: 'Ollama', transport: 'openai',
       base: 'http://localhost:11434/v1', model: 'llama3.2',
-      keyUrl: 'https://ollama.com', cost: 'local'
+      keyUrl: 'https://ollama.com', keyPrefix: '', cost: 'local'
     },
     {
-      id: 'openai', label: 'Other OpenAI-compatible…', transport: 'openai',
-      base: '', model: '', keyUrl: '', cost: ''
+      id: 'openai', label: 'Other OpenAI-compatible…', short: 'the AI provider', transport: 'openai',
+      base: '', model: '', keyUrl: '', keyPrefix: '', cost: ''
     }
   ];
 
   function providerById(id) {
     for (const p of PROVIDERS) if (p.id === id) return p;
     return null;
+  }
+
+  /**
+   * Keys are copied by hand, so they arrive with things attached: a leading
+   * “Bearer ”, quotes from a web page, a line break at the end. Anything the
+   * provider did not issue makes it answer 401, so drop it before sending —
+   * always send the normalised key, never the raw field.
+   */
+  function normalizeKey(raw) {
+    let k = String(raw == null ? '' : raw)
+      .replace(/[\u200B-\u200D\uFEFF]/g, '')   // invisible characters copied from a page
+      .replace(/\u00A0/g, ' ');                // a non-breaking space is just a space
+    // “Bearer …” and quotes can wrap each other, so peel until it settles.
+    for (let i = 0; i < 3; i++) {
+      const before = k;
+      k = k.replace(/^[\s"'`]+/, '').replace(/[\s"'`]+$/, '');
+      k = k.replace(/^Bearer[\s:]+/i, '');
+      if (k === before) break;
+    }
+    return k.trim();
+  }
+
+  /** The provider that owns a base URL, or null for a custom/unknown one. */
+  function providerForBase(baseUrl) {
+    const b = normalizeBaseUrl(baseUrl).toLowerCase();
+    for (const p of PROVIDERS) {
+      if (p.base && normalizeBaseUrl(p.base).toLowerCase() === b) return p;
+    }
+    // localhost and 127.0.0.1 are the same machine: both mean the local app.
+    if (isLocalBaseUrl(b)) return providerById('ollama');
+    return null;
+  }
+
+  /** What a key looks like, e.g. “gsk_…” — '' when the format is not known. */
+  function keyFormat(id) {
+    const p = providerById(id);
+    return (p && p.keyPrefix) ? p.keyPrefix + '…' : '';
+  }
+
+  /**
+   * A key that plainly belongs to a different provider — or still carries a
+   * space from the copy — is the reason behind almost every 401, and a bare
+   * “provider rejected the key” tells the learner nothing. Returns a sentence
+   * to show, or '' when there is nothing to say.
+   *
+   * The mismatch test only runs for providers whose key format we know, so a
+   * custom OpenAI-compatible endpoint (any key allowed) is never second-guessed.
+   */
+  function keyShapeWarning(id, raw) {
+    const key = normalizeKey(raw);
+    const def = providerById(id);
+    if (!key || !def) return '';
+    if (def.keyPrefix) {
+      const lower = key.toLowerCase();
+      // A key can match several prefixes (OpenRouter's “sk-or-” also starts with
+      // DeepSeek's “sk-”), so the longest match is the one that issued it.
+      const matches = PROVIDERS
+        .filter(function (p) { return p.keyPrefix && lower.indexOf(p.keyPrefix.toLowerCase()) === 0; })
+        .sort(function (a, b) { return b.keyPrefix.length - a.keyPrefix.length; });
+      const owner = matches[0];
+      if (owner && owner.id !== id) {
+        return 'That key starts with “' + owner.keyPrefix + '”, so it was issued by ' + owner.short +
+          ' — but ' + def.short + ' is selected. Providers never share keys: make one for ' +
+          def.short + (def.keyUrl ? ' at ' + def.keyUrl : '') + ' and paste that instead.';
+      }
+    }
+    if (/\s/.test(key)) {
+      return 'That key has a space or line break inside it, so it is not the key itself — copy it again from ' +
+        (def.keyUrl || 'the provider dashboard') + ' and paste it on its own.';
+    }
+    return '';
   }
 
   const RESPONSE_SCHEMA = {
@@ -152,7 +223,7 @@
   }
 
   async function listGeminiModels(key, signal) {
-    const apiKey = String(key || '').trim();
+    const apiKey = normalizeKey(key);
     if (!apiKey) {
       const err = new Error('No API key');
       err.friendly = 'Add your free Gemini API key first (aistudio.google.com/apikey).';
@@ -223,7 +294,7 @@
 
   function oaiHeaders(baseUrl, key) {
     const headers = { 'Content-Type': 'application/json' };
-    const apiKey = String(key || '').trim();
+    const apiKey = normalizeKey(key);
     if (apiKey) headers.Authorization = 'Bearer ' + apiKey;
     if (/openrouter\.ai/i.test(baseUrl)) {
       headers['X-Title'] = 'VocabLab';
@@ -368,7 +439,12 @@
     if (res.status === 400) {
       err.friendly = 'The provider rejected the request (400)' + (detail ? ' — ' + detail : '') + '.';
     } else if (res.status === 401 || res.status === 403) {
-      err.friendly = 'The provider rejected the key (401/403). Check the key, and that it can use the selected model.';
+      const p = providerForBase(opts.base || '');
+      const who = (p && p.short) || 'The provider';
+      err.friendly = who + ' rejected this key (401/403)' + (detail ? ' — ' + detail : '') + '.' +
+        (p && p.keyUrl ? '\n• Copy a new key from ' + p.keyUrl + ' and paste it into the API key field on its own.' : '') +
+        (p && p.keyPrefix ? '\n• ' + p.short + ' keys look like “' + p.keyPrefix + '…” — if yours does not, it belongs to another provider.' : '') +
+        '\n• A key only works for the provider that issued it, and only for models that key may use.';
     } else if (res.status === 402) {
       err.friendly = 'The provider says there are no credits for this model (402). On OpenRouter, pick a “:free” model such as openrouter/free.';
     } else if (res.status === 404) {
@@ -394,7 +470,7 @@
       err.friendly = 'Set the provider Base URL first (e.g. https://api.groq.com/openai/v1).';
       throw err;
     }
-    if (!String(cfg.key || '').trim() && !isLocalBaseUrl(base)) {
+    if (!normalizeKey(cfg.key) && !isLocalBaseUrl(base)) {
       const err = new Error('No API key');
       err.friendly = 'Add the provider API key first (a local Ollama server needs none).';
       throw err;
@@ -556,7 +632,7 @@
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': String(key || '').trim() },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': normalizeKey(key) },
         body: JSON.stringify({
           systemInstruction: system ? { parts: [{ text: system }] } : undefined,
           contents: [{ role: 'user', parts: [{ text: user }] }],
@@ -776,6 +852,10 @@
   global.Ai = {
     providers: PROVIDERS,
     providerById: providerById,
+    providerForBase: providerForBase,
+    normalizeKey: normalizeKey,
+    keyFormat: keyFormat,
+    keyShapeWarning: keyShapeWarning,
     listModels: listModels,
     pickDefaultModel: pickDefaultModel,
     prettifyModel: prettifyModel,
