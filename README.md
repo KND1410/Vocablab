@@ -6,8 +6,8 @@ meanings out of the box), but works with any language.
 
 - Every **tab** of your sheet becomes a **topic**.
 - Questions are written by an **AI model you choose** — Google Gemini, Groq,
-  Cerebras, OpenRouter, Mistral, DeepSeek, Cloudflare or a local Ollama — with a
-  solid built-in generator when there is no key / no quota left.
+  Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare or a local
+  Ollama — with a solid built-in generator when there is no key / no quota left.
 - No build step, no backend, no dependencies: a static page + your browser.
 
 ```
@@ -164,11 +164,12 @@ forth without retyping anything.
 | Provider | Free tier | Base URL (OpenAI-compatible mode) | Key from |
 |---|---|---|---|
 | **Google Gemini** *(default)* | Flash models, daily allowance **per project** | built in — select *Google Gemini* | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
-| **Groq** | ~30 req/min · 1000 req/day · very fast | `https://api.groq.com/openai/v1` | [console.groq.com/keys](https://console.groq.com/keys) |
+| **Groq** | ~30 req/min · 1000 req/day · very fast — **not** xAI's Grok | `https://api.groq.com/openai/v1` | [console.groq.com/keys](https://console.groq.com/keys) — keys look like `gsk_…`, 56 characters |
 | **Cerebras** | free trial credit, then pay as you go · fastest | `https://api.cerebras.ai/v1` | [cloud.cerebras.ai](https://cloud.cerebras.ai) |
 | **OpenRouter** | every model ending in `:free` + the `openrouter/free` router | `https://openrouter.ai/api/v1` | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | **Mistral** | free “Experiment” plan | `https://api.mistral.ai/v1` | [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) |
 | **DeepSeek** | paid — no free tier, but only cents per quiz | `https://api.deepseek.com/v1` | [platform.deepseek.com/api_keys](https://platform.deepseek.com/api_keys) |
+| **xAI Grok** | $25 promotional credit, then per token — the *other* “Grok” | `https://api.x.ai/v1` | [console.x.ai](https://console.x.ai) — keys look like `xai-…` |
 | **Cloudflare Workers AI** | daily free allowance | `https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1` | Cloudflare dashboard |
 | **Ollama (local)** | free forever, **no key** — but the app must be installed and running on your computer | `http://localhost:11434/v1` | — |
 | **Other OpenAI-compatible** | whatever that service offers | paste any base URL | that service |
@@ -184,7 +185,7 @@ one-click switch.
 **Google Gemini (default):** get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey),
 paste it, press **Test key & load models**.
 
-**Groq / Cerebras / OpenRouter / Mistral / DeepSeek / Cloudflare:** pick the
+**Groq / Cerebras / OpenRouter / Mistral / DeepSeek / xAI Grok / Cloudflare:** pick the
 provider, paste its key, press **Test & load models**. For Cloudflare, put your
 account ID where the preset says `REPLACE_WITH_ACCOUNT_ID`.
 
@@ -266,7 +267,7 @@ Keyboard: `1`–`4` answer · `Enter` check/next · `Space` flip card · `←`/`
 
 | Tab | What's there |
 |---|---|
-| **AI** | provider menu (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, target language + voice, auto-play |
+| **AI** | provider menu (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, target language + voice, auto-play |
 | **Google Sheet** | the three connection modes, load buttons, setup help |
 | **Data** | cached deck info, forget deck, reset progress, wipe everything |
 
@@ -283,7 +284,7 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 | “Missing Sheets API key” | That mode needs a Google Cloud key — switch to **⭐ Sheet link — no key** instead |
 | “Could not open the sheet” (Sheet link mode) | Set sharing to “Anyone with the link → Viewer” |
 | `429` from the AI provider | Free-tier limit. Wait a minute, or pick another provider in Settings → AI (Groq, Cerebras and OpenRouter are free too) — the error offers a one-click switch, and the app falls back to built-in questions meanwhile |
-| Provider rejects the key (`401`/`403`) | The app now names the provider and its own reason (“Invalid API Key”). Keys are *not* shared between providers: `gsk_…` = Groq, `sk-or-…` = OpenRouter, `sk-…` = DeepSeek, `AIza…` = Gemini. Pasting one of those into the wrong provider is called out the moment you paste it. A pasted `Bearer ` prefix, quotes or a stray newline are stripped automatically (keys saved earlier are repaired on load). On OpenRouter use a `:free` model; on Cloudflare include your account ID in the Base URL |
+| Provider rejects the key (`401`/`403`) | The app now names the provider and its own reason (“Invalid API Key”). Keys are *not* shared between providers: `gsk_…` (56 chars) = Groq, `xai-…` = xAI **Grok**, `sk-or-…` = OpenRouter, `sk-…` = DeepSeek, `AIza…` = Gemini. **Groq (fast inference, free) and Grok (xAI, paid) are different companies one letter apart** — a key from a “Grok” page will never work on the Groq provider. A key that matches no provider's format, or another provider's, is called out the moment you paste it, with the console it should come from. A pasted `Bearer ` prefix, quotes or a stray newline are stripped automatically (keys saved earlier are repaired on load). On OpenRouter use a `:free` model; on Cloudflare include your account ID in the Base URL |
 | Can't reach the provider (CORS/network) | The message says which side is broken. *“nothing is running there”* → for a local server: it isn't installed/started (`ollama serve`, then `ollama pull <model>`; check `http://localhost:11434/api/tags` in a new tab); *“a server answered, but it blocked this page”* → CORS: restart Ollama with `OLLAMA_ORIGINS=*` and serve the page over `http(s)://`, not `file://`. Gemini, Groq, OpenRouter and Mistral need no CORS setup |
 | A renamed tab shows up twice | Only happens with a manual tab-name list: Google serves the *first* tab for an unknown name. Delete/rename that line, or use the link-only mode for auto-detection |
 | New words/tabs don't show up | Press **↻ Reload** in the header |

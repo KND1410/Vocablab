@@ -815,7 +815,11 @@
       : def.cost === 'trial' ? ' — free trial credit, then pay as you go'
         : ' — free';
     const fmt = def.keyPrefix ? ' ' + def.short + ' keys look like “' + def.keyPrefix + '…”.' : '';
-    return 'Get a key at ' + linkTo(def.keyUrl) + cost + '.' + fmt +
+    // Groq and Grok are one letter apart and get mixed up constantly.
+    const notGrok = id === 'groq'
+      ? ' (Not xAI\'s Grok — a different company, different keys: xai-….)'
+      : '';
+    return 'Get a key at ' + linkTo(def.keyUrl) + cost + '.' + fmt + notGrok +
       ' Each provider keeps its own key, so you can switch back and forth without retyping. ' +
       'Stored only in this browser — requests go straight to the provider.';
   }

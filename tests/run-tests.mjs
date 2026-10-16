@@ -764,6 +764,20 @@ ok(/OpenRouter/.test(Ai.keyShapeWarning('deepseek', 'sk-or-v1-abcdef')),
   'its own prefix (“sk-”) does not shadow the provider that really issued it');
 eq(Ai.keyShapeWarning('deepseek', 'sk-0123456789abcdef'), '', 'a DeepSeek key on DeepSeek is fine');
 eq(Ai.keyShapeWarning('openai', 'sk-or-v1-abcdef'), '', 'a custom endpoint never second-guesses the key');
+
+/* The reported bug: a key from a similarly named site, pasted into Groq. */
+const grokKey = 'grok_' + '1'.repeat(32) + '_' + '2'.repeat(64);
+const grokIssue = Ai.keyShapeWarning('groq', grokKey);
+ok(/gsk_/.test(grokIssue), 'a "grok_…" key on Groq says what a Groq key starts with');
+ok(/56/.test(grokIssue) && /102/.test(grokIssue), 'it compares the real length with the expected one');
+ok(/different service/.test(grokIssue), 'it says the key came from a different service');
+ok(/console\.groq\.com\/keys/.test(grokIssue), 'it points at the console the key has to come from');
+eq(Ai.keyShapeWarning('xai', 'xai-' + 'a'.repeat(80)), '', 'an xAI key on xAI is fine');
+ok(/xAI Grok/.test(Ai.keyShapeWarning('groq', 'xai-' + 'a'.repeat(80))),
+  'an xAI Grok key in the Groq field names xAI Grok');
+eq(Ai.providerById('xai').base, 'https://api.x.ai/v1', 'xAI base URL');
+eq(Ai.providerById('xai').keyPrefix, 'xai-', 'xAI key prefix');
+eq(Ai.keyFormat('xai'), 'xai-…', 'xAI says what its keys look like');
 ok(/Gemini/.test(Ai.keyShapeWarning('groq', 'AIzaSyDemo')), 'a Gemini key in the Groq field is named');
 ok(/space or line break/.test(Ai.keyShapeWarning('groq', 'gsk_a b')), 'an embedded space is called out');
 const aiSrc = fs.readFileSync(path.join(root, 'js/ai.js'), 'utf8');
@@ -1047,7 +1061,7 @@ ok(/isLocalBaseUrl\(settings\.oaiBase\)[\s\S]{0,400}OLLAMA_ORIGINS/.test(appSrc)
 // one table — so a new provider can never end up missing from the picker.
 const provs = Ai.providers;
 const provIds = provs.map((p) => p.id);
-eq(provIds, ['gemini', 'groq', 'cerebras', 'openrouter', 'mistral', 'deepseek', 'cloudflare', 'ollama', 'openai'],
+eq(provIds, ['gemini', 'groq', 'cerebras', 'openrouter', 'mistral', 'deepseek', 'xai', 'cloudflare', 'ollama', 'openai'],
   'provider list order');
 eq(provs.filter((p) => p.transport === 'gemini').map((p) => p.id), ['gemini'], 'only Gemini speaks Google\'s own API');
 ok(provs.every((p) => p.label && /^(gemini|openai)$/.test(p.transport)), 'every provider has a label and a transport');

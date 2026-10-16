@@ -25,9 +25,9 @@
       keyPrefix: 'AIza', cost: 'free'
     },
     {
-      id: 'groq', label: 'Groq — free tier, very fast', short: 'Groq', transport: 'openai',
+      id: 'groq', label: 'Groq — free tier, very fast (not Grok)', short: 'Groq', transport: 'openai',
       base: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b',
-      keyUrl: 'https://console.groq.com/keys', keyPrefix: 'gsk_', cost: 'free'
+      keyUrl: 'https://console.groq.com/keys', keyPrefix: 'gsk_', keyLen: 56, cost: 'free'
     },
     {
       id: 'cerebras', label: 'Cerebras — very fast, trial credit', short: 'Cerebras', transport: 'openai',
@@ -48,6 +48,11 @@
       id: 'deepseek', label: 'DeepSeek — paid, very cheap', short: 'DeepSeek', transport: 'openai',
       base: 'https://api.deepseek.com/v1', model: 'deepseek-flash',
       keyUrl: 'https://platform.deepseek.com/api_keys', keyPrefix: 'sk-', cost: 'paid'
+    },
+    {
+      id: 'xai', label: 'xAI Grok — the other “Grok”, paid', short: 'xAI Grok', transport: 'openai',
+      base: 'https://api.x.ai/v1', model: 'grok-4.7',
+      keyUrl: 'https://console.x.ai', keyPrefix: 'xai-', keyLen: 84, cost: 'trial'
     },
     {
       id: 'cloudflare', label: 'Cloudflare Workers AI', short: 'Cloudflare Workers AI', transport: 'openai',
@@ -133,6 +138,15 @@
         return 'That key starts with “' + owner.keyPrefix + '”, so it was issued by ' + owner.short +
           ' — but ' + def.short + ' is selected. Providers never share keys: make one for ' +
           def.short + (def.keyUrl ? ' at ' + def.keyUrl : '') + ' and paste that instead.';
+      }
+      if (!owner) {
+        // Nothing we know issues keys like this — the usual cause is a key from
+        // a similarly named site, which is why Groq/Grok gets confused.
+        return def.short + ' keys start with “' + def.keyPrefix + '”' +
+          (def.keyLen ? ' and are ' + def.keyLen + ' characters' : '') +
+          ', but this one starts with “' + key.slice(0, 6) + '…' + '” and has ' + key.length +
+          '. It came from a different service — copy a key from ' + (def.keyUrl || 'the provider console') +
+          ' instead.';
       }
     }
     if (/\s/.test(key)) {
