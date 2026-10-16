@@ -35,7 +35,10 @@ function fakeResponse(body, status = 200) {
   };
 }
 let fetchRoutes = [];
-const fetchStub = async function (url) {
+/** When set, every fetch goes through this instead (used by the AI transport tests). */
+let aiFetch = null;
+const fetchStub = async function (url, opts) {
+  if (aiFetch) return aiFetch(String(url), opts || {});
   const u = String(url);
   for (const route of fetchRoutes) {
     if (u.indexOf(route[0]) !== -1) return route[1](u);
@@ -68,12 +71,14 @@ const sandbox = {
   clearTimeout,
   localStorage: storage,
   DOMException,
+  AbortController,
   fetch: fetchStub,
   document: fakeDocument,
   TextDecoder,
   TextEncoder,
   DecompressionStream,
-  Math, Date, JSON, Object, Array, String, Number, Boolean, RegExp, Set, Map, Promise, Error
+  Math, Date, JSON, Object, Array, String, Number, Boolean, RegExp, Set, Map, Promise, Error,
+  URL // browsers always have it; ai.js uses it to name the failing host
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -108,6 +113,19 @@ ok(Util.termRegex('boarding pass').test('boarding   pass'), 'termRegex allows fl
 ok(!Util.termRegex('ripe').test('tripe'), 'termRegex is case-insensitive but not substring-happy');
 eq(Util.slugify('Food & Dining'), 'food-dining', 'slugify');
 eq(Util.todayKey(new Date(2026, 9, 15)), '2026-10-15', 'todayKey local date');
+
+/* A sheet often stores near-identical meanings for different words; those two
+   meanings must never face each other in one multiple-choice question. */
+ok(Util.tooSimilarMeaning('có tác động đến', 'tác động tích cực (đến)'), 'near-synonym meanings detected');
+ok(Util.tooSimilarMeaning('tác động đến', 'có tác động đến'), 'meaning + glue words detected');
+ok(Util.tooSimilarMeaning('ảnh hưởng, tác động đến', 'có tác động đến'), 'list meaning detected');
+ok(Util.tooSimilarMeaning('tác động tích cực (đến)', 'tác động tiêu cực (đến)'), 'opposite meanings detected');
+ok(Util.tooSimilarMeaning('TÁC ĐỘNG ĐẾN', 'tac dong den'), 'case and diacritics ignored');
+ok(!Util.tooSimilarMeaning('có tác động đến', 'làm phát sinh, dẫn đến'), 'different meanings stay usable');
+ok(!Util.tooSimilarMeaning('có tác động đến', 'gây hậu quả xấu (đến)'), 'unrelated meanings stay usable');
+ok(!Util.tooSimilarMeaning('nhà ga', 'nhà hàng'), 'one shared word is not similarity');
+ok(!Util.tooSimilarMeaning('le taux de chômage', "le taux d'intérêt"), 'French glue words ignored');
+ok(!Util.tooSimilarMeaning('', 'nhà ga'), 'missing meaning never clashes');
 
 /* ---------- sources: delimited parsing ---------- */
 section('Sources — CSV/TSV parsing');
@@ -559,8 +577,43 @@ const tr2 = Gen.build(word, 'translate', 'meaning2term', pool);
 eq(tr2.prompt, 'nhà ga', 'translate m→t prompt');
 eq(tr2.answer, 'gare', 'translate m→t answer');
 
+/* A wrong multiple-choice pick should still teach: “you picked x — it means y”. */
+eq(Quiz.counterpart('nhà ga', 'term2meaning', pool), ['gare'], 'term2meaning pick → its term');
+eq(Quiz.counterpart('gare', 'meaning2term', pool), ['nhà ga'], 'meaning2term pick → its meaning');
+eq(Quiz.counterpart('nha ga', 'term2meaning', pool), ['gare'], 'pick matched without diacritics');
+eq(Quiz.counterpart('zzz', 'term2meaning', pool), [], 'unknown pick has no translation');
+eq(Quiz.counterpart('', 'term2meaning', pool), [], 'empty pick has no translation');
+
 const tiny = [{ term: 'a', meaning: 'x' }];
 eq(Gen.build(tiny[0], 'mc', 'term2meaning', tiny), null, 'MC impossible with tiny pool → null');
+
+/* The reported bug: a sheet whose words share almost the same meaning. No
+   distractor may be a near-synonym of the answer. */
+const clashPool = [
+  { term: 'avoir un impact sur', meaning: 'có tác động đến', pos: 'loc. v.', topicId: 't1' },
+  { term: 'avoir des effets positifs (sur)', meaning: 'tác động tích cực (đến)', pos: 'loc. v.', topicId: 't1' },
+  { term: 'agir sur', meaning: 'tác động đến', pos: 'v.t.i.', topicId: 't1' },
+  { term: 'affecter', meaning: 'ảnh hưởng, tác động đến', pos: 'v.t.', topicId: 't1' },
+  { term: 'influencer', meaning: 'ảnh hưởng, tác động lên', pos: 'v.t.', topicId: 't1' },
+  { term: 'provoquer', meaning: 'làm phát sinh, dẫn đến', pos: 'v.t.', topicId: 't1' },
+  { term: 'nuire à', meaning: 'gây hậu quả xấu (đến)', pos: 'v.t.i.', topicId: 't1' },
+  { term: 'le tourisme', meaning: 'ngành du lịch', pos: 'n.m.', topicId: 't1' },
+  { term: "l'environnement", meaning: 'môi trường', pos: 'n.m.', topicId: 't1' },
+  { term: 'la santé', meaning: 'sức khỏe', pos: 'n.f.', topicId: 't1' },
+  { term: 'la crise', meaning: 'cuộc khủng hoảng', pos: 'n.f.', topicId: 't1' }
+];
+const clashWord = clashPool[0];
+const clashMc = Gen.build(clashWord, 'mc', 'term2meaning', clashPool);
+ok(clashMc, 'MC is still possible with clashing meanings');
+ok(clashMc.options.every((o) => o === clashMc.answer || !Util.tooSimilarMeaning(o, clashMc.answer)),
+  'no near-synonym option is offered');
+ok(!clashMc.options.includes('tác động tích cực (đến)'), 'the reported ambiguous option is gone');
+ok(!clashMc.options.includes('ảnh hưởng, tác động đến'), 'the other near-synonym is gone as well');
+
+const clashMcB = Gen.build(clashWord, 'mc', 'meaning2term', clashPool);
+ok(clashMcB, 'MC meaning2term is still possible');
+ok(!clashMcB.options.includes('avoir des effets positifs (sur)'), 'near-synonym term is not offered');
+ok(!clashMcB.options.includes('agir sur'), 'the word that shares its meaning is not offered');
 
 /* ---------- grading ---------- */
 section('Grading');
@@ -629,6 +682,30 @@ const flipped = Ai.normalizeQuestions({
 }, [{ term: 'gare', meaning: 'nhà ga', type: 'mc', direction: 'term2meaning' }]);
 eq(flipped[0].direction, 'meaning2term', 'direction auto-flips when answer is the term');
 
+/* An AI-made MC may offer a near-synonym; it must be peeled off, and the item
+   is dropped when nothing but near-synonyms is left (built-in takes over). */
+const aiItems = [{ term: 'avoir un impact sur', meaning: 'có tác động đến', type: 'mc', direction: 'term2meaning' }];
+const peeled = Ai.normalizeQuestions({
+  questions: [{
+    type: 'mc', direction: 'term2meaning', term: 'avoir un impact sur', prompt: 'avoir un impact sur',
+    options: ['có tác động đến', 'tác động tích cực (đến)', 'làm phát sinh, dẫn đến', 'gây hậu quả xấu (đến)'],
+    answer: 'có tác động đến'
+  }]
+}, aiItems);
+eq(peeled.length, 1, 'AI MC kept after peeling a near-synonym option');
+eq(peeled[0].options.length, 3, 'near-synonym option dropped (4 → 3)');
+ok(peeled[0].options.includes('có tác động đến'), 'the answer survives the peel');
+ok(!peeled[0].options.includes('tác động tích cực (đến)'), 'the ambiguous option is removed');
+
+const starved = Ai.normalizeQuestions({
+  questions: [{
+    type: 'mc', direction: 'term2meaning', term: 'avoir un impact sur', prompt: 'avoir un impact sur',
+    options: ['có tác động đến', 'tác động tích cực (đến)', 'ảnh hưởng, tác động đến', 'tác động đến'],
+    answer: 'có tác động đến'
+  }]
+}, aiItems);
+eq(starved.length, 0, 'AI MC rejected when only near-synonyms remain');
+
 /* ---------- OpenAI-compatible provider helpers ---------- */
 section('OpenAI-compatible helpers');
 const reqBody = Ai.oai.buildBody({ model: 'openrouter/free', system: 'sys', user: 'usr', jsonMode: true });
@@ -662,6 +739,67 @@ eq(sortedOai[0].id, 'openrouter/free', 'openrouter/free ranks first');
 eq(Ai.pickDefaultModel([{ id: 'some/small-model' }, { id: 'x/y:free' }], 'openai'), 'x/y:free', 'openai default prefers :free models');
 eq(Ai.pickDefaultModel([], 'openai'), 'openrouter/free', 'openai default without a model list');
 eq(Ai.pickDefaultModel([{ id: 'gemini-2.5-flash' }, { id: 'gemini-2.5-pro' }], 'gemini'), 'gemini-2.5-flash', 'gemini default unchanged');
+
+/* ---------- AI transport errors (the “Ollama without a key” report) ---------- */
+section('AI transport errors');
+// Nothing listening on the port: the message must say to start the server.
+aiFetch = async function () { throw new Error('connect ECONNREFUSED'); };
+let deadErr = null;
+try { await Ai.listModels({ provider: 'openai', baseUrl: 'http://127.0.0.1:11434/v1', key: '' }); }
+catch (e) { deadErr = e; }
+ok(!!deadErr, 'a keyless local provider is still contacted (no key required)');
+ok(deadErr && deadErr.hint === 'offline', 'a dead local server is reported as offline');
+ok(deadErr && /nothing is running there/.test(deadErr.friendly), 'a dead local server says nothing is on that port');
+ok(deadErr && /not a web service/.test(deadErr.friendly), 'the message is explicit that Ollama is a local program');
+ok(deadErr && /ollama\.com\/download/.test(deadErr.friendly), 'the message links to the Ollama download');
+ok(deadErr && /ollama serve/.test(deadErr.friendly), 'the fix says to run “ollama serve”');
+ok(deadErr && /ollama pull llama3\.2/.test(deadErr.friendly), 'the fix names the model to pull');
+ok(deadErr && /http:\/\/127\.0\.0\.1:11434\/api\/tags/.test(deadErr.friendly), 'the message gives a way to verify by hand');
+ok(deadErr && /Built-in/.test(deadErr.friendly), 'the message offers the built-in generator as a way out');
+
+// Something answered in no-cors mode → the server is up, the browser was blocked.
+aiFetch = async function (url, opts) {
+  if (opts && opts.mode === 'no-cors') return { ok: true, status: 0, type: 'opaque' };
+  throw new Error('TypeError: Failed to fetch');
+};
+let corsErr = null;
+try { await Ai.listModels({ provider: 'openai', baseUrl: 'http://localhost:11434/v1', key: '' }); }
+catch (e) { corsErr = e; }
+ok(corsErr && corsErr.hint === 'cors', 'a server that answers but refuses the page is reported as a CORS block');
+ok(corsErr && /OLLAMA_ORIGINS=\*/.test(corsErr.friendly), 'the CORS fix mentions OLLAMA_ORIGINS=*');
+ok(corsErr && /python3 -m http\.server/.test(corsErr.friendly), 'the CORS fix suggests serving the folder over http');
+ok(corsErr && !/ollama serve/.test(corsErr.friendly), 'a reachable server is not told to start Ollama');
+
+// A model that was never pulled (Ollama answers 404).
+aiFetch = async function () {
+  return fakeResponse(JSON.stringify({ error: { message: 'model "llama3.2" not found, try pulling it first' } }), 404);
+};
+let modelErr = null;
+try { await Ai.listModels({ provider: 'openai', baseUrl: 'http://localhost:11434/v1', key: '' }); }
+catch (e) { modelErr = e; }
+ok(modelErr && /ollama pull llama3\.2/.test(modelErr.friendly), 'a 404 from a local server says which model to pull');
+ok(modelErr && /try pulling it first/.test(modelErr.friendly), 'the provider’s own wording is kept in the message');
+
+// A remote provider that answers but sends no CORS headers gets its own advice.
+aiFetch = async function (url, opts) {
+  if (opts && opts.mode === 'no-cors') return { ok: true, status: 0, type: 'opaque' };
+  throw new Error('TypeError: Failed to fetch');
+};
+let blockedRemote = null;
+try { await Ai.listModels({ provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', key: 'gsk_x' }); }
+catch (e) { blockedRemote = e; }
+ok(blockedRemote && blockedRemote.hint === 'cors', 'a remote host that answers but blocks the page is reported as CORS');
+ok(blockedRemote && /allows them|Gemini, Groq, OpenRouter/.test(blockedRemote.friendly) && !/OLLAMA_ORIGINS/.test(blockedRemote.friendly),
+  'a blocked remote provider is pointed at providers that allow browser calls');
+
+// A remote provider keeps the generic network advice.
+aiFetch = async function () { throw new Error('offline'); };
+let remoteErr = null;
+try { await Ai.listModels({ provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', key: 'gsk_x' }); }
+catch (e) { remoteErr = e; }
+ok(remoteErr && remoteErr.hint === 'unreachable', 'a remote host is reported as unreachable');
+ok(remoteErr && /internet connection/.test(remoteErr.friendly), 'the remote advice mentions the connection');
+aiFetch = null;
 
 /* ---------- planning + session ---------- */
 section('Planning & session');
@@ -701,10 +839,102 @@ eq(Quiz.getStats().answers, 8, 'stats recorded');
 eq(Quiz.getStats().correct, 8, 'stats correct count');
 ok(Quiz.masteredCount([pool[0]]) === 0, 'single answer does not mark mastered');
 
-/* ---------- UI wiring sanity (js/app.js ↔ index.html) ---------- */
+/* Typed questions: when the sheet gives another word the same meaning, either
+   wording is accepted — the learner is never told a correct answer is wrong. */
+const clashTr = await Quiz.buildPool({
+  items: Quiz.planItems([clashPool[0]], ['translate'], 't2m', 0), pool: clashPool, source: 'builtin'
+});
+const trQ = clashTr.questions[0];
+ok(Array.isArray(trQ.also) && trQ.also.length > 0, 'a shared meaning lists what else counts');
+ok(trQ.also.indexOf('tác động đến') !== -1, '…the twin meaning from the sheet among them');
+eq(Quiz.grade(trQ, trQ.also[0]).verdict, 'correct', 'the twin wording is graded correct');
+ok(/both count/.test(Quiz.grade(trQ, trQ.also[0]).note), 'the note explains why it was accepted');
+eq(Quiz.grade(trQ, 'môi trường').verdict, 'wrong', 'an unrelated answer is still wrong');
+
+const clashTr2 = await Quiz.buildPool({
+  items: Quiz.planItems([clashPool[0]], ['translate'], 'm2t', 0), pool: clashPool, source: 'builtin'
+});
+ok(clashTr2.questions[0].also.indexOf('agir sur') !== -1, 'the word sharing the meaning is accepted too');
+eq(Quiz.grade(clashTr2.questions[0], 'agir sur').verdict, 'correct', 'grading the twin term is correct');
+
+/* A model (or a question cached before this fix) can still hand us options that
+   mean the same thing as the answer. The pipeline peels them off before the
+   learner ever sees the question. */
+const aiJson = (questions) => fakeResponse(JSON.stringify({
+  choices: [{ message: { content: JSON.stringify({ questions: questions }) }, finish_reason: 'stop' }]
+}), 200);
+const aiOpts = {
+  pool: clashPool, source: 'ai', aiProvider: 'openai',
+  aiBaseUrl: 'https://api.example.test/v1', aiKey: 'test-key', aiModel: 'test-model',
+  targetLang: 'French', meaningLang: 'Vietnamese'
+};
+const notAmbiguous = (q) => q.options.every((o) => Quiz.sameAnswer(o, q.answer) || !Util.tooSimilarMeaning(o, q.answer));
+
+fetchRoutes = [['/chat/completions', () => aiJson([
+  { type: 'mc', direction: 'term2meaning', term: 'avoir un impact sur', prompt: 'avoir un impact sur',
+    options: ['có tác động đến', 'tác động tích cực (đến)', 'làm phát sinh, dẫn đến', 'gây hậu quả xấu (đến)'],
+    answer: 'có tác động đến', explanation: 'x' }
+])]];
+const aiBuilt = await Quiz.buildPool(Object.assign({}, aiOpts, {
+  items: Quiz.planItems([clashPool[0]], ['mc'], 't2m', 0)
+}));
+eq(aiBuilt.questions.length, 1, 'AI question kept');
+eq(aiBuilt.questions[0].options.length, 3, 'AI near-synonym option peeled (4 → 3)');
+ok(notAmbiguous(aiBuilt.questions[0]), 'no ambiguous option survives the pipeline');
+
+fetchRoutes = [['/chat/completions', () => aiJson([
+  { type: 'mc', direction: 'meaning2term', term: 'avoir un impact sur', prompt: 'có tác động đến',
+    options: ['avoir un impact sur', 'agir sur', 'affecter', 'provoquer'], answer: 'avoir un impact sur' }
+])]];
+const aiBuilt2 = await Quiz.buildPool(Object.assign({}, aiOpts, {
+  items: Quiz.planItems([clashPool[0]], ['mc'], 'm2t', 0)
+}));
+const q2 = aiBuilt2.questions[0];
+eq(q2.type, 'mc', 'a fresh fair question is built when the AI options are all synonyms');
+eq(q2.source, 'builtin', '…built by the built-in generator');
+ok(q2.options.length >= 3 && notAmbiguous(q2), 'rebuilt question is unambiguous');
+ok(!q2.options.includes('agir sur') && !q2.options.includes('affecter'),
+  'words that share the meaning are not offered');
+
+/* A question cached before this fix (the learner's browser) is repaired on the
+   way out, so an old ambiguous question can never be replayed. */
+fetchRoutes = [['/chat/completions', () => aiJson([
+  { type: 'mc', direction: 'term2meaning', term: 'provoquer', prompt: 'provoquer',
+    options: ['làm phát sinh, dẫn đến', 'gây hậu quả xấu (đến)', 'môi trường', 'sức khỏe'],
+    answer: 'làm phát sinh, dẫn đến', explanation: 'x' }
+])]];
+const primed2 = await Quiz.buildPool(Object.assign({}, aiOpts, {
+  items: Quiz.planItems([clashPool[5]], ['mc'], 't2m', 0)
+}));
+ok(primed2.questions[0].options.includes('môi trường'), 'clean AI question is cached');
+
+const qcache = JSON.parse(store.get('vocablab.qcache'));
+const cachedEntry = Object.keys(qcache).map((k) => qcache[k]).find((e) => e.q.term === 'provoquer');
+cachedEntry.q.options = ['làm phát sinh, dẫn đến', 'dẫn đến', 'môi trường', 'sức khỏe'];
+store.set('vocablab.qcache', JSON.stringify(qcache));
+
+const repaired = await Quiz.buildPool(Object.assign({}, aiOpts, {
+  items: Quiz.planItems([clashPool[5]], ['mc'], 't2m', 0)
+}));
+eq(repaired.swapped, 1, 'a stale cached question is repaired instead of replayed');
+eq(repaired.questions[0].options.length, 3, 'the ambiguous cached option is gone (4 → 3)');
+ok(notAmbiguous(repaired.questions[0]), 'repaired question is unambiguous');
+
+cachedEntry.q.options = ['làm phát sinh, dẫn đến', 'dẫn đến', 'phát sinh'];
+store.set('vocablab.qcache', JSON.stringify(qcache));
+const repaired2 = await Quiz.buildPool(Object.assign({}, aiOpts, {
+  items: Quiz.planItems([clashPool[5]], ['mc'], 't2m', 0)
+}));
+eq(repaired2.questions[0].source, 'builtin', 'cached question rebuilt when only synonyms remain');
+ok(notAmbiguous(repaired2.questions[0]) && repaired2.questions[0].options.length >= 3,
+  'rebuilt cached question is unambiguous');
+
+fetchRoutes = [];
+
 section('App wiring');
 const appSrc = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
 const htmlSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const cssSrc = fs.readFileSync(path.join(root, 'css/styles.css'), 'utf8');
 
 const elsBlock = appSrc.match(/function cacheEls\(\)[\s\S]*?;\n/)[0];
 const declared = [...elsBlock.matchAll(/'([A-Za-z0-9_]+)'/g)].map((m) => m[1]);
@@ -722,6 +952,30 @@ ok(!/\bstate\.index\b/.test(appSrc), 'app.js reads the question index from state
 ok(/setDeck\(deck, \{ silent: warnings\.length > 0 \}\)/.test(appSrc), 'deck notes suppress the separate success toast');
 ok(/renderSheetWarnings\(warnings\)/.test(appSrc), 'loading notes are also listed in Settings');
 ok(/id="sheetWarnings"/.test(htmlSrc), 'Settings has a persistent notes box');
+
+// An AI failure keeps its multi-line “what to do about it” text, in the toast
+// and in Settings → AI, instead of being cut down to one line.
+ok(/function showAiIssue\(/.test(appSrc) && /showAiIssue\(detail[,)]/.test(appSrc),
+  'an AI failure is kept in Settings → AI');
+ok(/id="aiIssue"/.test(htmlSrc), 'Settings has a box for the full AI error');
+ok(/function useKeyProvider\(/.test(appSrc) && /'btnAiUseKey'/.test(appSrc),
+  'a dead local provider can be swapped for a key-based one in one click');
+ok(/\.notice-issue \{/.test(cssSrc) && /white-space: pre-line/.test(cssSrc),
+  'the AI error box keeps its line breaks');
+ok(/AI generation issue — built-in questions cover the rest\.\\n' \+ detail/.test(appSrc),
+  'the AI error toast keeps its how-to-fix lines');
+ok(/function toast\(message, kind, ms\)/.test(fs.readFileSync(path.join(root, 'js/util.js'), 'utf8')),
+  'toasts accept a custom lifetime for long messages');
+ok(/isLocalBaseUrl\(settings\.oaiBase\)[\s\S]{0,400}OLLAMA_ORIGINS/.test(appSrc),
+  'the Ollama preset explains the CORS requirement');
+
+// A multiple-choice pick reveals the translation of every option, and an
+// accepted alternative explains why it counted.
+ok(/function revealTranslation\(/.test(appSrc) && /revealTranslation\(btn, text, q\.direction\)/.test(appSrc),
+  'answering a multiple-choice question reveals each option translation');
+ok(/class="opt-main"/.test(appSrc) && /'opt-sub'/.test(appSrc), 'options carry a translation line');
+ok(/\.opt-sub \{/.test(cssSrc) && /\.opt-main \{/.test(cssSrc), 'the translation line is styled');
+ok(/if \(result\.note\) body \+=/.test(appSrc), 'an accepted-alternative note reaches the feedback');
 
 /* ---------- summary ---------- */
 console.log('\n' + '─'.repeat(46));

@@ -166,7 +166,7 @@ provider.
 | **OpenRouter** | every model ending in `:free` + the `openrouter/free` router | `https://openrouter.ai/api/v1` | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | **Mistral** | free “Experiment” plan | `https://api.mistral.ai/v1` | [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys) |
 | **Cloudflare Workers AI** | daily free allowance | `https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1` | Cloudflare dashboard |
-| **Ollama (local)** | free forever, **no key** | `http://localhost:11434/v1` | — |
+| **Ollama (local)** | free forever, **no key** — but the app must be installed and running on your computer | `http://localhost:11434/v1` | — |
 
 **Google Gemini (default):** get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey),
 paste it, press **Test key & load models**.
@@ -176,14 +176,23 @@ tap a quick preset*, paste the key, press **Test & load models**. The model box
 works as a searchable list — or type any model id (e.g. `@cf/openai/gpt-oss-20b`
 on Cloudflare).
 
-**Ollama (fully local, private):**
+**Ollama (fully local, private)** — install it first
+([ollama.com/download](https://ollama.com/download)); it is a program on your own
+computer, not a web service, and VocabLab can't start it for you:
 
 ```bash
-OLLAMA_ORIGINS=* ollama serve     # allow requests from the browser
+ollama serve                      # start it (OLLAMA_ORIGINS=* lets the browser call it)
 ollama pull llama3.2              # or any model you like
 ```
 
-then pick the *Ollama (local)* preset (no API key needed).
+then pick the *Ollama (local app)* preset (no API key needed). Check it works by
+opening `http://localhost:11434/api/tags` in a new tab — if that fails, the app
+will fail too. If VocabLab reports *“nothing is running there”*, it couldn't find
+anything on that port (not installed, not started, or another port); *“a server
+answered, but it blocked this page”* means CORS (restart with `OLLAMA_ORIGINS=*`
+and serve VocabLab over `http://` rather than `file://`). The full text stays in
+**Settings → AI**. No local setup at all? Use a free Gemini/Groq key — or set
+Generator to *Built-in*.
 
 How it keeps you inside the free tier:
 
@@ -215,6 +224,19 @@ Notes:
   When a cell lists several meanings — `làm tổn hại, đe dọa (kết quả, sự công bằng)` —
   **any one of them counts** (text in brackets is treated as a clarification), and
   listing several yourself is fine as long as each one is valid.
+- **Fair options**: a multiple-choice option that reads like the answer is never
+  offered — that happens easily when a sheet gives several words almost the same
+  meaning (`có tác động đến` · `tác động đến` · `tác động tích cực (đến)`), and
+  guessing between them would not be a fair question. The check runs on every
+  question, including AI-written ones and ones already cached in your browser.
+- **A shared meaning is never held against you**: if two words in your sheet carry
+  the same meaning, a typed answer with either wording counts as correct (the
+  feedback still shows the word the question came from, so you learn the exact one).
+- **Every option translated**: once you answer a multiple-choice question, each
+  option shows its translation underneath (`évoluer` → `tiến triển, thay đổi,
+  phát triển`; a Vietnamese option shows the French word it belongs to). A wrong
+  pick still teaches you all the other words — and the translations stay hidden
+  until you answer, so they never give the answer away.
 - **🔊 pronunciation** uses your browser's speech synthesis — set the voice code
   in Settings → AI (`fr-FR`, `de-DE`, `ja-JP`, …); “Auto-play” reads the word
   when a card is revealed.
@@ -247,7 +269,7 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 | “Could not open the sheet” (Sheet link mode) | Set sharing to “Anyone with the link → Viewer” |
 | `429` from the AI provider | Free-tier limit; wait a minute — the app falls back to built-in questions meanwhile |
 | Provider rejects the key (`401`/`403`) | Re-check the key; on OpenRouter use a `:free` model, on Cloudflare include your account ID in the Base URL |
-| Can't reach the provider (CORS/network) | Gemini, Groq, OpenRouter and Mistral allow browser calls; for local Ollama start it with `OLLAMA_ORIGINS=*`; serve the page over `http(s)://`, not `file://` |
+| Can't reach the provider (CORS/network) | The message says which side is broken. *“nothing is running there”* → for a local server: it isn't installed/started (`ollama serve`, then `ollama pull <model>`; check `http://localhost:11434/api/tags` in a new tab); *“a server answered, but it blocked this page”* → CORS: restart Ollama with `OLLAMA_ORIGINS=*` and serve the page over `http(s)://`, not `file://`. Gemini, Groq, OpenRouter and Mistral need no CORS setup |
 | A renamed tab shows up twice | Only happens with a manual tab-name list: Google serves the *first* tab for an unknown name. Delete/rename that line, or use the link-only mode for auto-detection |
 | New words/tabs don't show up | Press **↻ Reload** in the header |
 | “Network error…” when opened as `file://` | Chrome/Edge block requests to Google from double-clicked pages. VocabLab asks the public `r.jina.ai` reader for the tab list (no key, nothing to type), falls back to the remembered list, and only then says “first tab only” in one message (kept in Settings → Google Sheet). To drop the third party, serve the folder (`python3 -m http.server 8080` → `http://localhost:8080`) |

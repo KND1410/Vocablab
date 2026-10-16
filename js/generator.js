@@ -20,6 +20,12 @@
       if (Util.normalize(p.term) === Util.normalize(target.term)) return false;
       const v = Util.normalize(p[field]);
       if (!v || seen[v]) return false;
+      // Never offer a near-synonym of the answer: two options the learner can
+      // read as “the same meaning” make the question unfair (a sheet often has
+      // several words sharing almost the same meaning, or a meaning that is one
+      // comma-item of the answer). Quiz.sanitizeQuestion has the last word.
+      if (Util.tooSimilarMeaning(p.meaning, target.meaning)) return false;
+      if (Util.tooSimilarMeaning(p.term, target.term)) return false;
       return true;
     }));
     // Prefer same part of speech first, then the rest.
