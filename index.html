@@ -290,10 +290,8 @@
   <div class="tab-pane active" data-pane="ai">
     <div class="field">
       <label class="field-label" for="selProvider">AI provider</label>
-      <select id="selProvider" class="input">
-        <option value="gemini">Google Gemini (free tier — default)</option>
-        <option value="openai">OpenAI-compatible — Groq, OpenRouter, Mistral, Ollama…</option>
-      </select>
+      <select id="selProvider" class="input"></select>
+      <p id="providerHint" class="muted small"></p>
     </div>
 
     <div id="paneGemini">
@@ -310,32 +308,16 @@
 
     <div id="paneOai" hidden>
       <div class="field">
-        <label class="field-label">Quick presets</label>
-        <div class="chip-row">
-          <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://api.groq.com/openai/v1" data-model="openai/gpt-oss-120b">Groq (fast, generous)</button>
-          <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://openrouter.ai/api/v1" data-model="openrouter/free">OpenRouter (many models)</button>
-          <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://api.mistral.ai/v1" data-model="mistral-small-latest">Mistral</button>
-          <button class="btn btn-subtle btn-xs preset" type="button" data-base="https://api.cloudflare.com/client/v4/accounts/REPLACE_WITH_ACCOUNT_ID/ai/v1" data-model="@cf/openai/gpt-oss-20b">Cloudflare Workers AI</button>
-          <button class="btn btn-subtle btn-xs preset" type="button" data-base="http://localhost:11434/v1" data-model="llama3.2">Ollama (local app — no key)</button>
-        </div>
-        <p class="muted small">Ollama runs on <em>your</em> computer: it has to be installed and started there
-          before this preset can work. The other presets are free web services — they only need a key.</p>
-      </div>
-      <div class="field">
         <label class="field-label" for="inpOaiBase">Base URL</label>
         <input id="inpOaiBase" class="input" type="text" placeholder="https://api.groq.com/openai/v1" autocomplete="off" spellcheck="false">
       </div>
       <div class="field">
         <label class="field-label" for="inpOaiKey">API key <span class="muted">(not needed for local Ollama)</span></label>
         <div class="input-row">
-          <input id="inpOaiKey" class="input" type="password" placeholder="gsk_… or sk-or-v1-…" autocomplete="off" spellcheck="false">
+          <input id="inpOaiKey" class="input" type="password" placeholder="gsk_… or sk-…" autocomplete="off" spellcheck="false">
           <button id="btnToggleOaiKey" class="btn btn-subtle btn-sm" type="button">Show</button>
         </div>
-        <p class="muted small">Free keys:
-          <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a> ·
-          <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> ·
-          <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener">Mistral</a>.
-          Stored only in this browser — requests go straight to the provider.</p>
+        <p class="muted small">Stored only in this browser — requests go straight to the provider.</p>
       </div>
     </div>
 
@@ -515,14 +497,18 @@
       <code>#gid=…</code>) also work.</p>
 
     <h3>3 · AI questions</h3>
-    <p class="muted small">Pick a provider in Settings → AI. <strong>Google Gemini</strong> is the default — paste a free
-      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Gemini API key</a>. You can also choose
-      <strong>OpenAI-compatible</strong>, which works with free tiers of
-      <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a>,
-      <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> (models ending in
-      <code>:free</code>), <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener">Mistral</a>,
-      Cloudflare Workers AI — or a local <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a>
-      (no key; run it with <code>OLLAMA_ORIGINS=*</code>). Use the quick presets, then “Test &amp; load models”.
+    <p class="muted small">Pick a provider in Settings → AI — every one of them works; the menu is the whole list, not a
+      choice between “Gemini” and “other”. <strong>Google Gemini</strong> is the default (paste a free
+      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Gemini API key</a>), and all the rest
+      are OpenAI-compatible services with their own key:
+      <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a> (free, very fast),
+      <a href="https://cloud.cerebras.ai" target="_blank" rel="noopener">Cerebras</a> (free trial credit),
+      <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a> (free models),
+      <a href="https://console.mistral.ai/api-keys" target="_blank" rel="noopener">Mistral</a>,
+      <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">DeepSeek</a> (paid, very cheap),
+      Cloudflare Workers AI, or a local <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a>
+      (no key; run it with <code>OLLAMA_ORIGINS=*</code>). Pick one, paste its key, press “Test &amp; load models”.
+      Each provider keeps its own key, so you can switch back and forth without retyping.
       Questions are generated in small batches and cached, so replays barely use quota. If the key is missing or
       quota runs out, the built-in generator takes over automatically — the app never gets stuck.</p>
 
@@ -538,7 +524,9 @@
       <li><strong>“API has not been used / disabled”</strong> — enable the Google Sheets API for your key's project.</li>
       <li><strong>AI errors</strong> — check the key in Settings → AI (“Test &amp; load models”), or switch Generator to <em>Built-in</em>. The app keeps the whole explanation in Settings → AI.</li>
       <li><strong>Ollama / local server</strong> — Ollama is a program on your computer, not a web service: install it (<a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a>), run <code>ollama serve</code>, then <code>ollama pull llama3.2</code>. “nothing is running there” means VocabLab couldn't find it on that port; “a server answered, but it blocked this page” means CORS (<code>OLLAMA_ORIGINS=*</code>, and serve this page over <code>http(s)://</code>).</li>
-      <li><strong>429 quota</strong> — free-tier limit hit; wait a minute, or the app will fall back to built-in questions.</li>
+      <li><strong>429 quota</strong> — free-tier limit hit (Gemini's daily free quota is per project). Wait a minute, or pick
+        another provider in Settings → AI: Groq, Cerebras and OpenRouter have free tiers of their own. Built-in questions
+        cover the rest meanwhile.</li>
       <li><strong>Network errors</strong> — if you opened the file directly (<code>file://</code>), try serving the folder
         (<code>python3 -m http.server</code>) or hosting it. Some browsers restrict cross-site requests from local files.</li>
     </ul>

@@ -343,10 +343,36 @@ function buildProbe(deadPort, blockedPort) {
     '    out("Quiz.grade(user case)=" + Quiz.grade({ type: "translate", answer: "làm tổn hại, đe dọa (kết quả, sự công bằng)" }, "làm tổn hại").verdict);',
     '    out("Quiz.sameAnswer(variant)=" + Quiz.sameAnswer("làm tổn hại", "làm tổn hại, đe dọa"));',
     '',
-    '    /* Ollama (or any local server) with nothing listening: no key needed, but the',
-    '       failure has to say what to do — and the quiz must still run. */',
+    '    /* The provider picker offers the whole list, fills in the base URL and',
+    '       model of the provider picked, and remembers a key per provider. */',
     '    byId("btnSettings").click();',
     '    await wait(60);',
+    '    var providerIds = Array.prototype.map.call(byId("selProvider").options, function (o) { return o.value; });',
+    '    out("providers: ids=" + JSON.stringify(providerIds) + " hint=" + JSON.stringify(byId("providerHint").textContent.slice(0, 60)));',
+    '    byId("selProvider").value = "deepseek";',
+    '    byId("selProvider").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    await wait(40);',
+    '    out("deepseek picked: base=" + byId("inpOaiBase").value + " model=" + byId("inpModel").value +',
+    '        " gemini-pane=" + !byId("paneGemini").hidden + " oai-pane=" + !byId("paneOai").hidden +',
+    '        " hint-has-link=" + /platform\\.deepseek\\.com/.test(byId("providerHint").innerHTML));',
+    '    byId("inpOaiKey").value = "sk-deepseek-test";',
+    '    byId("inpOaiKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    byId("selProvider").value = "groq";',
+    '    byId("selProvider").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    await wait(40);',
+    '    out("groq picked: base=" + byId("inpOaiBase").value + " key=" + JSON.stringify(byId("inpOaiKey").value));',
+    '    byId("selProvider").value = "deepseek";',
+    '    byId("selProvider").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    await wait(40);',
+    '    out("deepseek again: key=" + JSON.stringify(byId("inpOaiKey").value) +',
+    '        " stored=" + JSON.stringify(Object.keys(JSON.parse(localStorage.getItem("vocablab.settings")).aiConns)));',
+    '    byId("selProvider").value = "gemini";',
+    '    byId("selProvider").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    await wait(40);',
+    '    out("back to gemini: gemini-pane=" + !byId("paneGemini").hidden + " oai-pane=" + !byId("paneOai").hidden);',
+    '',
+    '    /* Ollama (or any local server) with nothing listening: no key needed, but the',
+    '       failure has to say what to do — and the quiz must still run. */',
     '    byId("selProvider").value = "openai";',
     '    byId("selProvider").dispatchEvent(new Event("change", { bubbles: true }));',
     '    byId("inpOaiBase").value = "http://127.0.0.1:' + deadPort + '/v1";',
@@ -483,6 +509,17 @@ check(/typed submit: feedback=true title="Correct!"/m.test(log), 'a correct type
 check(/typed dont-know: feedback=true/m.test(log), '"I don\'t know" reveals the answer');
 check(/Quiz\.grade\(user case\)=correct/m.test(log), 'comma-list meaning accepts one of its items');
 check(/Quiz\.sameAnswer\(variant\)=true/m.test(log), 'an alternative option matches the answer');
+check(/^providers: ids=\["gemini","groq","cerebras","openrouter","mistral","deepseek","cloudflare","ollama","openai"\]/m.test(log),
+  'Settings → AI lists the whole provider list, not just Gemini', (log.match(/^providers: .*/m) || [''])[0]);
+check(/^deepseek picked: base=https:\/\/api\.deepseek\.com\/v1 model=deepseek-flash gemini-pane=false oai-pane=true hint-has-link=true/m.test(log),
+  'picking DeepSeek fills in its base URL, model and key link', (log.match(/^deepseek picked: .*/m) || [''])[0]);
+check(/^groq picked: base=https:\/\/api\.groq\.com\/openai\/v1 key=""$/m.test(log),
+  'picking another provider loads its own base URL', (log.match(/^groq picked: .*/m) || [''])[0]);
+check(/^deepseek again: key="sk-deepseek-test" stored=\["deepseek","groq"\]/m.test(log),
+  'each provider keeps its own key, so switching back needs no retyping',
+  (log.match(/^deepseek again: .*/m) || [''])[0]);
+check(/^back to gemini: gemini-pane=true oai-pane=false/m.test(log),
+  'switching back to Gemini shows the Gemini key field', (log.match(/^back to gemini: .*/m) || [''])[0]);
 check(/^dead AI: toast="[^"]*AI generation issue — built-in questions cover the rest\.[^"]*nothing is running there[^"]*not a web service[^"]*ollama serve/m.test(log),
   'a local AI server with nothing listening explains how to start it',
   (log.match(/^dead AI: toast=.*/m) || [''])[0]);

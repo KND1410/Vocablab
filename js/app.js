@@ -10,7 +10,7 @@
   /* ---------- Settings ---------- */
   const DEFAULTS = {
     aiProvider: 'gemini', geminiKey: '', geminiModel: '',
-    oaiBase: 'https://api.groq.com/openai/v1', oaiKey: '', oaiModel: '',
+    oaiBase: 'https://api.groq.com/openai/v1', oaiKey: '', oaiModel: '', aiConns: {},
     targetLang: 'French', targetCode: 'fr-FR', autoPlay: true,
     sheetMode: 'links', sheetUrl: '', sheetApiKey: '', scriptUrl: '', links: '',
     quizTypes: ['mc', 'blank', 'translate'], direction: 'mixed', count: 20, source: 'auto',
@@ -43,7 +43,7 @@
       'resBreakdown', 'btnRetryMistakes', 'btnNewQuiz', 'btnResultsFlashcards', 'resMistakes', 'resMistakeList',
       'screenFlashcards', 'fcProgress', 'btnFcShuffle', 'btnFcExit', 'fcCard', 'fcTerm', 'fcPron', 'fcSpeak',
       'fcMeaning', 'fcExample', 'btnFcAgain', 'btnFcGood', 'btnFcPrev', 'btnFcNext',
-      'settingsDialog', 'selProvider', 'paneGemini', 'inpGeminiKey', 'btnToggleKey',
+      'settingsDialog', 'selProvider', 'providerHint', 'paneGemini', 'inpGeminiKey', 'btnToggleKey',
       'paneOai', 'inpOaiBase', 'inpOaiKey', 'btnToggleOaiKey',
       'btnTestKey', 'inpModel', 'modelList', 'btnRefreshModels',
       'aiStatus', 'aiIssue', 'usageToday', 'cachedCount', 'btnClearQCache', 'inpTargetLang', 'inpTargetCode', 'chkAutoPlay',
@@ -270,26 +270,72 @@
   }
 
   /* ---------- Active AI provider ---------- */
-  function activeProvider() { return settings.aiProvider === 'openai' ? 'openai' : 'gemini'; }
+  /* Ai.providers is the whole list Settings → AI shows. A provider is either
+     Google's own API ('gemini') or an OpenAI-compatible endpoint, which only
+     differs by base URL — so everything below keeps working off the transport. */
+  const PROVIDERS = Ai.providers;
+
+  function providerDef(id) { return Ai.providerById(id) || PROVIDERS[0]; }
+  /** The provider the learner picked (an id from the provider table). */
+  function activeProviderId() {
+    return Ai.providerById(settings.aiProvider) ? settings.aiProvider : 'gemini';
+  }
+  /** How we talk to it: Google's API, or OpenAI-compatible. */
+  function activeProvider() { return providerDef(activeProviderId()).transport; }
   function activeKey() {
     return String(activeProvider() === 'openai' ? (settings.oaiKey || '') : (settings.geminiKey || '')).trim();
   }
   function activeBase() { return activeProvider() === 'openai' ? (settings.oaiBase || '') : ''; }
+  function baseKey(base) { return String(base || '').trim().replace(/\/+$/, '').toLowerCase(); }
+  function sameBase(a, b) { return !!baseKey(a) && baseKey(a) === baseKey(b); }
   function defaultModelForBase(base) {
-    const b = String(base || '');
-    if (/openrouter\.ai/i.test(b)) return 'openrouter/free';
-    if (/groq\.com/i.test(b)) return 'openai/gpt-oss-120b';
-    if (/mistral\.ai/i.test(b)) return 'mistral-small-latest';
-    if (Ai.isLocalBaseUrl(b)) return 'llama3.2';
+    for (const p of PROVIDERS) {
+      if (p.base && sameBase(p.base, base)) return p.model || '';
+    }
+    if (Ai.isLocalBaseUrl(base)) return 'llama3.2';
     return '';
   }
   function activeModel() {
-    if (activeProvider() === 'openai') return settings.oaiModel || defaultModelForBase(settings.oaiBase) || 'openrouter/free';
+    if (activeProvider() === 'openai') {
+      return settings.oaiModel || defaultModelForBase(settings.oaiBase) ||
+        providerDef(activeProviderId()).model || 'openrouter/free';
+    }
     return settings.geminiModel || 'gemini-flash-latest';
   }
   function setActiveModel(id) {
     if (activeProvider() === 'openai') settings.oaiModel = id; else settings.geminiModel = id;
+    rememberConn();
     saveSettings();
+  }
+
+  /* Each OpenAI-compatible provider keeps the base URL, key and model you last
+     used with it, so switching providers never means retyping a key. */
+  function connStore() {
+    if (!settings.aiConns || typeof settings.aiConns !== 'object') settings.aiConns = {};
+    return settings.aiConns;
+  }
+  function rememberConn() {
+    const id = activeProviderId();
+    if (id === 'gemini') return;
+    connStore()[id] = { base: settings.oaiBase || '', key: settings.oaiKey || '', model: settings.oaiModel || '' };
+  }
+  function loadConn(id) {
+    const def = providerDef(id);
+    const saved = connStore()[id] || {};
+    settings.oaiBase = saved.base || def.base || '';
+    settings.oaiKey = saved.key || '';
+    settings.oaiModel = saved.model || def.model || defaultModelForBase(settings.oaiBase);
+  }
+  /** Older settings only knew 'openai' + a base URL: name the provider we recognise. */
+  function migrateProvider() {
+    if (settings.aiProvider !== 'openai') return;
+    for (const p of PROVIDERS) {
+      if (p.base && sameBase(p.base, settings.oaiBase)) {
+        settings.aiProvider = p.id;
+        saveSettings();
+        return;
+      }
+    }
   }
   // Ready when a key exists — or, for local servers (Ollama), when the base URL is localhost.
   function aiReady() {
@@ -357,11 +403,14 @@
       } else if (result.aiError) {
         const err = result.aiError;
         const detail = err.friendly || err.message || 'AI generation failed.';
-        showAiIssue(detail, err.hint === 'offline');
+        // A local server that is not there, or a provider whose quota ran out:
+        // both have an obvious way out, so offer it.
+        const quota = err.status === 429 || /429|quota|rate limit|free-tier limit/i.test(String(detail));
+        showAiIssue(detail, err.hint === 'offline' ? 'local' : (quota ? 'quota' : ''));
         U.toast('AI generation issue — built-in questions cover the rest.\n' + detail, 'warn', 14000);
       } else if (result.aiUsed) {
         showAiIssue('');
-        U.toast((activeProvider() === 'openai' ? 'The AI provider' : 'Gemini') + ' wrote ' + result.aiUsed + ' questions.', 'ok');
+        U.toast((activeProvider() === 'openai' ? providerDef(activeProviderId()).label : 'Gemini') + ' wrote ' + result.aiUsed + ' questions.', 'ok');
       }
       updateUsageUI();
       showScreen('quiz');
@@ -696,16 +745,98 @@
   }
 
   function syncAiUI() {
-    const provider = activeProvider();
-    E.selProvider.value = provider;
-    E.paneGemini.hidden = provider !== 'gemini';
-    E.paneOai.hidden = provider !== 'openai';
+    const id = activeProviderId();
+    const transport = activeProvider();
+    renderProviderOptions();
+    E.selProvider.value = id;
+    if (E.providerHint) E.providerHint.innerHTML = providerHint(id);
+    E.paneGemini.hidden = transport !== 'gemini';
+    E.paneOai.hidden = transport !== 'openai';
+    E.inpGeminiKey.value = settings.geminiKey || '';
     E.inpOaiBase.value = settings.oaiBase || '';
     E.inpOaiKey.value = settings.oaiKey || '';
     const model = activeModel();
     ensureModelOption(model);
     E.inpModel.value = model;
-    E.btnTestKey.textContent = provider === 'openai' ? 'Test & load models' : 'Test key & load models';
+    E.btnTestKey.textContent = transport === 'openai' ? 'Test & load models' : 'Test key & load models';
+  }
+
+  function renderProviderOptions() {
+    if (E.selProvider.dataset.filled) return;
+    E.selProvider.innerHTML = '';
+    PROVIDERS.forEach(function (p) {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.label;
+      E.selProvider.appendChild(opt);
+    });
+    E.selProvider.dataset.filled = '1';
+  }
+
+  function linkTo(url) {
+    return '<a href="' + url + '" target="_blank" rel="noopener">' + url.replace(/^https?:\/\//, '') + '</a>';
+  }
+
+  /** What it takes to use the selected provider — where the key comes from, and
+      what it costs (so “out of free tier” is visible before it happens). */
+  function providerHint(id) {
+    const def = providerDef(id);
+    if (id === 'ollama') {
+      return 'Runs on your computer, not online: install <a href="' + def.keyUrl + '" target="_blank" rel="noopener">Ollama</a>, ' +
+        'start it (<code>ollama serve</code>) and pull a model (<code>ollama pull llama3.2</code>). No key, no sign-up.';
+    }
+    if (id === 'openai') {
+      return 'Paste any OpenAI-compatible Base URL and its API key, then press “Test &amp; load models”.';
+    }
+    if (id === 'gemini') {
+      return 'Google\'s own API. The free tier is a daily quota per project — when it runs out, pick another provider ' +
+        'above (Groq, Cerebras and OpenRouter have their own free tiers) instead of making a new project.';
+    }
+    if (def.needsAccountId) {
+      return 'Key and account ID from ' + linkTo(def.keyUrl) + '. Replace <code>REPLACE_WITH_ACCOUNT_ID</code> in the ' +
+        'Base URL below with your account ID, then press “Test &amp; load models”.';
+    }
+    const cost = def.cost === 'paid' ? ' — paid, but only a few cents per quiz'
+      : def.cost === 'trial' ? ' — free trial credit, then pay as you go'
+        : ' — free';
+    return 'Get a key at ' + linkTo(def.keyUrl) + cost + '. Each provider keeps its own key, so you can switch back and ' +
+      'forth without retyping. Stored only in this browser — requests go straight to the provider.';
+  }
+
+  /** The status line under the test button, after picking a provider. */
+  function providerStatus(id) {
+    const def = providerDef(id);
+    if (def.needsAccountId && /REPLACE_WITH_ACCOUNT_ID/.test(settings.oaiBase)) {
+      E.aiStatus.textContent = 'Preset loaded — replace REPLACE_WITH_ACCOUNT_ID in the Base URL with your Cloudflare account ID, paste the key, then test.';
+    } else if (Ai.isLocalBaseUrl(settings.oaiBase)) {
+      const local = typeof location !== 'undefined' && location.protocol === 'file:';
+      E.aiStatus.textContent = 'Preset loaded — no API key needed, but Ollama must be installed and running on this computer (ollama serve; then “Test & load models”).' +
+        (local
+          ? ' This page is a file:// URL, which Ollama refuses by default: restart Ollama with OLLAMA_ORIGINS=*, or serve the folder over http (python3 -m http.server 8000) and open it there.'
+          : ' If it blocks this page, restart Ollama with OLLAMA_ORIGINS=*.');
+    } else if (id === 'gemini') {
+      E.aiStatus.textContent = 'Gemini selected — paste your free key above, then press “Test key & load models”.';
+    } else {
+      E.aiStatus.textContent = def.label + ' selected — paste its key above, then press “Test & load models”.';
+    }
+  }
+
+  /** Switch provider, keeping whatever was set up for the previous one. */
+  function useProvider(id) {
+    if (id === activeProviderId()) return;
+    rememberConn();
+    settings.aiProvider = id;
+    if (id !== 'gemini') loadConn(id);
+    saveSettings();
+    syncAiUI();
+    showAiIssue('');
+    providerStatus(id);
+    focusActiveKey();
+  }
+
+  function focusActiveKey() {
+    const field = activeProvider() === 'openai' ? E.inpOaiKey : E.inpGeminiKey;
+    if (field && !field.value) field.focus();
   }
 
   function syncModePanes(mode) {
@@ -729,33 +860,35 @@
 
   /**
    * Keep the full “what to do about it” text of an AI failure in Settings → AI,
-   * with a way out when a locally-run provider simply isn't there.
+   * with a way out when there is an obvious one: a locally-run provider that
+   * isn't there, or a provider whose free quota is used up.
    */
-  function showAiIssue(text, offerSwitch) {
+  function showAiIssue(text, offer) {
     const msg = String(text || '').trim();
     if (!E.aiIssue) return;
     E.aiIssue.textContent = msg; // also drops any previous action button
     E.aiIssue.hidden = !msg;
-    if (!msg || !offerSwitch) return;
+    if (!msg || !offer) return;
+    const to = offer === 'quota' ? 'groq' : 'gemini';
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-subtle btn-sm';
     btn.id = 'btnAiUseKey';
     btn.style.marginTop = '.5rem';
-    btn.textContent = 'Use a free Gemini/Groq key instead';
-    btn.addEventListener('click', useKeyProvider);
+    btn.textContent = offer === 'quota' ? 'Switch to Groq (free)' : 'Use a free Gemini/Groq key instead';
+    btn.addEventListener('click', function () { useKeyProvider(to); });
     E.aiIssue.appendChild(btn);
   }
 
-  /** Leave a local server that isn't there and point the user at a free key. */
-  function useKeyProvider() {
-    settings.aiProvider = 'gemini';
-    saveSettings();
-    syncAiUI();
-    showAiIssue('');
-    E.aiStatus.textContent = 'Get a free key at aistudio.google.com/apikey (or Groq: console.groq.com/keys), paste it above, then press “Test key & load models”.';
-    if (E.inpGeminiKey) E.inpGeminiKey.focus();
-    U.toast('Switched to Gemini — paste your free key, then press “Test key & load models”.', 'ok');
+  /** Leave a provider that can't work and point the user at one that can. */
+  function useKeyProvider(to) {
+    const id = Ai.providerById(to) ? to : 'gemini';
+    const def = providerDef(id);
+    useProvider(id);
+    U.toast(id === 'gemini'
+      ? 'Switched to Gemini — paste your free key, then press “Test key & load models”.'
+      : def.label + ' selected — get a key at ' + def.keyUrl + ', paste it, then press “Test & load models”.',
+      'ok');
   }
 
   function populateModels(models) {
@@ -794,7 +927,7 @@
       }
       populateModels(models);
       E.aiStatus.textContent = '✓ Works — ' + models.length + ' models available. Using: ' + activeModel();
-      U.toast((provider === 'openai' ? 'The AI provider' : 'Gemini') + ' works. Model: ' + activeModel(), 'ok');
+      U.toast(providerDef(activeProviderId()).label + ' works. Model: ' + activeModel(), 'ok');
     } catch (e) {
       const detail = e.friendly || e.message;
       E.aiStatus.textContent = '✕ ' + detail;
@@ -918,56 +1051,52 @@
 
     // Settings — AI tab
     E.selProvider.addEventListener('change', function () {
-      settings.aiProvider = E.selProvider.value === 'openai' ? 'openai' : 'gemini';
-      saveSettings();
-      syncAiUI();
-      E.aiStatus.textContent = 'Questions are generated with a free AI model — the built-in generator is the backup.';
+      useProvider(E.selProvider.value);
     });
-    E.inpGeminiKey.addEventListener('change', function () { settings.geminiKey = E.inpGeminiKey.value.trim(); saveSettings(); });
+    // A pasted key has to count even if the field never loses focus, so save on
+    // input as well as on change.
+    function keepGeminiKey() { settings.geminiKey = E.inpGeminiKey.value.trim(); saveSettings(); }
+    E.inpGeminiKey.addEventListener('input', keepGeminiKey);
+    E.inpGeminiKey.addEventListener('change', keepGeminiKey);
     E.btnToggleKey.addEventListener('click', function () {
       const show = E.inpGeminiKey.type === 'password';
       E.inpGeminiKey.type = show ? 'text' : 'password';
       E.btnToggleKey.textContent = show ? 'Hide' : 'Show';
     });
     E.inpOaiBase.addEventListener('change', function () {
-      settings.oaiBase = E.inpOaiBase.value.trim();
-      if (!settings.oaiModel) {
-        settings.oaiModel = defaultModelForBase(settings.oaiBase);
-        ensureModelOption(settings.oaiModel);
-        E.inpModel.value = settings.oaiModel;
+      const typed = E.inpOaiBase.value.trim();
+      const def = providerDef(activeProviderId());
+      const matches = !!def.base && sameBase(def.base, typed);
+      // A hand-edited Base URL is no longer that named provider: keep it as a
+      // custom OpenAI-compatible connection instead of mislabelling it.
+      if (activeProviderId() !== 'openai' && !matches) settings.aiProvider = 'openai';
+      settings.oaiBase = typed;
+      const guess = defaultModelForBase(typed);
+      if (guess && guess !== settings.oaiModel) {
+        settings.oaiModel = guess;
+        ensureModelOption(guess);
+        E.inpModel.value = guess;
       }
+      rememberConn();
       saveSettings();
+      syncAiUI();
     });
-    E.inpOaiKey.addEventListener('change', function () { settings.oaiKey = E.inpOaiKey.value.trim(); saveSettings(); });
+    function keepOaiKey() {
+      settings.oaiKey = E.inpOaiKey.value.trim();
+      rememberConn();
+      saveSettings();
+    }
+    E.inpOaiKey.addEventListener('input', keepOaiKey);
+    E.inpOaiKey.addEventListener('change', keepOaiKey);
     E.btnToggleOaiKey.addEventListener('click', function () {
       const show = E.inpOaiKey.type === 'password';
       E.inpOaiKey.type = show ? 'text' : 'password';
       E.btnToggleOaiKey.textContent = show ? 'Hide' : 'Show';
     });
-    U.$$('.preset').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        settings.aiProvider = 'openai';
-        settings.oaiBase = btn.getAttribute('data-base');
-        settings.oaiModel = btn.getAttribute('data-model') || '';
-        saveSettings();
-        syncAiUI();
-        if (/REPLACE_WITH_ACCOUNT_ID/.test(settings.oaiBase)) {
-          E.aiStatus.textContent = 'Preset loaded — replace REPLACE_WITH_ACCOUNT_ID in the Base URL with your Cloudflare account ID, paste the key, then test.';
-        } else if (Ai.isLocalBaseUrl(settings.oaiBase)) {
-          const local = typeof location !== 'undefined' && location.protocol === 'file:';
-          E.aiStatus.textContent = 'Preset loaded — no API key needed, but Ollama must be installed and running on this computer (ollama serve; then “Test & load models”).' +
-            (local
-              ? ' This page is a file:// URL, which Ollama refuses by default: restart Ollama with OLLAMA_ORIGINS=*, or serve the folder over http (python3 -m http.server 8000) and open it there.'
-              : ' If it blocks this page, restart Ollama with OLLAMA_ORIGINS=*.');
-        } else {
-          E.aiStatus.textContent = 'Preset loaded — paste your API key above, then press “Test & load models”.';
-        }
-        U.toast('Preset loaded: ' + btn.textContent.trim(), 'ok');
-      });
-    });
     E.btnTestKey.addEventListener('click', testKey);
     E.btnRefreshModels.addEventListener('click', testKey);
     E.inpModel.addEventListener('change', function () { setActiveModel(E.inpModel.value.trim()); });
+    E.inpModel.addEventListener('input', function () { setActiveModel(E.inpModel.value.trim()); });
     E.inpTargetLang.addEventListener('change', function () { settings.targetLang = E.inpTargetLang.value.trim() || 'English'; saveSettings(); });
     E.inpTargetCode.addEventListener('change', function () { settings.targetCode = E.inpTargetCode.value.trim() || 'en-US'; saveSettings(); });
     E.chkAutoPlay.addEventListener('change', function () { settings.autoPlay = E.chkAutoPlay.checked; saveSettings(); });
@@ -1092,6 +1221,10 @@
     cacheEls();
     applyTheme();
     U.initVoices();
+    // Name a provider saved before the list existed, and remember its connection
+    // so switching providers can bring it back later.
+    migrateProvider();
+    rememberConn();
     syncSettingsUI();
     bindEvents();
     if (E.fileWarn) E.fileWarn.hidden = window.location.protocol !== 'file:';

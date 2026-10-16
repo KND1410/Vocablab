@@ -1003,6 +1003,34 @@ ok(/function toast\(message, kind, ms\)/.test(fs.readFileSync(path.join(root, 'j
 ok(/isLocalBaseUrl\(settings\.oaiBase\)[\s\S]{0,400}OLLAMA_ORIGINS/.test(appSrc),
   'the Ollama preset explains the CORS requirement');
 
+// Settings → AI offers the whole provider list, and the menu is built from that
+// one table — so a new provider can never end up missing from the picker.
+const provs = Ai.providers;
+const provIds = provs.map((p) => p.id);
+eq(provIds, ['gemini', 'groq', 'cerebras', 'openrouter', 'mistral', 'deepseek', 'cloudflare', 'ollama', 'openai'],
+  'provider list order');
+eq(provs.filter((p) => p.transport === 'gemini').map((p) => p.id), ['gemini'], 'only Gemini speaks Google\'s own API');
+ok(provs.every((p) => p.label && /^(gemini|openai)$/.test(p.transport)), 'every provider has a label and a transport');
+ok(provs.every((p) => p.id === 'gemini' || p.id === 'openai' || /^https?:\/\//.test(p.base)),
+  'every named provider has a base URL');
+ok(provs.every((p) => p.id === 'openai' || p.cost === 'local' || /^https:\/\//.test(p.keyUrl)),
+  'every hosted provider says where to get a key');
+eq(Ai.providerById('deepseek').base, 'https://api.deepseek.com/v1', 'DeepSeek preset base URL');
+eq(Ai.providerById('deepseek').model, 'deepseek-flash', 'DeepSeek default model');
+eq(Ai.providerById('cerebras').base, 'https://api.cerebras.ai/v1', 'Cerebras preset base URL');
+eq(Ai.providerById('nope'), null, 'an unknown provider id is not accepted');
+ok(/renderProviderOptions\(\)/.test(appSrc) && /PROVIDERS\.forEach/.test(appSrc), 'the picker is built from the provider table');
+ok(!/data-base=/.test(htmlSrc) && !/\.preset/.test(appSrc + htmlSrc), 'the old hard-coded preset chips are gone');
+ok(/id="providerHint"/.test(htmlSrc), 'Settings explains the selected provider');
+ok(/E\.inpGeminiKey\.addEventListener\('input'/.test(appSrc) && /E\.inpOaiKey\.addEventListener\('input'/.test(appSrc),
+  'a pasted key counts even if the field never loses focus');
+ok(/function useProvider\(/.test(appSrc) && /function loadConn\(/.test(appSrc) && /function rememberConn\(/.test(appSrc),
+  'each provider keeps its own key, base URL and model');
+ok(/Switch to Groq \(free\)/.test(appSrc), 'a provider out of quota offers a one-click switch');
+ok(/daily quota per project/.test(appSrc), 'the Gemini hint explains what its free tier really is');
+ok(/pick another provider in Settings → AI/.test(fs.readFileSync(path.join(root, 'js/ai.js'), 'utf8')),
+  'a 429 tells the learner they can switch provider');
+
 // A multiple-choice pick reveals the translation of every option, and an
 // accepted alternative explains why it counted.
 ok(/function revealTranslation\(/.test(appSrc) && /revealTranslation\(btn, text, q\.direction\)/.test(appSrc),
