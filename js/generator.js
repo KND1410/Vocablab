@@ -143,5 +143,5 @@
     return null;
   }
 
-  global.Gen = { build: build, maskTerm: maskTerm };
+  global.Gen = { build: build, maskTerm: maskTerm, pickDistractors: pickDistractors, poolByTopic: poolByTopic };
 })(typeof window !== 'undefined' ? window : globalThis);

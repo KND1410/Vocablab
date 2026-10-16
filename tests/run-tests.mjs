@@ -869,6 +869,11 @@ const aiOpts = {
   targetLang: 'French', meaningLang: 'Vietnamese'
 };
 const notAmbiguous = (q) => q.options.every((o) => Quiz.sameAnswer(o, q.answer) || !Util.tooSimilarMeaning(o, q.answer));
+/* Every option must be a word the sheet defines, so it can be shown with its
+   translation under it after answering — and so the learner can look it up. */
+const onSheet = (q, words) => q.options.every((o) =>
+  words.some((w) => Quiz.sameAnswer(w.term, o) || Quiz.sameAnswer(w.meaning, o)));
+const translatable = (q, words) => q.options.every((o) => Quiz.counterpart(o, q.direction, words).length > 0);
 
 fetchRoutes = [['/chat/completions', () => aiJson([
   { type: 'mc', direction: 'term2meaning', term: 'avoir un impact sur', prompt: 'avoir un impact sur',
@@ -879,8 +884,11 @@ const aiBuilt = await Quiz.buildPool(Object.assign({}, aiOpts, {
   items: Quiz.planItems([clashPool[0]], ['mc'], 't2m', 0)
 }));
 eq(aiBuilt.questions.length, 1, 'AI question kept');
-eq(aiBuilt.questions[0].options.length, 3, 'AI near-synonym option peeled (4 → 3)');
+eq(aiBuilt.questions[0].options.length, 4, 'peeled option is refilled with a sheet word (4 → 4)');
+ok(aiBuilt.questions[0].options.indexOf('tác động tích cực (đến)') === -1, 'the near-synonym itself is gone');
 ok(notAmbiguous(aiBuilt.questions[0]), 'no ambiguous option survives the pipeline');
+ok(onSheet(aiBuilt.questions[0], clashPool), 'every option is a word the sheet defines');
+ok(translatable(aiBuilt.questions[0], clashPool), 'every option can be translated under it');
 
 fetchRoutes = [['/chat/completions', () => aiJson([
   { type: 'mc', direction: 'meaning2term', term: 'avoir un impact sur', prompt: 'có tác động đến',
@@ -890,11 +898,12 @@ const aiBuilt2 = await Quiz.buildPool(Object.assign({}, aiOpts, {
   items: Quiz.planItems([clashPool[0]], ['mc'], 'm2t', 0)
 }));
 const q2 = aiBuilt2.questions[0];
-eq(q2.type, 'mc', 'a fresh fair question is built when the AI options are all synonyms');
-eq(q2.source, 'builtin', '…built by the built-in generator');
-ok(q2.options.length >= 3 && notAmbiguous(q2), 'rebuilt question is unambiguous');
+eq(q2.type, 'mc', 'a fair question still comes out when the AI options are all synonyms');
+ok(q2.options.length >= 3 && notAmbiguous(q2), 'repaired question is unambiguous');
 ok(!q2.options.includes('agir sur') && !q2.options.includes('affecter'),
   'words that share the meaning are not offered');
+ok(onSheet(q2, clashPool) && translatable(q2, clashPool),
+  'the synonym slots are refilled with translatable sheet words');
 
 /* A question cached before this fix (the learner's browser) is repaired on the
    way out, so an old ambiguous question can never be replayed. */
@@ -917,17 +926,42 @@ const repaired = await Quiz.buildPool(Object.assign({}, aiOpts, {
   items: Quiz.planItems([clashPool[5]], ['mc'], 't2m', 0)
 }));
 eq(repaired.swapped, 1, 'a stale cached question is repaired instead of replayed');
-eq(repaired.questions[0].options.length, 3, 'the ambiguous cached option is gone (4 → 3)');
+eq(repaired.questions[0].options.length, 4, 'the ambiguous cached option is replaced (4 → 4)');
+ok(repaired.questions[0].options.indexOf('dẫn đến') === -1, 'the ambiguous cached option is gone');
 ok(notAmbiguous(repaired.questions[0]), 'repaired question is unambiguous');
+ok(onSheet(repaired.questions[0], clashPool) && translatable(repaired.questions[0], clashPool),
+  'repaired options are sheet words with translations');
 
 cachedEntry.q.options = ['làm phát sinh, dẫn đến', 'dẫn đến', 'phát sinh'];
 store.set('vocablab.qcache', JSON.stringify(qcache));
 const repaired2 = await Quiz.buildPool(Object.assign({}, aiOpts, {
   items: Quiz.planItems([clashPool[5]], ['mc'], 't2m', 0)
 }));
-eq(repaired2.questions[0].source, 'builtin', 'cached question rebuilt when only synonyms remain');
-ok(notAmbiguous(repaired2.questions[0]) && repaired2.questions[0].options.length >= 3,
-  'rebuilt cached question is unambiguous');
+ok(repaired2.questions[0].options.length >= 3 && notAmbiguous(repaired2.questions[0]),
+  'repaired cached question is unambiguous');
+ok(onSheet(repaired2.questions[0], clashPool) && translatable(repaired2.questions[0], clashPool),
+  'a cached question left with only synonyms is refilled with sheet words');
+
+/* The reported bug: the model wrote options that are not in the sheet at all
+   («garder», «fermer»), so nothing could be shown under them after answering and
+   the learner met words they cannot look up. Such options are now swapped for
+   real sheet words, and every option keeps its translation. */
+fetchRoutes = [['/chat/completions', () => aiJson([
+  { type: 'mc', direction: 'term2meaning', term: 'avoir un impact sur', prompt: 'avoir un impact sur',
+    options: ['có tác động đến', 'garder', 'fermer', 'gây hậu quả xấu (đến)'],
+    answer: 'có tác động đến', explanation: 'x' }
+])]];
+const invented = await Quiz.buildPool(Object.assign({}, aiOpts, {
+  items: Quiz.planItems([clashPool[0]], ['mc'], 't2m', 0)
+}));
+const invQ = invented.questions[0];
+eq(invQ.options.length, 4, 'invented options are replaced, not dropped (4 → 4)');
+ok(invQ.options.indexOf('garder') === -1 && invQ.options.indexOf('fermer') === -1, 'invented words are gone');
+ok(onSheet(invQ, clashPool), 'every option is a word the sheet defines');
+ok(translatable(invQ, clashPool), 'every option has a translation to show under it');
+eq(invQ.options.filter((o) => Quiz.sameAnswer(o, invQ.answer)).length, 1, 'exactly one option is the answer');
+eq(Quiz.grade(invQ, invQ.answer).verdict, 'correct', 'the repaired question is still gradable');
+ok(typeof Gen.pickDistractors === 'function', 'Gen exports pickDistractors for the repair');
 
 fetchRoutes = [];
 

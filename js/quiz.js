@@ -159,17 +159,29 @@
   }
 
   /**
-   * Peel multiple-choice options that could also be the right answer. Applied
-   * to every question — freshly generated, built-in, or cached — so only one
-   * option can ever be graded correct. A question is rebuilt with the built-in
-   * generator when no single right answer survives.
+   * Peel multiple-choice options that could also be the right answer, and drop
+   * any option the sheet does not define. Applied to every question — freshly
+   * generated, built-in, or cached — so only one option can ever be graded
+   * correct and every option has a translation to show once it is answered.
+   * Dropped options are replaced with real sheet words; a question that cannot
+   * be made unambiguous is rebuilt with the built-in generator.
    */
   function sanitizeQuestion(q, item, pool) {
     if (!q || q.type !== 'mc' || !Array.isArray(q.options)) return q;
     const words = pool || [];
     const meaning2term = q.direction === 'meaning2term';
+    // Options and answer sit on the same side of the card: the meaning for
+    // term→meaning, the French term for meaning→term.
+    const side = meaning2term ? 'term' : 'meaning';
     const sameText = function (a, b) {
       return Util.normalizeForCompare(Util.stripDiacritics(a)) === Util.normalizeForCompare(Util.stripDiacritics(b));
+    };
+    /** Does the sheet define this text on that side? */
+    const onSheet = function (text, field) {
+      for (const w of words) {
+        if (w[field] && sameAnswer(w[field], text)) return true;
+      }
+      return false;
     };
     /** A deck word with this term and the same meaning is a second right answer. */
     const alsoRight = function (option) {
@@ -192,10 +204,31 @@
       if (sameAnswer(o, q.answer)) continue;             // e.g. one item of a meaning list
       if (Util.tooSimilarMeaning(o, q.answer)) continue; // e.g. “có tác động đến” vs “tác động đến”
       if (meaning2term && alsoRight(o)) continue;        // a word with the same meaning
+      // Not a word from the learner's sheet: it could not be translated under
+      // the option, so the learner would meet a word they cannot look up.
+      if (!onSheet(o, side)) continue;
       kept.push(o);
     }
-    if (answerKept && kept.length >= 3) {
-      return kept.length === q.options.length ? q : Object.assign({}, q, { options: kept });
+
+    if (answerKept && onSheet(q.answer, side)) {
+      // Top up with real sheet words, chosen the way the built-in generator
+      // chooses them (same topic when it has enough words), so a question keeps
+      // four usable choices and every choice is one of the learner's words.
+      if (kept.length < 4) {
+        const candidates = Gen.poolByTopic(words, item.topicId);
+        for (const spare of Gen.pickDistractors(candidates, item, side, 8)) {
+          if (kept.length >= 4) break;
+          if (sameAnswer(spare, q.answer) || Util.tooSimilarMeaning(spare, q.answer)) continue;
+          if (kept.some(function (k) { return sameText(k, spare); })) continue;
+          if (meaning2term && alsoRight(spare)) continue;
+          kept.push(spare);
+        }
+      }
+      if (kept.length >= 3) {
+        const untouched = kept.length === q.options.length &&
+          kept.every(function (o, i) { return o === q.options[i]; });
+        return untouched ? q : Object.assign({}, q, { options: kept });
+      }
     }
     const rebuilt = builtinFor(item, pool, ['mc', 'translate', 'blank']);
     return Object.assign({}, rebuilt, { source: rebuilt.source || 'builtin' });
