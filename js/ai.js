@@ -328,7 +328,7 @@
         { role: 'system', content: o.system },
         { role: 'user', content: o.user }
       ],
-      temperature: 0.8,
+      temperature: o.temperature == null ? 0.8 : o.temperature,
       max_tokens: o.maxTokens || 4096
     };
     if (o.jsonMode) body.response_format = { type: 'json_object' };
@@ -346,6 +346,7 @@
     if (!String(text).trim()) {
       const reason = (choice && choice.finish_reason) || 'unknown';
       const err = new Error('Provider returned no text (' + reason + ')');
+      err.empty = true;
       err.friendly = 'The AI provider returned an empty answer (' + reason + '). VocabLab will use built-in questions for these words.';
       throw err;
     }
@@ -550,22 +551,67 @@
     throw lastErr || new Error('AI provider call failed');
   }
 
+  /** One line of the reply, short enough to show in an error. */
+  function excerpt(text) {
+    return String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, 120);
+  }
+
+  /** Appended on the second try: repeat the shape and say what was wrong. */
+  function repairNote() {
+    return '\n\nYour previous reply could not be used. Reply again with ONLY the JSON object described above — ' +
+      'one entry per ITEM, no code fences, no commentary.\nShape: ' + REPLY_SHAPE;
+  }
+
+  /**
+   * Ask, then ask once more when the reply cannot be turned into questions.
+   * A model that ignores JSON mode, wraps the object in prose or stops early
+   * gets one explicit second chance (colder, with more room) instead of the
+   * whole batch silently falling back.
+   */
+  async function askForQuestions(call, built, items, modelLabel) {
+    let lastText = '';
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let res = null;
+      try {
+        res = await call({
+          user: attempt ? built.user + repairNote() : built.user,
+          temperature: attempt ? 0.2 : undefined,
+          maxTokens: attempt ? 8192 : undefined
+        });
+      } catch (e) {
+        // An empty/blocked answer is worth one more try; auth and quota errors are not.
+        if (!e || !e.empty || attempt === 1) throw e;
+        lastErr = e;
+        continue;
+      }
+      lastText = String((res && res.text) || '');
+      try {
+        const questions = normalizeQuestions(parseJsonLoose(lastText), items);
+        if (questions.length) return questions;
+      } catch (e) { /* not JSON at all → repair pass */ }
+    }
+    if (lastErr && !lastText) throw lastErr;
+    const err = new Error('Model produced no usable questions');
+    err.raw = lastText;
+    err.friendly = modelLabel + ' answered, but not in the JSON shape VocabLab needs — try another model in Settings → AI.';
+    err.detail = err.friendly + ' “Test & load models” lists what this provider serves. ' +
+      'Reasoning models often wrap the JSON in prose or stop early, so a plain chat model is the safer pick.' +
+      (lastText ? '\nIt began with: “' + excerpt(lastText) + '…”' : '');
+    throw err;
+  }
+
   async function generateOaiQuestions(cfg) {
     const { baseUrl, key, model, items, targetLang, meaningLang, signal } = cfg;
     if (!items || !items.length) return [];
     const built = buildPrompt(items, targetLang || 'French', meaningLang || 'Vietnamese');
-    const res = await oaiCallWithFallbacks({
-      baseUrl: baseUrl, key: key, model: model,
-      system: built.system, user: built.user, signal: signal
-    });
-    const raw = parseJsonLoose(res.text);
-    const questions = normalizeQuestions(raw, items);
-    if (!questions.length) {
-      const err = new Error('Model produced no usable questions');
-      err.friendly = 'The AI provider returned questions in an unexpected shape — falling back to built-in questions for these words.';
-      throw err;
-    }
-    return questions;
+    return askForQuestions(function (extra) {
+      return oaiCallWithFallbacks({
+        baseUrl: baseUrl, key: key, model: model, system: built.system,
+        user: extra.user, temperature: extra.temperature, maxTokens: extra.maxTokens,
+        signal: signal
+      });
+    }, built, items, '“' + model + '”');
   }
 
   /* ---------- Usage counter ---------- */
@@ -677,6 +723,7 @@
     if (!text) {
       const reason = (data.promptFeedback && data.promptFeedback.blockReason) || (cand && cand.finishReason) || 'unknown';
       const err = new Error('Gemini returned no text (' + reason + ')');
+      err.empty = true;
       err.friendly = 'Gemini blocked or emptied this request (' + reason + '). VocabLab will use built-in questions instead.';
       throw err;
     }
@@ -710,6 +757,18 @@
   }
 
   /* ---------- Prompt + normalization ---------- */
+
+  /**
+   * The JSON shape every reply must have. Gemini gets it as a real schema, but
+   * the OpenAI-compatible providers are only told “json_object”, which says
+   * nothing about the field names — spell the whole shape out in the prompt too,
+   * or the model invents its own keys and every question is dropped.
+   */
+  const REPLY_SHAPE =
+    '{"questions":[{"type":"mc","direction":"term2meaning","term":"<term from ITEMS>",' +
+    '"prompt":"<question text>","hint":"","options":["<wrong>","<wrong>","<wrong>","<answer>"],' +
+    '"answer":"<answer text>","explanation":"<max 12 words, English>"}]}';
+
   function buildPrompt(items, targetLang, meaningLang) {
     const payload = items.map(function (i) {
       const entry = { term: i.term, meaning: i.meaning, type: i.type, direction: i.direction };
@@ -721,7 +780,7 @@
     const system =
       'You are VocabLab, an expert language tutor. You write short, accurate vocabulary quiz items ' +
       'for a learner whose native language is ' + meaningLang + ' and who is studying ' + targetLang + '. ' +
-      'You obey the JSON schema exactly and never add commentary.';
+      'You always reply with the requested JSON object and never add commentary.';
     const user =
       'Create exactly ' + items.length + ' quiz item(s) — one for EACH entry of ITEMS, using that entry\'s "type" and "direction".\n\n' +
       'ITEMS (JSON):\n' + JSON.stringify(payload, null, 1) + '\n\n' +
@@ -737,37 +796,124 @@
       '• type "translate": term2meaning → prompt = term, answer = meaning; meaning2term → prompt = meaning, answer = term. ' +
       'If the term is a phrase, keep it a phrase.\n' +
       '• "term" must repeat the ITEMS term exactly. "explanation": max 12 words, in English, useful for memorising.\n' +
-      '• Classroom-safe, CEFR A2–B2 sentences. Respond with JSON only.';
+      '• Classroom-safe, CEFR A2–B2 sentences.\n\n' +
+      'Reply with ONE JSON object and nothing else — no prose, no code fences — in exactly this shape:\n' +
+      REPLY_SHAPE + '\n' +
+      '• "questions" is an array with exactly one object per ITEM, in the same order (' + items.length + ' total).\n' +
+      '• "type" is exactly "mc", "blank" or "translate"; "direction" is "term2meaning", "meaning2term" or "blank".\n' +
+      '• "options" is exactly 4 strings for "mc", and [] for the other types.\n' +
+      '• "term" is copied from ITEMS character for character.';
     return { system: system, user: user };
   }
 
-  function normalizeQuestions(raw, items) {
-    let list = [];
-    if (Array.isArray(raw)) list = raw;
-    else if (raw && Array.isArray(raw.questions)) list = raw.questions;
+  /** Pull the question array out of whatever envelope the model used. */
+  function questionsFrom(raw) {
+    if (typeof raw === 'string') {
+      const t = raw.trim();
+      if (!/^[[{]/.test(t)) return [];
+      try { return questionsFrom(JSON.parse(t)); } catch (e) { return []; }
+    }
+    if (Array.isArray(raw)) return raw;
+    if (!raw || typeof raw !== 'object') return [];
+    // A single question instead of a list.
+    if (!raw.questions && !raw.items && (raw.term || raw.type || raw.question)) return [raw];
+    const names = ['questions', 'items', 'data', 'results', 'quiz'];
+    for (const name of names) {
+      const v = raw[name];
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') {
+        const inner = questionsFrom(v);
+        if (inner.length) return inner;
+        continue;
+      }
+      if (v && typeof v === 'object') {
+        if (Array.isArray(v.questions)) return v.questions;
+        if (Array.isArray(v.items)) return v.items;
+        // {"1": {...}, "2": {...}}
+        const vals = Object.keys(v).map(function (k) { return v[k]; });
+        if (vals.length && vals.every(function (x) { return x && typeof x === 'object'; })) return vals;
+      }
+    }
+    return [];
+  }
 
+  /** The first of several possible field names the model may have used. */
+  function pickField(obj, names) {
+    for (const name of names) {
+      const v = obj[name];
+      if (v != null && v !== '' && !(Array.isArray(v) && !v.length)) return v;
+    }
+    return undefined;
+  }
+
+  function normalizeQType(value) {
+    const s = String(value == null ? '' : value).toLowerCase().replace(/[\s-]+/g, '_');
+    if (!s) return '';
+    if (s === 'mc' || s === 'mcq' || s === 'multiple_choice' || s === 'multiplechoice' || s === 'choice') return 'mc';
+    if (s === 'blank' || s === 'fill_in_the_blank' || s === 'fill_blank' || s === 'cloze' || s === 'gap' || s === 'gaps') return 'blank';
+    if (s === 'translate' || s === 'translation' || s === 'typing' || s === 'type_answer') return 'translate';
+    return '';
+  }
+
+  /** A forgiving key for matching a model's “term” to an ITEM. */
+  function looseKey(value) {
+    return Util.normalizeForCompare(Util.stripDiacritics(value))
+      .replace(/^(?:le|la|les|l|un|une|des|du|de|the|a|an)\s+/, '')
+      .replace(/[^a-z0-9 ]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeQuestions(raw, items) {
+    const list = questionsFrom(raw);
+
+    const entries = items.map(function (item, idx) { return { item: item, idx: idx, used: false }; });
     const byTerm = Object.create(null);
-    items.forEach(function (item, idx) {
-      const k = Util.normalize(item.term);
-      (byTerm[k] = byTerm[k] || []).push({ item: item, idx: idx, used: false });
+    const byLoose = Object.create(null);
+    entries.forEach(function (entry) {
+      const key = Util.normalize(entry.item.term);
+      (byTerm[key] = byTerm[key] || []).push(entry);
+      const loose = looseKey(entry.item.term);
+      if (loose) (byLoose[loose] = byLoose[loose] || []).push(entry);
     });
+
+    /** The ITEM a model's text refers to — exact first, then an unambiguous loose match. */
+    function findEntry(value) {
+      if (value == null) return null;
+      const bucket = byTerm[Util.normalize(value)];
+      if (bucket) {
+        const free = bucket.find(function (e) { return !e.used; });
+        if (free) return free;
+      }
+      const loose = byLoose[looseKey(value)];
+      // “le chat” / “chat”, “gare.” / “gare” — only when exactly one ITEM fits.
+      if (loose && loose.length === 1 && !loose[0].used) return loose[0];
+      return null;
+    }
 
     const out = [];
     for (const q of list) {
       if (!q || typeof q !== 'object') continue;
-      const type = String(q.type || '').toLowerCase();
-      if (type !== 'mc' && type !== 'blank' && type !== 'translate') continue;
 
-      const bucket = byTerm[Util.normalize(q.term)];
-      if (!bucket) continue;
-      const match = bucket.find(function (b) { return !b.used; });
-      if (!match) continue;
-      match.used = true;
+      // Models name these fields differently; accept the usual synonyms rather
+      // than discard a perfectly good question.
+      const termText = pickField(q, ['term', 'word', 'item', 'vocabulary', 'source']);
+      const promptText = pickField(q, ['prompt', 'question', 'text', 'sentence', 'stem', 'front']);
+      const answerText = pickField(q, ['answer', 'correct', 'correct_answer', 'correctAnswer', 'solution', 'back', 'target']);
+      const rawOptions = pickField(q, ['options', 'choices', 'distractors', 'candidates']);
 
-      const item = match.item;
-      let answer = String(q.answer == null ? '' : q.answer).trim();
-      let prompt = String(q.prompt == null ? '' : q.prompt).trim();
-      if (!answer || !prompt) { match.used = false; continue; }
+      // A reply without "term" can still be placed by its prompt or its answer.
+      let entry = findEntry(termText);
+      if (!entry) entry = findEntry(promptText);
+      if (!entry) entry = findEntry(answerText);
+      if (!entry) continue;
+
+      const item = entry.item;
+      const type = normalizeQType(q.type) || normalizeQType(q.kind) || normalizeQType(item.type) || 'translate';
+      let answer = String(answerText == null ? '' : answerText).trim();
+      let prompt = String(promptText == null ? '' : promptText).trim();
+      if (!answer || !prompt) continue;
+      entry.used = true;
 
       // Sanity-check direction using the expected answer.
       let direction = type === 'blank' ? 'blank' : (item.direction || 'term2meaning');
@@ -781,7 +927,9 @@
 
       let options = [];
       if (type === 'mc') {
-        options = Util.uniq((Array.isArray(q.options) ? q.options : [])
+        const arr = Array.isArray(rawOptions) ? rawOptions
+          : (typeof rawOptions === 'string' ? rawOptions.split(/\s*[|;]\s*/) : []);
+        options = Util.uniq(arr
           .map(function (o) { return String(o == null ? '' : o).trim(); })
           .filter(Boolean));
         const norm = function (s) { return Util.normalizeForCompare(Util.stripDiacritics(s)); };
@@ -796,7 +944,7 @@
         options = options.filter(function (o) {
           return norm(o) === norm(answer) || !Util.tooSimilarMeaning(o, answer);
         });
-        if (options.length < 3) { match.used = false; continue; }
+        if (options.length < 3) { entry.used = false; continue; }
         options = Util.shuffle(options);
       }
 
@@ -805,7 +953,7 @@
         if (!/_{2,}/.test(prompt)) {
           const rx = Util.termRegex(item.term, 'i');
           if (rx.test(prompt)) prompt = prompt.replace(rx, '___');
-          else { match.used = false; continue; }
+          else { entry.used = false; continue; }
         }
       }
 
@@ -814,10 +962,10 @@
         direction: direction,
         term: item.term,
         prompt: prompt,
-        hint: String(q.hint == null ? '' : q.hint).trim(),
+        hint: String(pickField(q, ['hint', 'meaning', 'translation']) || '').trim(),
         options: options,
         answer: answer,
-        explanation: String(q.explanation == null ? '' : q.explanation).trim()
+        explanation: String(pickField(q, ['explanation', 'explain', 'note', 'notes', 'why']) || '').trim()
       });
     }
     return out;
@@ -831,17 +979,11 @@
     const { key, model, items, targetLang, meaningLang, signal } = opts;
     if (!items || !items.length) return [];
     const built = buildPrompt(items, targetLang || 'French', meaningLang || 'Vietnamese');
-    const res = await callWithFallbacks({
-      key: key, model: model, system: built.system, user: built.user, signal: signal
-    });
-    const raw = parseJsonLoose(res.text);
-    const questions = normalizeQuestions(raw, items);
-    if (!questions.length) {
-      const err = new Error('Model produced no usable questions');
-      err.friendly = 'Gemini returned questions in an unexpected shape — falling back to built-in questions for these words.';
-      throw err;
-    }
-    return questions;
+    return askForQuestions(function (extra) {
+      return callWithFallbacks({
+        key: key, model: model, system: built.system, user: extra.user, signal: signal
+      });
+    }, built, items, 'Gemini (' + model + ')');
   }
 
   /* ---------- Provider dispatchers ---------- */
@@ -874,6 +1016,7 @@
     pickDefaultModel: pickDefaultModel,
     prettifyModel: prettifyModel,
     generateQuestions: generateQuestions,
+    buildPrompt: buildPrompt,
     parseJsonLoose: parseJsonLoose,
     normalizeQuestions: normalizeQuestions,
     usageGet: usageGet,

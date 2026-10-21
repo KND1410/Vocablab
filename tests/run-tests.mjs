@@ -706,6 +706,97 @@ const starved = Ai.normalizeQuestions({
 }, aiItems);
 eq(starved.length, 0, 'AI MC rejected when only near-synonyms remain');
 
+/* The reported bug: an OpenAI-compatible provider gets “json_object” but no
+   schema, so the prompt itself has to state the shape; and a reply that still
+   deviates must be understood or retried, not turned into “unexpected shape”. */
+const prompt = Ai.buildPrompt([{ term: 'gare', meaning: 'nhà ga', type: 'mc', direction: 'term2meaning' }],
+  'French', 'Vietnamese');
+ok(/"questions"/.test(prompt.user) && /"term"/.test(prompt.user) && /"options"/.test(prompt.user),
+  'the prompt spells out the exact JSON shape');
+ok(/one object per ITEM/.test(prompt.user), 'it says how many objects to return');
+ok(/no code fences/i.test(prompt.user), 'it forbids code fences');
+
+const shapeItems = [
+  { term: 'la gare', meaning: 'nhà ga', type: 'mc', direction: 'term2meaning' },
+  { term: 'le billet', meaning: 'vé', type: 'translate', direction: 'term2meaning' }
+];
+const altNames = Ai.normalizeQuestions({
+  items: [
+    { type: 'multiple_choice', word: 'gare', question: 'la gare', choices: ['nhà ga', 'vé', 'hành lý', 'sân bay'], correct: 'nhà ga' },
+    { kind: 'translation', word: 'billet', prompt: 'le billet', answer: 'vé' }
+  ]
+}, shapeItems);
+eq(altNames.length, 2, 'alternate field names and a dropped article are understood');
+eq(altNames[0].type, 'mc', '“multiple_choice” maps to mc');
+eq(altNames[0].term, 'la gare', '“gare” still matches “la gare”');
+eq(altNames[1].type, 'translate', '“translation” maps to translate');
+
+const nestedEnvelope = Ai.normalizeQuestions({
+  quiz: { questions: [{ type: 'mc', term: 'la gare', prompt: 'la gare', options: ['a', 'b', 'c', 'nhà ga'], answer: 'nhà ga' }] }
+}, shapeItems);
+eq(nestedEnvelope.length, 1, 'a nested envelope is unwrapped');
+
+const noTerm = Ai.normalizeQuestions({
+  questions: [{ type: 'mc', prompt: 'la gare', options: ['a', 'b', 'c', 'nhà ga'], answer: 'nhà ga' }]
+}, shapeItems);
+eq(noTerm.length, 1, 'a reply without “term” is placed by its prompt');
+eq(noTerm[0].term, 'la gare', 'and lands on the right item');
+
+const doubleJson = Ai.normalizeQuestions(JSON.stringify({
+  questions: [{ type: 'mc', term: 'la gare', prompt: 'la gare', options: ['a', 'b', 'c', 'nhà ga'], answer: 'nhà ga' }]
+}), shapeItems);
+eq(doubleJson.length, 1, 'double-encoded JSON is unwrapped');
+
+/* A first reply that cannot be used is retried once, colder and with more room. */
+const oneItem = [{ term: 'gare', meaning: 'nhà ga', type: 'mc', direction: 'term2meaning' }];
+let repairCalls = [];
+aiFetch = async function (url, opts) {
+  const body = JSON.parse(opts.body || '{}');
+  repairCalls.push(body);
+  if (repairCalls.length === 1) {
+    return fakeResponse(JSON.stringify({
+      choices: [{ message: { content: 'Sorry, here are your words: gare, billet.' } }]
+    }), 200);
+  }
+  return fakeResponse(JSON.stringify({
+    choices: [{ message: { content: JSON.stringify({
+      questions: [{ type: 'mc', direction: 'term2meaning', term: 'gare', prompt: 'gare', options: ['a', 'b', 'c', 'nhà ga'], answer: 'nhà ga', explanation: 'x' }]
+    }) } }]
+  }), 200);
+};
+const recovered = await Ai.generateQuestions({
+  provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', key: 'gsk_x', model: 'openai/gpt-oss-120b',
+  items: oneItem, targetLang: 'French', meaningLang: 'Vietnamese'
+});
+eq(recovered.length, 1, 'a second, explicit request recovers the batch');
+eq(repairCalls.length, 2, 'exactly one repair attempt');
+ok(/could not be used/.test(repairCalls[1].messages[1].content), 'the repair says what was wrong');
+eq(repairCalls[1].temperature, 0.2, 'the repair is colder');
+eq(repairCalls[1].max_tokens, 8192, 'the repair has more room');
+ok(repairCalls[0].temperature === 0.8, 'the first request uses the normal temperature');
+
+/* When even that fails: a message that explains it, not “unexpected shape”. */
+let flatCalls = [];
+aiFetch = async function (url, opts) {
+  flatCalls.push(JSON.parse(opts.body || '{}'));
+  return fakeResponse(JSON.stringify({ choices: [{ message: { content: 'I could not comply.' } }] }), 200);
+};
+let unusable = null;
+try {
+  await Ai.generateQuestions({
+    provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', key: 'gsk_x', model: 'grok-4.7',
+    items: oneItem, targetLang: 'French', meaningLang: 'Vietnamese'
+  });
+} catch (e) { unusable = e; }
+ok(!!unusable, 'an unusable reply still fails so the built-in generator can take over');
+ok(unusable && /not in the JSON shape/.test(unusable.friendly), 'the message says what went wrong');
+ok(unusable && /grok-4\.7/.test(unusable.friendly), 'the message names the model to change');
+ok(!/It began with/.test(unusable.friendly), 'the toast stays short');
+ok(unusable && /It began with/.test(unusable.detail), 'the Settings box shows the start of the reply for diagnosis');
+eq(unusable && unusable.raw, 'I could not comply.', 'the raw reply is kept');
+eq(flatCalls.length, 2, 'one retry, then give up');
+aiFetch = null;
+
 /* ---------- OpenAI-compatible provider helpers ---------- */
 section('OpenAI-compatible helpers');
 const reqBody = Ai.oai.buildBody({ model: 'openrouter/free', system: 'sys', user: 'usr', jsonMode: true });
@@ -1041,9 +1132,9 @@ ok(/setDeck\(deck, \{ silent: warnings\.length > 0 \}\)/.test(appSrc), 'deck not
 ok(/renderSheetWarnings\(warnings\)/.test(appSrc), 'loading notes are also listed in Settings');
 ok(/id="sheetWarnings"/.test(htmlSrc), 'Settings has a persistent notes box');
 
-// An AI failure keeps its multi-line “what to do about it” text, in the toast
-// and in Settings → AI, instead of being cut down to one line.
-ok(/function showAiIssue\(/.test(appSrc) && /showAiIssue\(detail[,)]/.test(appSrc),
+// An AI failure keeps its “what to do about it” text in Settings → AI (and the
+// toast keeps a short line), instead of being cut down to one unhelpful line.
+ok(/function showAiIssue\(/.test(appSrc) && /showAiIssue\((?:err\.detail \|\| )?detail[,)]/.test(appSrc),
   'an AI failure is kept in Settings → AI');
 ok(/id="aiIssue"/.test(htmlSrc), 'Settings has a box for the full AI error');
 ok(/function useKeyProvider\(/.test(appSrc) && /'btnAiUseKey'/.test(appSrc),
