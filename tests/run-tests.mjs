@@ -1154,7 +1154,19 @@ const fixPrompt = Ai.buildCorrectionPrompt({
 });
 ok(/smallest possible change/.test(fixPrompt.system + ' ' + fixPrompt.user),
   'the corrector is told to change as little as possible');
-ok(/Do NOT rewrite for style/.test(fixPrompt.user), 'and never to rewrite for style');
+ok(/REFERENCE is only a guide/.test(fixPrompt.user), 'the reference is a guide, not the required answer');
+ok(/subject pronoun/.test(fixPrompt.user) && /tense or mood/.test(fixPrompt.user),
+  'the learner may choose their own pronoun and tense');
+ok(/Never “correct” any of those/.test(fixPrompt.user),
+  'and those legitimate choices must not be “corrected”');
+ok(/not agree with the subject the learner actually wrote/.test(fixPrompt.user),
+  'agreement is checked against the learner’s own subject');
+ok(/never write a note whose "fix" is the same as its "text"/.test(fixPrompt.user),
+  'no note is written when nothing changed');
+ok(/subtract only for the genuine errors/.test(fixPrompt.user),
+  'the score only drops for genuine errors and missing words');
+ok(/do not replace a correct phrase with more elegant wording/.test(fixPrompt.user),
+  'and never to restyle a correct phrase');
 ok(/LEARNER'S TRANSLATION/.test(fixPrompt.user) && /REFERENCE TRANSLATION/.test(fixPrompt.user),
   'the corrector sees both the learner’s text and the reference');
 ok(/"corrected"/.test(fixPrompt.user) && /"notes"/.test(fixPrompt.user), 'the correction shape is stated');
@@ -1202,10 +1214,27 @@ eq(parsedFix.used.filter((u) => u.used).map((u) => u.term), ['constater'], 'used
 eq(Ai.normalizeCorrection({ score: 999, corrected: 'x', used: [] }, kwWords, { direction: 'fr2vi', userText: '' }).score,
   100, 'the score is clamped');
 eq(Ai.normalizeCorrection({ correct: 'x' }, kwWords, {}), null, 'a reply without corrected text is unusable');
+const sameNote = Ai.normalizeCorrection({
+  score: 55, corrected: 'Les habitants constatent.',
+  notes: [{ text: 'constatent', fix: 'constatent', why: 'no-op' }]
+}, kwWords, { direction: 'vi2fr', userText: 'Les habitants constatent.' });
+eq(sameNote.notes.length, 0, 'a note that changes nothing is dropped');
+eq(sameNote.score, 100, '…and unchanged text scores 100, not the model’s guess');
+const dupNotes = Ai.normalizeCorrection({
+  score: 70, corrected: 'Les habitants constatent.',
+  notes: [{ text: 'habitant', fix: 'habitants', why: 'plural' },
+    { text: 'habitant', fix: 'habitants', why: 'plural again' }]
+}, kwWords, { direction: 'vi2fr', userText: 'Les habitant constatent.' });
+eq(dupNotes.notes.length, 1, 'the same fix is only listed once');
 // Without the model’s “used” list, the app still marks the words it can see.
 const localUsed = Ai.normalizeCorrection({ score: 40, corrected: 'y' }, kwWords,
   { direction: 'vi2fr', userText: 'Les habitants constatent la pollution.' });
 eq(localUsed.used.map((u) => u.used), [true, true, false], 'used words fall back to a local check');
+// A word that is plainly in the text is never reported as missing, even when
+// the model forgot it — a wrong ✗ is the kind of unfairness that demotivates.
+const generous = Ai.normalizeCorrection({ score: 88, corrected: 'x', used: [] }, kwWords.slice(0, 2),
+  { direction: 'vi2fr', userText: 'Les habitants constatent la pollution.' });
+eq(generous.used.map((u) => u.used), [true, true], 'the model cannot mark a used word as missing');
 eq(localUsed.verdict, 'weak', 'a low score is a weak verdict');
 
 // The two AI jobs, end to end through the OpenAI-compatible transport.
