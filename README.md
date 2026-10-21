@@ -1,8 +1,11 @@
 # 📚 VocabLab
 
+**Live app: <https://vocablab-one.vercel.app>** — no install, nothing to run.
+
 Turn a **Google Sheet of vocabulary** into AI-generated quizzes: multiple choice,
-fill-in-the-blank and typed translation. Built for learning **French** (Vietnamese
-meanings out of the box), but works with any language.
+fill-in-the-blank, typed translation and whole-paragraph translation. Built for
+learning **French** (Vietnamese meanings out of the box), but works with any
+language.
 
 - Every **tab** of your sheet becomes a **topic**.
 - Questions are written by an **AI model you choose** — Google Gemini, Groq,
@@ -31,7 +34,10 @@ language/
 
 ## 1 · Run it
 
-**Easiest:** double-click `index.html`. The demo deck works immediately.
+**Hosted:** <https://vocablab-one.vercel.app> (this repo, deployed by Vercel on
+every push to `main`; nothing to build or configure).
+
+**Easiest locally:** double-click `index.html`. The demo deck works immediately.
 
 **Better (recommended):** serve the folder so browser requests are never blocked:
 
@@ -68,6 +74,13 @@ Only the first two columns are required; extras are optional:
   an emoji (e.g. `🟢 Nhảy tới B1 (42 từ)` navigation links), are treated as
   decoration, not vocabulary.
 - Hidden tabs and chart tabs are skipped.
+
+**How it is read:** by fixed rules, not by AI. The header row is matched against
+the names above (accent/case-insensitive), then the first two usable columns are
+used as word and meaning; the AI only writes questions *from* the words it is
+given and never guesses your columns. So any plain table works — extra columns,
+section-title rows, or no header at all. Limits: 6 000 rows per tab, 160
+characters per word, 400 per meaning.
 
 See `sample-sheet.csv` for an example (French → Vietnamese).
 
