@@ -63,7 +63,7 @@
           <label class="chip"><input id="typeTranslate" type="checkbox" checked><span>Translate (typed)</span></label>
           <label class="chip"><input id="typeParagraph" type="checkbox"><span>Paragraph translation</span></label>
         </div>
-        <p id="paragraphHint" class="muted small" hidden>Paragraph translation needs an AI key — add one in Settings → AI.</p>
+        <p id="paragraphHint" class="muted small" hidden>Paragraph translation needs AI — use the free model (no key) in Settings → AI.</p>
       </div>
 
       <div class="field" id="paraOpts" hidden>
@@ -112,7 +112,7 @@
         <div class="field">
           <label class="field-label" for="selSource">Generator</label>
           <select id="selSource" class="input input-sm">
-            <option value="auto" selected>Auto (AI if key)</option>
+            <option value="auto" selected>Auto (AI when available)</option>
             <option value="ai">AI only</option>
             <option value="builtin">Built-in (offline)</option>
           </select>
@@ -138,8 +138,8 @@
       <div class="hero">
         <h1>Learn vocabulary <span class="grad">from your own Google Sheet</span></h1>
         <p class="muted">Every tab of your sheet becomes a topic. VocabLab turns your words into multiple choice,
-          fill-in-the-blank and translation quizzes — with AI-written example sentences (free Gemini / Groq /
-          OpenRouter / Ollama), and a solid built-in generator as backup.</p>
+          fill-in-the-blank and translation quizzes — with AI-written questions out of the box (a free model that
+          needs no key), or your own provider if you prefer.</p>
       </div>
 
       <div class="quick-cards">
@@ -155,8 +155,8 @@
         </button>
         <button class="quick-card" id="btnQuickAi">
           <span class="qc-ico">✨</span>
-          <strong>Add a free AI key</strong>
-          <span class="muted small">Gemini, Groq, OpenRouter or Mistral — a free key is enough. (Prefer no key? Ollama, but you install and run it yourself.)</span>
+          <strong>Use free AI — no key</strong>
+          <span class="muted small">Just pick a model in Settings → AI. Have a key from Gemini, Groq or another provider? Switch to Advanced instead.</span>
         </button>
       </div>
 
@@ -345,49 +345,78 @@
 
   <!-- AI tab -->
   <div class="tab-pane active" data-pane="ai">
-    <div class="field">
-      <label class="field-label" for="selProvider">AI provider</label>
-      <select id="selProvider" class="input"></select>
-      <p id="providerHint" class="muted small"></p>
+    <div class="ai-mode" role="group" aria-label="AI setup">
+      <button id="modeSimple" class="ai-mode-btn is-on" type="button" aria-pressed="true">
+        <span class="ai-mode-title">Simple</span>
+        <span class="ai-mode-sub">Free AI — no key, no account</span>
+      </button>
+      <button id="modeAdvanced" class="ai-mode-btn" type="button" aria-pressed="false">
+        <span class="ai-mode-title">Advanced</span>
+        <span class="ai-mode-sub">Pick any model, paste your own key</span>
+      </button>
     </div>
 
-    <div id="paneGemini">
+    <div id="paneSimple">
       <div class="field">
-        <label class="field-label" for="inpGeminiKey">Gemini API key <span class="muted">(free)</span></label>
+        <label class="field-label" for="selSimpleModel">Model</label>
+        <select id="selSimpleModel" class="input"></select>
+        <p class="muted small">Nothing to sign up for and no key to paste. It is a shared free service:
+          one request every 30 seconds. VocabLab asks for up to 20 words per request and waits automatically
+          when the free slot is taken. For longer quizzes or several paragraphs, Advanced is faster.</p>
         <div class="input-row">
-          <input id="inpGeminiKey" class="input" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
-          <button id="btnToggleKey" class="btn btn-subtle btn-sm" type="button">Show</button>
+          <button id="btnTestSimple" class="btn btn-subtle" type="button">Check the free AI</button>
         </div>
-        <p class="muted small">Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
-          Stored only in this browser — requests go straight to Google.</p>
       </div>
     </div>
 
-    <div id="paneOai" hidden>
+    <div id="aiAdvanced" hidden>
       <div class="field">
-        <label class="field-label" for="inpOaiBase">Base URL</label>
-        <input id="inpOaiBase" class="input" type="text" placeholder="https://api.groq.com/openai/v1" autocomplete="off" spellcheck="false">
+        <label class="field-label" for="selProvider">AI provider</label>
+        <select id="selProvider" class="input"></select>
+        <p id="providerHint" class="muted small"></p>
       </div>
-      <div class="field">
-        <label class="field-label" for="inpOaiKey">API key <span class="muted">(not needed for local Ollama)</span></label>
-        <div class="input-row">
-          <input id="inpOaiKey" class="input" type="password" placeholder="gsk_… or sk-…" autocomplete="off" spellcheck="false">
-          <button id="btnToggleOaiKey" class="btn btn-subtle btn-sm" type="button">Show</button>
+
+      <div id="paneGemini">
+        <div class="field">
+          <label class="field-label" for="inpGeminiKey">Gemini API key <span class="muted">(free)</span></label>
+          <div class="input-row">
+            <input id="inpGeminiKey" class="input" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
+            <button id="btnToggleKey" class="btn btn-subtle btn-sm" type="button">Show</button>
+          </div>
+          <p class="muted small">Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
+            Stored only in this browser — requests go straight to Google.</p>
         </div>
-        <p class="muted small">Stored only in this browser — requests go straight to the provider.</p>
+      </div>
+
+      <div id="paneOai" hidden>
+        <div class="field">
+          <label class="field-label" for="inpOaiBase">Base URL</label>
+          <input id="inpOaiBase" class="input" type="text" placeholder="https://api.groq.com/openai/v1" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label class="field-label" for="inpOaiKey">API key <span class="muted">(not needed for local Ollama)</span></label>
+          <div class="input-row">
+            <input id="inpOaiKey" class="input" type="password" placeholder="gsk_… or sk-…" autocomplete="off" spellcheck="false">
+            <button id="btnToggleOaiKey" class="btn btn-subtle btn-sm" type="button">Show</button>
+          </div>
+          <p class="muted small">Stored only in this browser — requests go straight to the provider.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="input-row">
+          <button id="btnTestKey" class="btn btn-subtle" type="button">Test &amp; load models</button>
+          <input id="inpModel" class="input input-sm grow" list="modelList" placeholder="model id" aria-label="Model" autocomplete="off" spellcheck="false">
+          <datalist id="modelList">
+            <option value="gemini-flash-latest"></option>
+          </datalist>
+          <button id="btnRefreshModels" class="btn btn-ghost btn-sm" type="button" title="Refresh model list">↻</button>
+        </div>
       </div>
     </div>
 
     <div class="field">
       <div id="aiIssue" class="notice notice-issue" hidden></div>
-      <div class="input-row">
-        <button id="btnTestKey" class="btn btn-subtle" type="button">Test &amp; load models</button>
-        <input id="inpModel" class="input input-sm grow" list="modelList" placeholder="model id" aria-label="Model" autocomplete="off" spellcheck="false">
-        <datalist id="modelList">
-          <option value="gemini-flash-latest"></option>
-        </datalist>
-        <button id="btnRefreshModels" class="btn btn-ghost btn-sm" type="button" title="Refresh model list">↻</button>
-      </div>
       <p id="aiStatus" class="muted small">Questions are generated with a free AI model — the built-in generator is the backup.</p>
       <p class="muted small">Requests used today: <strong id="usageToday">0</strong> · Cached questions: <strong id="cachedCount">0</strong>
         <button id="btnClearQCache" class="btn btn-ghost btn-xs" type="button">Clear cache</button></p>
@@ -558,8 +587,14 @@
       <code>#gid=…</code>) also work.</p>
 
     <h3>3 · AI questions</h3>
-    <p class="muted small">Pick a provider in Settings → AI — every one of them works; the menu is the whole list, not a
-      choice between “Gemini” and “other”. <strong>Google Gemini</strong> is the default (paste a free
+    <p class="muted small">Settings → AI has two modes.
+      <strong>Simple</strong> (the default) uses a free model that needs <em>no account and no key</em>: pick a
+      model and start a quiz. It is a shared public service limited to one request every 30 seconds, so VocabLab
+      batches up to 20 words per request and waits for the next free slot when it has to (a paragraph costs one
+      request to write and one to correct). For heavy use, <strong>Advanced</strong> with your own key has no such
+      queue.
+      <strong>Advanced</strong> is for your own provider and key — the menu is the whole list, not a choice between
+      “Gemini” and “other”. <strong>Google Gemini</strong> is the first one (paste a free
       <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Gemini API key</a>), and all the rest
       are OpenAI-compatible services with their own key:
       <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a> (free, very fast),
@@ -570,7 +605,7 @@
       Cloudflare Workers AI, or a local <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a>
       (no key; run it with <code>OLLAMA_ORIGINS=*</code>). Pick one, paste its key, press “Test &amp; load models”.
       Each provider keeps its own key, so you can switch back and forth without retyping.
-      Questions are generated in small batches and cached, so replays barely use quota. If the key is missing or
+      Questions are generated in small batches and cached, so replays barely use quota. If AI is unavailable or
       quota runs out, the built-in generator takes over automatically — the app never gets stuck.</p>
 
     <h3>3b · Paragraph translation</h3>
@@ -580,7 +615,9 @@
       box and press <strong>Check with AI</strong>. The correction keeps your wording wherever it is acceptable
       and only fixes real errors (spelling, accents, agreement with <em>your</em> subject, prepositions, a word
       that changes the meaning). Your own pronoun, tense and synonyms are fine — the reference translation is
-      only a guide to the meaning, never the answer you had to produce. The feedback shows your text, the fixed
+      only a guide to the meaning, never the answer you had to produce. The score still reflects the source's
+      ideas and the required words: leaving out an idea or a required word costs points even when the grammar
+      is fine. The feedback shows your text, the fixed
       version, one short note per actual change, and which sheet words you used. This exercise is AI-only: with
       no key (or Generator set to <em>Built-in</em>) the option is disabled and says why, and a failed generation
       is reported in Settings → AI rather than replaced by another question type.</p>
@@ -596,11 +633,11 @@
     <ul class="small muted">
       <li><strong>403 from Sheets</strong> — the sheet isn't shared as “Anyone with the link”, or the API key has restrictions that block the Sheets API.</li>
       <li><strong>“API has not been used / disabled”</strong> — enable the Google Sheets API for your key's project.</li>
-      <li><strong>AI errors</strong> — check the key in Settings → AI (“Test &amp; load models”), or switch Generator to <em>Built-in</em>. The app keeps the whole explanation in Settings → AI.</li>
+      <li><strong>AI errors</strong> — in Simple, press “Check the free AI” (Settings → AI); if the free service is busy, retry in a minute or move to Advanced. In Advanced, check the key (“Test &amp; load models”), or switch Generator to <em>Built-in</em>. The app keeps the whole explanation in Settings → AI.</li>
       <li><strong>Ollama / local server</strong> — Ollama is a program on your computer, not a web service: install it (<a href="https://ollama.com/download" target="_blank" rel="noopener">ollama.com/download</a>), run <code>ollama serve</code>, then <code>ollama pull llama3.2</code>. “nothing is running there” means VocabLab couldn't find it on that port; “a server answered, but it blocked this page” means CORS (<code>OLLAMA_ORIGINS=*</code>, and serve this page over <code>http(s)://</code>).</li>
-      <li><strong>429 quota</strong> — free-tier limit hit (Gemini's daily free quota is per project). Wait a minute, or pick
-        another provider in Settings → AI: Groq, Cerebras and OpenRouter have free tiers of their own. Built-in questions
-        cover the rest meanwhile.</li>
+      <li><strong>429 quota</strong> — free-tier limit hit. Wait a minute, or pick
+        another provider in Advanced: Groq, Cerebras and OpenRouter have free tiers of their own. Built-in questions
+        cover the rest meanwhile. In Simple, the free shared service can be busy — retry, or switch to Advanced.</li>
       <li><strong>Network errors</strong> — if you opened the file directly (<code>file://</code>), try serving the folder
         (<code>python3 -m http.server</code>) or hosting it. Some browsers restrict cross-site requests from local files.</li>
     </ul>

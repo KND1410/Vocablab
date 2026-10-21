@@ -20,6 +20,11 @@
    */
   const PROVIDERS = [
     {
+      id: 'pollinations', label: 'Free AI — no key, no account', short: 'Free AI', transport: 'openai',
+      base: 'https://text.pollinations.ai/openai', modelsUrl: 'https://text.pollinations.ai/models',
+      model: 'openai-fast', keyUrl: 'https://pollinations.ai', keyPrefix: '', cost: 'free', keyless: true
+    },
+    {
       id: 'gemini', label: 'Google Gemini — free tier', short: 'Google Gemini', transport: 'gemini',
       base: '', model: 'gemini-flash-latest', keyUrl: 'https://aistudio.google.com/apikey',
       keyPrefix: 'AIza', cost: 'free'
@@ -332,6 +337,13 @@
       max_tokens: o.maxTokens || 4096
     };
     if (o.jsonMode) body.response_format = { type: 'json_object' };
+    // The keyless model is a small reasoning model: left alone it can spend the
+    // whole token budget thinking and return an empty answer. Less reasoning and
+    // more room keep a 20-word batch inside one reply.
+    if (o.keyless) {
+      body.reasoning_effort = 'low';
+      body.max_tokens = Math.max(body.max_tokens, 8192);
+    }
     return body;
   }
 
@@ -461,17 +473,32 @@
         (p && p.keyPrefix ? '\n• ' + p.short + ' keys look like “' + p.keyPrefix + '…” — if yours does not, it belongs to another provider.' : '') +
         '\n• A key only works for the provider that issued it, and only for models that key may use.';
     } else if (res.status === 402) {
-      err.friendly = 'The provider says there are no credits for this model (402). On OpenRouter, pick a “:free” model such as openrouter/free.';
+      if (opts.keyless) {
+        const ra = res.headers && typeof res.headers.get === 'function' ? Number(res.headers.get('retry-after')) : NaN;
+        err.friendly = 'The free AI allows one request every 30 seconds — it is a shared public service.\n' +
+          '• Wait a moment and press again.\n' +
+          '• For no waiting, switch to Advanced in Settings → AI and use your own key.';
+        err.freeWait = true;
+        err.retryAfter = isFinite(ra) && ra > 0 ? Math.min(45, ra) : 30;
+      } else {
+        err.friendly = 'The provider says there are no credits for this model (402). On OpenRouter, pick a “:free” model such as openrouter/free.';
+      }
     } else if (res.status === 404) {
       err.friendly = 'Endpoint or model not found (404)' + (detail ? ' — ' + detail : '') +
         (isLocalBaseUrl(opts.base || '')
           ? '\n• Local Ollama: download the model first — ollama pull ' + (opts.model || 'llama3.2')
           : '\n• Check the Base URL and the model ID in Settings → AI.');
     } else if (res.status === 429) {
-      err.friendly = 'Rate limit reached (429) by this provider. Wait a minute, or switch provider in Settings → AI — ' +
-        'Groq, Cerebras and OpenRouter have free tiers. Built-in questions cover the rest meanwhile.';
+      err.friendly = opts.keyless
+        ? 'The free AI is busy right now (429) — it is a shared service with a queue.\n' +
+          '• Wait a minute and press again.\n' +
+          '• Still busy? Switch to Advanced in Settings → AI and use your own key, or set Generator to Built-in for now.'
+        : 'Rate limit reached (429) by this provider. Wait a minute, or switch provider in Settings → AI — ' +
+          'Groq, Cerebras and OpenRouter have free tiers. Built-in questions cover the rest meanwhile.';
     } else if (res.status >= 500) {
-      err.friendly = 'The provider had a server error (' + res.status + '). Try again shortly.';
+      err.friendly = opts.keyless
+        ? 'The free AI service had a server error (' + res.status + '). It is shared and occasionally overloaded — try again in a minute, or switch to Advanced with your own key.'
+        : 'The provider had a server error (' + res.status + '). Try again shortly.';
     } else {
       err.friendly = err.message;
     }
@@ -485,22 +512,38 @@
       err.friendly = 'Set the provider Base URL first (e.g. https://api.groq.com/openai/v1).';
       throw err;
     }
-    if (!normalizeKey(cfg.key) && !isLocalBaseUrl(base)) {
+    const def = providerForBase(base);
+    const keyless = !!(cfg.keyless || (def && def.keyless));
+    if (!normalizeKey(cfg.key) && !isLocalBaseUrl(base) && !keyless) {
       const err = new Error('No API key');
       err.friendly = 'Add the provider API key first (a local Ollama server needs none).';
       throw err;
     }
+    const modelsUrl = cfg.modelsUrl || (def && def.modelsUrl) || (base + '/models');
+    let timer = null, ctrl = null;
     let res;
     try {
-      res = await fetch(base + '/models', { headers: oaiHeaders(base, cfg.key), signal: cfg.signal });
+      if (keyless && !cfg.signal && typeof AbortController !== 'undefined') {
+        ctrl = new AbortController();
+        timer = setTimeout(function () { ctrl.abort(); }, 20000);
+      }
+      res = await fetch(modelsUrl, { headers: oaiHeaders(base, cfg.key), signal: cfg.signal || (ctrl && ctrl.signal) });
     } catch (e) {
-      if (e && e.name === 'AbortError') throw e;
+      if (e && e.name === 'AbortError') {
+        if (ctrl && ctrl.signal.aborted) throw keylessTimeout('did not answer the model check in 20 seconds');
+        throw e;
+      }
       throw await networkError(base, cfg.model);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    if (!res.ok) throw await oaiHttpError(res, 'AI provider (list models)', { base: base, model: cfg.model });
+    if (!res.ok) throw await oaiHttpError(res, 'AI provider (list models)', { base: base, model: cfg.model, keyless: keyless });
     const data = await res.json();
     const list = Array.isArray(data) ? data : (data && Array.isArray(data.data) ? data.data : []);
     const models = list
+      // Pollinations tags each model with a tier; “anonymous” is the one usable
+      // without a key, so a keyless setup must not offer the rest.
+      .filter(function (m) { return !keyless || !m || m.tier == null || m.tier === 'anonymous'; })
       .map(function (m) {
         const id = String((m && (m.id || m.name)) || '');
         return { id: id, label: id };
@@ -509,30 +552,59 @@
     return sortOaiModels(models);
   }
 
+  function keylessTimeout(what) {
+    const err = new Error('The free AI took too long to answer');
+    err.status = 408;
+    err.timeout = true;
+    err.friendly = 'The free AI ' + (what || 'is taking too long') + ' — it is a shared service and can queue up.\n' +
+      '• Try again in a minute.\n' +
+      '• Or switch to Advanced in Settings → AI with your own key, which has no queue.';
+    return err;
+  }
+
   async function oaiCallOnce(cfg) {
     const base = normalizeBaseUrl(cfg.baseUrl);
+    const def = providerForBase(base);
+    const keyless = !!(cfg.keyless || (def && def.keyless));
+    let timer = null, ctrl = null;
     let res;
     try {
+      // A keyless call has no deadline of its own; without one the UI can sit on
+      // “Checking…” forever when the shared service queues. Abort after 60 s.
+      if (keyless && !cfg.signal && typeof AbortController !== 'undefined') {
+        ctrl = new AbortController();
+        timer = setTimeout(function () { ctrl.abort(); }, 60000);
+      }
       res = await fetch(base + '/chat/completions', {
         method: 'POST',
         headers: oaiHeaders(base, cfg.key),
-        body: JSON.stringify(oaiBuildBody(cfg)),
-        signal: cfg.signal
+        body: JSON.stringify(oaiBuildBody(Object.assign({}, cfg, { keyless: keyless }))),
+        signal: cfg.signal || (ctrl && ctrl.signal)
       });
     } catch (e) {
-      if (e && e.name === 'AbortError') throw e;
+      if (e && e.name === 'AbortError') {
+        if (ctrl && ctrl.signal.aborted) throw keylessTimeout('took more than 60 seconds to answer');
+        throw e;
+      }
       throw await networkError(base, cfg.model);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    if (!res.ok) throw await oaiHttpError(res, 'AI provider (chat)', { base: base, model: cfg.model });
+    if (!res.ok) {
+      throw await oaiHttpError(res, 'AI provider (chat)', {
+        base: base, model: cfg.model, keyless: keyless
+      });
+    }
     const data = await res.json();
     usageBump(1);
     return oaiExtractText(data);
   }
 
-  /** Try JSON mode first, then plain, retrying once on 429/5xx. */
+  /** Try JSON mode first, then plain, retrying once on 429/5xx/free-slot 402. */
   async function oaiCallWithFallbacks(cfg) {
     const passes = [{ jsonMode: true }, { jsonMode: false }];
     let lastErr = null;
+    let waitedForSlot = false;
     for (let pass = 0; pass < passes.length; pass++) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
@@ -540,8 +612,22 @@
         } catch (e) {
           if (e && e.name === 'AbortError') throw e;
           lastErr = e;
-          const retryable = e.status === 429 || e.status >= 500;
-          if (retryable && attempt === 0) { await sleep(e.status === 429 ? 5200 : 2200); continue; }
+          const freeWait = e.status === 402 && e.freeWait;
+          const retryable = e.status === 429 || e.status >= 500 || freeWait;
+          if (retryable && attempt === 0) {
+            if (freeWait) {
+              // The keyless service allows one reply per IP per ~30 s. Wait for
+              // the next slot once, and say so instead of freezing silently.
+              if (waitedForSlot) break;
+              waitedForSlot = true;
+              const ms = Math.min(45000, Math.max(1000, Math.round((e.retryAfter || 30) * 1000)));
+              if (typeof cfg.onWait === 'function') cfg.onWait(ms);
+              await sleep(ms);
+            } else {
+              await sleep(e.status === 429 ? 5200 : 2200);
+            }
+            continue;
+          }
           if (e.status === 400) break; // e.g. json mode unsupported → next pass
           if (retryable) break;
           throw e;
@@ -609,7 +695,7 @@
       return oaiCallWithFallbacks({
         baseUrl: baseUrl, key: key, model: model, system: built.system,
         user: extra.user, temperature: extra.temperature, maxTokens: extra.maxTokens,
-        signal: signal
+        signal: signal, onWait: cfg.onWait
       });
     }, built, items, '“' + model + '”');
   }
@@ -704,11 +790,16 @@
       '• One note per individual fix: "text" quotes the learner\'s exact wording, "fix" is the corrected ' +
       'wording, "why" explains it in English in at most 15 words. Never bundle several fixes into one note, ' +
       'and never write a note whose "fix" is the same as its "text". At most 10 notes.\n' +
+      '• Check the meaning first: the learner\'s text must convey the ideas of the SOURCE. If it is unrelated, ' +
+      'or leaves out or contradicts a whole idea, that is a meaning error — score it below 50 and say what is ' +
+      'missing in "comment". Do not rewrite the text for this and do not add notes for ideas that are simply absent.\n' +
+      '• Each required word that the learner does not use costs 10 points. With no other error and no change ' +
+      'to their text, the score is 100 minus 10 per missing required word.\n' +
       '• "used": the exact "term" values from the word list the learner actually used (an inflected form counts).\n' +
-      '• "score": start from 100 and subtract only for the genuine errors above and for required words that ' +
-      'are missing. Do not lower it for a different pronoun, tense or synonym. A text with no errors scores ' +
-      '100. "verdict": "good" (80+), "fair" (60–79) or "weak" (below 60). "comment": one encouraging ' +
-      'English sentence naming the main thing to improve.\n\n' +
+      '• "score": start from 100 and subtract for the genuine sentence errors above, for source ideas that are ' +
+      'missing or contradicted, and for required words that are missing. Do not lower it for a different ' +
+      'pronoun, tense or synonym. "verdict": "good" (80+), "fair" (60–79) or "weak" (below 60). ' +
+      '"comment": one encouraging English sentence naming the main thing to improve.\n\n' +
       'Reply with ONE JSON object, no prose, no code fences, exactly this shape:\n' + FIX_SHAPE;
     return { system: system, user: user };
   }
@@ -799,11 +890,10 @@
       notes.push(note);
       if (notes.length >= 10) break;
     }
-    // Unchanged text + no notes is a perfect answer, whatever score the model
-    // guessed — a different pronoun or tense must never cost points.
-    if (!notes.length && flat(corrected) === flat(cfg && cfg.userText)) score = 100;
-    // Trust the model's judgement of what the learner used; only guess locally
-    // when it did not say (a wrong “you missed it” is worse than no badge).
+    // Unchanged text + no notes means there is no wording fix to make. What can
+    // still be missing is a required word: 10 points each. With all of them
+    // present the answer is perfect, whatever score the model guessed — a
+    // different pronoun, tense or synonym must never cost points.
     const rawUsed = pickField(raw, ['used', 'usedKeywords', 'used_keywords']);
     const aiUsed = Array.isArray(rawUsed);
     const usedSet = new Set((aiUsed ? rawUsed : []).map(function (v) {
@@ -818,6 +908,10 @@
       const byModel = aiUsed && usedSet.has(Util.normalize(k.term));
       return { term: k.term, meaning: k.meaning, used: byModel || local };
     });
+    if (!notes.length && flat(corrected) === flat(cfg && cfg.userText)) {
+      const missing = used.filter(function (u) { return !u.used; }).length;
+      score = missing ? Math.max(40, 100 - missing * 10) : 100;
+    }
     return {
       score: score,
       verdict: score >= 80 ? 'good' : score >= 60 ? 'fair' : 'weak',
@@ -840,7 +934,7 @@
       return oaiCallWithFallbacks({
         baseUrl: cfg.baseUrl, key: cfg.key, model: cfg.model, system: built.system,
         user: extra.user, temperature: extra.temperature, maxTokens: extra.maxTokens,
-        signal: cfg.signal
+        signal: cfg.signal, onWait: cfg.onWait
       });
     };
   }

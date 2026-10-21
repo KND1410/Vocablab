@@ -211,6 +211,25 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .chip:has(input:disabled) { opacity: .5; cursor: not-allowed; }
 .chip:has(input:disabled) span { cursor: not-allowed; }
 
+/* ---------- Simple / Advanced AI modes ---------- */
+.ai-mode { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: 1rem; }
+.ai-mode-btn {
+  font: inherit; text-align: left; cursor: pointer;
+  display: flex; flex-direction: column; gap: .15rem;
+  padding: .6rem .75rem; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  transition: border-color .15s ease, background .15s ease;
+}
+.ai-mode-btn:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.ai-mode-btn.is-on {
+  border-color: var(--primary); background: var(--primary-soft); color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.ai-mode-title { font-weight: 700; font-size: .9rem; }
+.ai-mode-sub { font-size: .76rem; color: var(--muted); line-height: 1.3; }
+.ai-mode-btn.is-on .ai-mode-sub { color: inherit; opacity: .8; }
+@media (max-width: 480px) { .ai-mode { grid-template-columns: 1fr; } }
+
 /* ---------- Topic list ---------- */
 .topic-list { list-style: none; margin: .5rem 0 .35rem; padding: 0; max-height: 15rem; overflow: auto; }
 .topic-item {
