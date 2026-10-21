@@ -61,7 +61,31 @@
           <label class="chip"><input id="typeMc" type="checkbox" checked><span>Multiple choice</span></label>
           <label class="chip"><input id="typeBlank" type="checkbox" checked><span>Fill in the blank</span></label>
           <label class="chip"><input id="typeTranslate" type="checkbox" checked><span>Translate (typed)</span></label>
+          <label class="chip"><input id="typeParagraph" type="checkbox"><span>Paragraph translation</span></label>
         </div>
+        <p id="paragraphHint" class="muted small" hidden>Paragraph translation needs an AI key — add one in Settings → AI.</p>
+      </div>
+
+      <div class="field" id="paraOpts" hidden>
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label" for="selParaDir">Paragraph direction</label>
+            <select id="selParaDir" class="input input-sm">
+              <option value="fr2vi">French ➜ Vietnamese</option>
+              <option value="vi2fr">Vietnamese ➜ French</option>
+              <option value="both" selected>Both (one each)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="selParaCount">Paragraphs</label>
+            <select id="selParaCount" class="input input-sm">
+              <option value="1" selected>1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+          </div>
+        </div>
+        <p class="muted small">AI writes a short text from your own words, then corrects your translation with the smallest changes.</p>
       </div>
 
       <div class="field">
@@ -177,6 +201,39 @@
         </div>
         <p id="qPrompt" class="qprompt"></p>
         <p id="qHintBox" class="qhint" hidden></p>
+
+        <div id="qParagraph" class="para" hidden>
+          <div class="para-grid">
+            <div class="para-source">
+              <div class="para-top">
+                <span id="paraDir" class="pill pill-accent">French → Vietnamese</span>
+                <button id="btnParaSpeak" class="icon-btn icon-btn-sm" title="Listen to the paragraph" type="button">🔊</button>
+              </div>
+              <p id="paraText" class="para-text"></p>
+            </div>
+            <aside class="para-words">
+              <h3 class="para-words-title">Use these words</h3>
+              <ol id="paraKeywords" class="para-wordlist"></ol>
+              <p class="muted small para-words-note">Every one of them must appear in your translation.</p>
+            </aside>
+          </div>
+
+          <div class="para-write">
+            <label class="field-label" for="paraInput">Your translation</label>
+            <textarea id="paraInput" class="input para-input" rows="6" spellcheck="true"
+              placeholder="Write your translation…"></textarea>
+            <div class="para-actions">
+              <span id="paraCount" class="muted small">0 words</span>
+              <span class="para-btns">
+                <button id="btnParaSkip" class="btn btn-ghost btn-sm" type="button">Skip</button>
+                <button id="btnParaSubmit" class="btn btn-primary" type="button">Check with AI</button>
+              </span>
+            </div>
+            <p class="muted small para-tip">Ctrl/⌘ + Enter checks · the AI keeps your wording and only fixes what is wrong.</p>
+          </div>
+
+          <div id="paraFeedback" class="para-feedback" hidden></div>
+        </div>
 
         <div id="qOptions" class="options" hidden></div>
 
@@ -512,9 +569,20 @@
       Questions are generated in small batches and cached, so replays barely use quota. If the key is missing or
       quota runs out, the built-in generator takes over automatically — the app never gets stuck.</p>
 
+    <h3>3b · Paragraph translation</h3>
+    <p class="muted small">Tick <strong>Paragraph translation</strong> in the setup, choose the direction
+      (French ➜ Vietnamese, Vietnamese ➜ French, or both) and how many paragraphs. The AI writes a short text
+      from your own sheet words and lists the 5–6 words you must use next to it; write your translation in the
+      box and press <strong>Check with AI</strong>. The correction keeps your wording wherever it is acceptable
+      and only fixes what is wrong, then shows your text, the fixed version, a short list of changes and which
+      sheet words you used. This exercise is AI-only: with no key (or Generator set to <em>Built-in</em>) the
+      option is disabled and says why, and a failed generation is reported in Settings → AI rather than replaced
+      by another question type.</p>
+
     <h3>Keyboard shortcuts</h3>
     <ul class="small muted">
       <li><span class="kbd">1</span>–<span class="kbd">4</span> answer multiple choice · <span class="kbd">Enter</span> check / next</li>
+      <li><span class="kbd">Ctrl</span>/<span class="kbd">⌘</span> + <span class="kbd">Enter</span> check a paragraph translation</li>
       <li><span class="kbd">Space</span> flip flashcard · <span class="kbd">←</span>/<span class="kbd">→</span> move between cards</li>
     </ul>
 

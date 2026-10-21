@@ -557,9 +557,9 @@
   }
 
   /** Appended on the second try: repeat the shape and say what was wrong. */
-  function repairNote() {
+  function repairNote(shape) {
     return '\n\nYour previous reply could not be used. Reply again with ONLY the JSON object described above — ' +
-      'one entry per ITEM, no code fences, no commentary.\nShape: ' + REPLY_SHAPE;
+      'one entry per ITEM, no code fences, no commentary.\nShape: ' + shape;
   }
 
   /**
@@ -575,7 +575,7 @@
       let res = null;
       try {
         res = await call({
-          user: attempt ? built.user + repairNote() : built.user,
+          user: attempt ? built.user + repairNote(REPLY_SHAPE) : built.user,
           temperature: attempt ? 0.2 : undefined,
           maxTokens: attempt ? 8192 : undefined
         });
@@ -612,6 +612,267 @@
         signal: signal
       });
     }, built, items, '“' + model + '”');
+  }
+
+  /* ---------- Paragraph translation ---------- */
+  /* Two extra jobs besides word quizzes:
+       · write a short paragraph out of the learner's own sheet words,
+       · correct the learner's whole-paragraph translation with the smallest
+         possible edit (keep their wording whenever it is acceptable). */
+
+  const PARA_SHAPE = '{"paragraph":"...","reference":"...",' +
+    '"keywords":[{"term":"...","meaning":"...","note":"..."}]}';
+  const FIX_SHAPE = '{"score":82,"verdict":"good","corrected":"...",' +
+    '"notes":[{"text":"...","fix":"...","why":"..."}],"used":["..."],"comment":"..."}';
+
+  function langName(code, fallback) {
+    const s = String(code || '').toLowerCase();
+    if (s === 'vi' || s === 'vietnamese') return 'Vietnamese';
+    if (s === 'fr' || s === 'french') return 'French';
+    if (s === 'en' || s === 'english') return 'English';
+    return code || fallback;
+  }
+
+  /** Which language the learner reads, and which one they must write. */
+  function paraSides(cfg) {
+    const targetLang = cfg.targetLang || 'French';
+    const meaningLang = cfg.meaningLang || 'Vietnamese';
+    const vi2fr = cfg.direction === 'vi2fr';
+    return {
+      vi2fr: vi2fr,
+      sourceLang: vi2fr ? meaningLang : targetLang,
+      answerLang: vi2fr ? targetLang : meaningLang
+    };
+  }
+
+  function buildParagraphPrompt(cfg) {
+    const sides = paraSides(cfg);
+    const words = (cfg.words || []).map(function (w) { return { term: w.term, meaning: w.meaning }; });
+    const system = 'You are VocabLab, an expert ' + (cfg.targetLang || 'French') + ' tutor. You write short, ' +
+      'natural, classroom-safe texts for a learner whose native language is ' + (cfg.meaningLang || 'Vietnamese') +
+      '. You reply with the requested JSON object only and never add commentary.';
+    const user =
+      'Write ONE coherent ' + sides.sourceLang + ' paragraph (4–6 sentences, 60–110 words, CEFR A2–B2) about a ' +
+      'single everyday topic (city life, transport, environment, work, health, travel, food…).\n\n' +
+      'VOCABULARY from the learner\'s own sheet (term = ' + (cfg.targetLang || 'French') + ', meaning = ' +
+      (cfg.meaningLang || 'Vietnamese') + '):\n' + JSON.stringify(words, null, 1) + '\n\n' +
+      'Rules:\n' +
+      '• Pick the 5–6 words that fit the topic best. The paragraph MUST contain each of them ' +
+      (sides.vi2fr
+        ? 'in its ' + (cfg.meaningLang || 'Vietnamese') + ' form (the learner has to produce the ' +
+          (cfg.targetLang || 'French') + ').\n'
+        : 'in its ' + (cfg.targetLang || 'French') + ' form.\n') +
+      '• Use them naturally — an inflected form is fine — and make the text flow with connectors; it must not ' +
+      'read like a list of example sentences.\n' +
+      '• No names of real people, no numbers that carry meaning, nothing political or unsafe.\n' +
+      '• "reference": an accurate, natural ' + sides.answerLang + ' translation of the whole paragraph.\n' +
+      '• "keywords": the words you used, with "term" and "meaning" copied exactly from VOCABULARY, plus "note": ' +
+      'a reminder of how to use that word in ' + sides.answerLang + ' (collocation, preposition, register), ' +
+      'max 12 words. Same order as they appear.\n\n' +
+      'Reply with ONE JSON object, no prose, no code fences, exactly this shape:\n' + PARA_SHAPE;
+    return { system: system, user: user };
+  }
+
+  function buildCorrectionPrompt(cfg) {
+    const sides = paraSides(cfg);
+    const keywords = (cfg.keywords || []).map(function (k) {
+      return { term: k.term, meaning: k.meaning };
+    });
+    const system = 'You are VocabLab, a patient ' + (cfg.targetLang || 'French') + ' tutor who corrects a ' +
+      'learner\'s translation with the smallest possible change. You reply with the requested JSON object only.';
+    const user =
+      'The learner translated a ' + sides.sourceLang + ' paragraph into ' + sides.answerLang + '.\n\n' +
+      'SOURCE (' + sides.sourceLang + '):\n"""' + String(cfg.source || '') + '"""\n\n' +
+      'REFERENCE TRANSLATION (' + sides.answerLang + '):\n"""' + String(cfg.reference || '') + '"""\n\n' +
+      'WORDS THE LEARNER HAD TO USE (' + sides.answerLang + ' side):\n' + JSON.stringify(keywords, null, 1) + '\n\n' +
+      'LEARNER\'S TRANSLATION (' + sides.answerLang + '):\n"""' + String(cfg.userText || '') + '"""\n\n' +
+      'Rules:\n' +
+      '• Correct ONLY what is wrong: spelling, accents, agreement, tense, preposition, word order, or a word ' +
+      'that changes the meaning.\n' +
+      '• Keep the learner\'s own words, sentence order and sentence count wherever they are acceptable. Do NOT ' +
+      'rewrite for style, do not add or drop sentences, do not make the text longer or more elegant.\n' +
+      '• If a phrase is already correct, leave it exactly as written.\n' +
+      '• "corrected": the whole translation with only those minimal fixes (it may be identical to the learner\'s).\n' +
+      '• "notes": one entry per change — "text" quotes the learner\'s exact wording, "fix" is the corrected ' +
+      'wording, "why" explains it in English in at most 15 words. Never write a note for text you did not ' +
+      'change; at most 10 notes.\n' +
+      '• "used": the exact "term" values from the word list the learner actually used (an inflected form counts).\n' +
+      '• "score": 0–100 for meaning, required words and grammar. "verdict": "good" (80+), "fair" (60–79) or ' +
+      '"weak" (below 60). "comment": one encouraging English sentence naming the main thing to improve.\n\n' +
+      'Reply with ONE JSON object, no prose, no code fences, exactly this shape:\n' + FIX_SHAPE;
+    return { system: system, user: user };
+  }
+
+  /** The sheet word a model's keyword refers to, by term or by meaning. */
+  function wordForKeyword(term, meaning, words) {
+    const wanted = Util.normalizeForCompare(Util.stripDiacritics(term));
+    const wantedMeaning = Util.normalizeForCompare(Util.stripDiacritics(meaning));
+    for (const w of words) {
+      if (wanted && Util.normalizeForCompare(Util.stripDiacritics(w.term)) === wanted) return w;
+    }
+    for (const w of words) {
+      if (wanted && looseKey(w.term) === looseKey(term)) return w;
+    }
+    for (const w of words) {
+      const m = Util.normalizeForCompare(Util.stripDiacritics(w.meaning));
+      if (wantedMeaning && m === wantedMeaning) return w;
+    }
+    return null;
+  }
+
+  function normalizeParagraph(raw, words) {
+    if (!raw || typeof raw !== 'object') return null;
+    const text = pickField(raw, ['paragraph', 'text', 'source', 'passage', 'content']);
+    const reference = pickField(raw, ['reference', 'translation', 'answer', 'translated']);
+    if (typeof text !== 'string' || !text.trim()) return null;
+    if (typeof reference !== 'string' || !reference.trim()) return null;
+    const listed = pickField(raw, ['keywords', 'mustUse', 'must_use', 'words', 'vocabulary']);
+    const keywords = [];
+    for (const entry of (Array.isArray(listed) ? listed : [])) {
+      const term = typeof entry === 'string' ? entry : (entry && (entry.term || entry.word));
+      const meaning = entry && typeof entry === 'object' ? entry.meaning : '';
+      const note = entry && typeof entry === 'object'
+        ? String(entry.note || entry.why || entry.hint || '').trim() : '';
+      // The sheet is the source of truth for spelling and meaning — never the model.
+      const word = wordForKeyword(term, meaning, words || []);
+      if (!word) continue;
+      if (keywords.some(function (k) { return Util.normalize(k.term) === Util.normalize(word.term); })) continue;
+      keywords.push({ term: word.term, meaning: word.meaning, note: note });
+      if (keywords.length >= 6) break;
+    }
+    if (keywords.length < 3) return null;
+    return { paragraph: String(text).trim(), reference: String(reference).trim(), keywords: keywords };
+  }
+
+  /** Did the learner use this word (or a simple inflection of it)? */
+  function mentionsForm(text, word) {
+    const hay = Util.normalizeForCompare(Util.stripDiacritics(text));
+    const needle = Util.normalizeForCompare(Util.stripDiacritics(word));
+    if (!hay || !needle) return false;
+    if (hay.indexOf(needle) !== -1) return true;
+    // “constater” → “constate”, “provenir” → “provient”: compare the first stem.
+    const stem = needle.split(' ').filter(function (w) { return w.length >= 5; })[0];
+    if (!stem) return false;
+    return hay.indexOf(stem.slice(0, Math.min(6, stem.length - 2))) !== -1;
+  }
+
+  function normalizeCorrection(raw, keywords, cfg) {
+    if (!raw || typeof raw !== 'object') return null;
+    const corrected = pickField(raw, ['corrected', 'correction', 'fixed', 'revised', 'answer']);
+    if (typeof corrected !== 'string' || !corrected.trim()) return null;
+    const list = keywords || [];
+    let score = Number(pickField(raw, ['score', 'points', 'grade']));
+    if (!isFinite(score)) score = 60;
+    score = Math.max(0, Math.min(100, Math.round(score)));
+    const notes = [];
+    const rawNotes = pickField(raw, ['notes', 'corrections', 'changes', 'errors']);
+    for (const n of (Array.isArray(rawNotes) ? rawNotes : [])) {
+      if (typeof n === 'string') {
+        if (n.trim()) notes.push({ text: '', fix: '', why: n.trim() });
+      } else if (n && typeof n === 'object') {
+        const text = String(n.text || n.quote || n.original || '').trim();
+        const fix = String(n.fix || n.corrected || n.correction || '').trim();
+        const why = String(n.why || n.note || n.explanation || n.reason || '').trim();
+        if (text || fix || why) notes.push({ text: text, fix: fix, why: why });
+      }
+      if (notes.length >= 10) break;
+    }
+    // Trust the model's judgement of what the learner used; only guess locally
+    // when it did not say (a wrong “you missed it” is worse than no badge).
+    const rawUsed = pickField(raw, ['used', 'usedKeywords', 'used_keywords']);
+    const aiUsed = Array.isArray(rawUsed);
+    const usedSet = new Set((aiUsed ? rawUsed : []).map(function (v) {
+      return Util.normalize(String(v && v.term ? v.term : v));
+    }));
+    const vi2fr = cfg && cfg.direction === 'vi2fr';
+    const used = list.map(function (k) {
+      const local = mentionsForm(cfg && cfg.userText, vi2fr ? k.term : k.meaning);
+      return { term: k.term, meaning: k.meaning, used: aiUsed ? usedSet.has(Util.normalize(k.term)) : local };
+    });
+    return {
+      score: score,
+      verdict: score >= 80 ? 'good' : score >= 60 ? 'fair' : 'weak',
+      corrected: String(corrected).trim(),
+      notes: notes,
+      used: used,
+      comment: String(pickField(raw, ['comment', 'feedback', 'summary']) || '').trim()
+    };
+  }
+
+  /** One provider-agnostic call, retried once if the reply cannot be used. */
+  function makeCaller(cfg, built) {
+    return function (extra) {
+      if ((cfg.provider || 'gemini') === 'gemini') {
+        return callWithFallbacks({
+          key: cfg.key, model: cfg.model, system: built.system, user: extra.user,
+          signal: cfg.signal, noSchema: true
+        });
+      }
+      return oaiCallWithFallbacks({
+        baseUrl: cfg.baseUrl, key: cfg.key, model: cfg.model, system: built.system,
+        user: extra.user, temperature: extra.temperature, maxTokens: extra.maxTokens,
+        signal: cfg.signal
+      });
+    };
+  }
+
+  async function askForJson(call, built, accept, modelLabel, shape, what) {
+    let lastText = '';
+    let lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let res = null;
+      try {
+        res = await call({
+          user: attempt ? built.user + repairNote(shape) : built.user,
+          temperature: attempt ? 0.2 : undefined,
+          maxTokens: attempt ? 8192 : undefined
+        });
+      } catch (e) {
+        if (!e || !e.empty || attempt === 1) throw e;
+        lastErr = e;
+        continue;
+      }
+      lastText = String((res && res.text) || '');
+      try {
+        const value = accept(parseJsonLoose(lastText));
+        if (value) return value;
+      } catch (e) { /* not JSON → repair pass */ }
+    }
+    if (lastErr && !lastText) throw lastErr;
+    const err = new Error('Model produced no usable ' + what);
+    err.raw = lastText;
+    err.paragraph = true;
+    err.friendly = modelLabel + ' answered, but not in the shape this exercise needs — try again, or pick ' +
+      'another model in Settings → AI.';
+    err.detail = err.friendly + ' The reply has to be one JSON object; reasoning models often wrap it in prose ' +
+      'or stop early. “Test & load models” lists what this provider serves.' +
+      (lastText ? '\nIt began with: “' + excerpt(lastText) + '…”' : '');
+    throw err;
+  }
+
+  /**
+   * Write a paragraph from the learner's sheet words.
+   * Returns { paragraph, reference, keywords:[{term,meaning,note}] }.
+   */
+  async function generateParagraph(cfg) {
+    const words = cfg.words || [];
+    if (words.length < 3) throw new Error('Not enough words for a paragraph');
+    const built = buildParagraphPrompt(cfg);
+    return askForJson(makeCaller(cfg, built), built,
+      function (raw) { return normalizeParagraph(raw, words); },
+      '“' + cfg.model + '”', PARA_SHAPE, 'paragraph');
+  }
+
+  /**
+   * Correct a whole-paragraph translation with minimal changes.
+   * Returns { score, verdict, corrected, notes, used, comment }.
+   */
+  async function correctParagraph(cfg) {
+    const built = buildCorrectionPrompt(cfg);
+    const keywords = cfg.keywords || [];
+    return askForJson(makeCaller(cfg, built), built,
+      function (raw) { return normalizeCorrection(raw, keywords, cfg); },
+      '“' + cfg.model + '”', FIX_SHAPE, 'correction');
   }
 
   /* ---------- Usage counter ---------- */
@@ -732,11 +993,13 @@
 
   /** Try schema+no-thinking first, then progressively simpler requests. One retry on 429/5xx. */
   async function callWithFallbacks(opts) {
-    const passes = [
-      { useSchema: true, useThinkingOff: true },
-      { useSchema: true, useThinkingOff: false },
-      { useSchema: false, useThinkingOff: false }
-    ];
+    const passes = opts.noSchema
+      ? [{ useSchema: false, useThinkingOff: true }, { useSchema: false, useThinkingOff: false }]
+      : [
+        { useSchema: true, useThinkingOff: true },
+        { useSchema: true, useThinkingOff: false },
+        { useSchema: false, useThinkingOff: false }
+      ];
     let lastErr = null;
     for (let pass = 0; pass < passes.length; pass++) {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -1017,6 +1280,12 @@
     prettifyModel: prettifyModel,
     generateQuestions: generateQuestions,
     buildPrompt: buildPrompt,
+    generateParagraph: generateParagraph,
+    correctParagraph: correctParagraph,
+    buildParagraphPrompt: buildParagraphPrompt,
+    buildCorrectionPrompt: buildCorrectionPrompt,
+    normalizeParagraph: normalizeParagraph,
+    normalizeCorrection: normalizeCorrection,
     parseJsonLoose: parseJsonLoose,
     normalizeQuestions: normalizeQuestions,
     usageGet: usageGet,

@@ -957,6 +957,22 @@ ok(plan2.every((i) => i.direction === 'meaning2term'), 'fixed m2t direction');
 const plan3 = Quiz.planItems(pool.slice(0, 4), ['blank'], 'mixed', 0);
 ok(plan3.every((i) => i.direction === 'blank'), 'blank plan direction');
 
+/* Paragraphs are one card each, planned from 12 candidate words — never one
+   per word, and never mixed into the word round-robin. */
+const pp = Quiz.planParagraphs(pool, 2, 'fr2vi');
+eq(pp.length, 2, 'two paragraph cards planned');
+ok(pp.every((i) => i.type === 'paragraph' && i.direction === 'fr2vi'), 'fixed paragraph direction');
+eq(pp[0].candidates.length, 12, 'twelve candidate words per paragraph');
+eq(pp[1].term, 'Paragraph 2', 'paragraphs get distinct labels');
+eq(Quiz.planItems(pool, ['paragraph'], 'mixed', 0).length, 0, 'a paragraph consumes no word slot');
+ok(Quiz.planItems(pool, ['mc', 'paragraph'], 'mixed', 0).every((i) => i.type === 'mc'),
+  'the word planner ignores the paragraph type');
+eq(Quiz.planParagraphs(pool, 2, 'both').map((i) => i.direction), ['fr2vi', 'vi2fr'], '“both” alternates');
+eq(Quiz.planParagraphs(pool.slice(0, 5), 1, 'both').length, 0, 'too few words → no paragraph');
+// The two paragraphs must not reuse the same candidate words.
+const overlap = pp[0].candidates.filter((w) => pp[1].candidates.some((x) => x.term === w.term));
+eq(overlap.length, 0, 'paragraphs draw from different words');
+
 eq(Quiz.selectWords(pool, 0).length, pool.length, 'count 0 → all words');
 eq(Quiz.selectWords(pool, 5).length, 5, 'count 5 → 5 words');
 
@@ -1110,6 +1126,192 @@ ok(typeof Gen.pickDistractors === 'function', 'Gen exports pickDistractors for t
 
 fetchRoutes = [];
 
+/* ---------- paragraph translation ---------- */
+section('Paragraph translation');
+/** A whole chat-completion reply whose content is the given JSON object. */
+const aiObj = (obj) => fakeResponse(JSON.stringify({
+  choices: [{ message: { content: JSON.stringify(obj) }, finish_reason: 'stop' }]
+}), 200);
+
+const paraPrompt = Ai.buildParagraphPrompt({
+  direction: 'fr2vi', words: pool.slice(0, 8), targetLang: 'French', meaningLang: 'Vietnamese'
+});
+ok(/"paragraph"/.test(paraPrompt.user) && /"reference"/.test(paraPrompt.user) && /"keywords"/.test(paraPrompt.user),
+  'the paragraph prompt states the JSON shape');
+ok(/5–6/.test(paraPrompt.user), 'it asks for 5–6 sheet words');
+ok(/French paragraph/.test(paraPrompt.user), 'FR→VI writes the source in French');
+ok(/reference.*Vietnamese|Vietnamese translation/.test(paraPrompt.user), 'and gives a Vietnamese reference');
+const paraPromptVi = Ai.buildParagraphPrompt({
+  direction: 'vi2fr', words: pool.slice(0, 8), targetLang: 'French', meaningLang: 'Vietnamese'
+});
+ok(/Vietnamese paragraph/.test(paraPromptVi.user), 'VI→FR writes the source in Vietnamese');
+ok(/produce the French/.test(paraPromptVi.user), 'and the learner must produce French');
+
+const fixPrompt = Ai.buildCorrectionPrompt({
+  direction: 'fr2vi', source: 'Les habitants constatent que la pollution augmente.',
+  reference: 'Người dân nhận thấy ô nhiễm gia tăng.', userText: 'Les habitant constate que pollution augmente.',
+  keywords: [{ term: 'constater', meaning: 'nhận thấy' }], targetLang: 'French', meaningLang: 'Vietnamese'
+});
+ok(/smallest possible change/.test(fixPrompt.system + ' ' + fixPrompt.user),
+  'the corrector is told to change as little as possible');
+ok(/Do NOT rewrite for style/.test(fixPrompt.user), 'and never to rewrite for style');
+ok(/LEARNER'S TRANSLATION/.test(fixPrompt.user) && /REFERENCE TRANSLATION/.test(fixPrompt.user),
+  'the corrector sees both the learner’s text and the reference');
+ok(/"corrected"/.test(fixPrompt.user) && /"notes"/.test(fixPrompt.user), 'the correction shape is stated');
+
+const kwWords = [
+  { term: 'constater', meaning: 'nhận thấy' },
+  { term: 'la pollution', meaning: 'ô nhiễm' },
+  { term: 'aggraver', meaning: 'làm trầm trọng' }
+];
+const parsedPara = Ai.normalizeParagraph({
+  paragraph: 'Les habitants constatent que la pollution augmente.',
+  reference: 'Người dân nhận thấy ô nhiễm gia tăng.',
+  keywords: [
+    { term: 'constater', meaning: 'nhận thấy', note: 'constater que + clause' },
+    { term: 'LA POLLUTION', meaning: 'ô nhiễm' },
+    { term: 'inconnu', meaning: 'không có trong sheet' },
+    { term: 'pollution', meaning: 'ô nhiễm' },
+    { term: 'aggraver', meaning: 'làm trầm trọng' }
+  ]
+}, kwWords);
+eq(parsedPara.keywords.length, 3, 'unknown keywords are dropped and duplicates merged');
+eq(parsedPara.keywords[1].term, 'la pollution', 'the sheet spelling wins over the model’s');
+eq(parsedPara.keywords[0].note, 'constater que + clause', 'the usage note is kept');
+eq(Ai.normalizeParagraph({ paragraph: 'x', reference: '', keywords: [] }, kwWords), null,
+  'a paragraph without a reference is unusable');
+eq(Ai.normalizeParagraph({ paragraph: '', reference: 'y', keywords: [] }, kwWords), null,
+  'a paragraph without text is unusable');
+
+const parsedFix = Ai.normalizeCorrection({
+  score: 84,
+  corrected: 'Les habitants constatent que la pollution augmente.',
+  notes: [
+    { text: 'les habitant', fix: 'les habitants', why: 'plural' },
+    'Missing « la » before pollution.',
+    { text: '', fix: '', why: '' }
+  ],
+  used: ['constater'],
+  comment: 'Nice work.'
+}, kwWords.slice(0, 2), { direction: 'fr2vi', userText: 'Les habitant constatent que pollution augmente.' });
+eq(parsedFix.score, 84, 'the score is kept');
+eq(parsedFix.verdict, 'good', 'the verdict follows the score');
+eq(parsedFix.notes.length, 2, 'string notes are kept, empty notes dropped');
+eq(parsedFix.corrected, 'Les habitants constatent que la pollution augmente.', 'the corrected text is kept');
+eq(parsedFix.used.filter((u) => u.used).map((u) => u.term), ['constater'], 'used words come from the model');
+eq(Ai.normalizeCorrection({ score: 999, corrected: 'x', used: [] }, kwWords, { direction: 'fr2vi', userText: '' }).score,
+  100, 'the score is clamped');
+eq(Ai.normalizeCorrection({ correct: 'x' }, kwWords, {}), null, 'a reply without corrected text is unusable');
+// Without the model’s “used” list, the app still marks the words it can see.
+const localUsed = Ai.normalizeCorrection({ score: 40, corrected: 'y' }, kwWords,
+  { direction: 'vi2fr', userText: 'Les habitants constatent la pollution.' });
+eq(localUsed.used.map((u) => u.used), [true, true, false], 'used words fall back to a local check');
+eq(localUsed.verdict, 'weak', 'a low score is a weak verdict');
+
+// The two AI jobs, end to end through the OpenAI-compatible transport.
+let paraCalls = 0;
+fetchRoutes = [['/chat/completions', () => {
+  paraCalls++;
+  return aiObj({
+    paragraph: 'Les habitants constatent que la pollution augmente.',
+    reference: 'Người dân nhận thấy ô nhiễm gia tăng.',
+    keywords: [
+      { term: 'constater', meaning: 'nhận thấy', note: 'constater que + clause' },
+      { term: 'la pollution', meaning: 'ô nhiễm', note: '' },
+      { term: 'aggraver', meaning: 'làm trầm trọng', note: '' }
+    ]
+  });
+}]];
+const paraOut = await Ai.generateParagraph({
+  provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', key: 'gsk_x', model: 'openai/gpt-oss-120b',
+  direction: 'fr2vi', words: kwWords, targetLang: 'French', meaningLang: 'Vietnamese'
+});
+ok(paraOut && paraOut.paragraph.indexOf('constatent') !== -1, 'generateParagraph returns the text');
+eq(paraOut.keywords[0].term, 'constater', '…with sheet keywords');
+eq(paraCalls, 1, 'one call when the reply is usable');
+
+let fixCalls = 0;
+fetchRoutes = [['/chat/completions', () => {
+  fixCalls++;
+  return aiObj({
+    score: 78, corrected: 'Les habitants constatent que la pollution augmente.',
+    notes: [{ text: 'les habitant', fix: 'les habitants', why: 'plural' }],
+    used: ['constater', 'la pollution'], comment: 'Nearly there.'
+  });
+}]];
+const fixOut = await Ai.correctParagraph({
+  provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', key: 'gsk_x', model: 'grok-4.7',
+  direction: 'fr2vi', source: 'Les habitants constatent que la pollution augmente.',
+  reference: 'Người dân nhận thấy ô nhiễm gia tăng.',
+  userText: 'Les habitant constatent que la pollution augmente.',
+  keywords: kwWords, targetLang: 'French', meaningLang: 'Vietnamese'
+});
+eq(fixOut.score, 78, 'correctParagraph returns a score');
+eq(fixOut.used.filter((u) => u.used).length, 2, '…and the used words');
+eq(fixOut.notes[0].fix, 'les habitants', '…and the minimal fixes');
+eq(fixCalls, 1, 'one call when the correction is usable');
+
+// An unusable correction is asked for once more, then fails loudly (never silently).
+let badFixCalls = 0;
+fetchRoutes = [['/chat/completions', () => {
+  badFixCalls++;
+  return aiObj({ comment: 'I cannot help with that.' });
+}]];
+let fixErr = null;
+try {
+  await Ai.correctParagraph({
+    provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', key: 'gsk_x', model: 'grok-4.7',
+    direction: 'fr2vi', source: 's', reference: 'r', userText: 'u', keywords: kwWords
+  });
+} catch (e) { fixErr = e; }
+ok(!!fixErr, 'an unusable correction throws');
+ok(fixErr && fixErr.paragraph, '…marked as a paragraph failure by the app');
+eq(badFixCalls, 2, '…after exactly one repair attempt');
+fetchRoutes = [];
+
+// buildPool: a paragraph is one AI call, never a built-in stand-in.
+const realGenerateParagraph = Ai.generateParagraph;
+let paraGenCalls = 0;
+Ai.generateParagraph = async function () {
+  paraGenCalls++;
+  return {
+    paragraph: 'Les habitants constatent que la pollution augmente.',
+    reference: 'Người dân nhận thấy ô nhiễm gia tăng.',
+    keywords: kwWords
+  };
+};
+const paraItems = Quiz.planParagraphs(pool, 1, 'fr2vi');
+const paraBuilt = await Quiz.buildPool({
+  items: paraItems, pool: pool, source: 'ai', aiKey: 'gsk_x', aiModel: 'm',
+  aiProvider: 'openai', aiBaseUrl: 'https://api.groq.com/openai/v1',
+  targetLang: 'French', meaningLang: 'Vietnamese'
+});
+eq(paraBuilt.questions.length, 1, 'the paragraph card is built');
+eq(paraBuilt.questions[0].type, 'paragraph', '…of the paragraph type');
+eq(paraBuilt.questions[0].direction, 'fr2vi', '…with its direction');
+eq(paraBuilt.questions[0].keywords.length, 3, '…and its required words');
+eq(paraBuilt.questions[0].word.term, 'Paragraph 1', '…and a label for the results screen');
+eq(paraGenCalls, 1, 'exactly one AI call per paragraph');
+
+Ai.generateParagraph = async function () {
+  throw Object.assign(new Error('unusable'), { paragraph: true, friendly: 'The model answered oddly.' });
+};
+const paraFailed = await Quiz.buildPool({
+  items: Quiz.planParagraphs(pool, 1, 'both'), pool: pool, source: 'ai', aiKey: 'gsk_x', aiModel: 'm',
+  aiProvider: 'openai', aiBaseUrl: 'https://api.groq.com/openai/v1'
+});
+eq(paraFailed.questions.length, 0, 'a failed paragraph is left out — no fake built-in text');
+ok(paraFailed.aiError && paraFailed.aiError.paragraph, '…and the error says it was the paragraph');
+
+const paraNoAi = await Quiz.buildPool({
+  items: Quiz.planParagraphs(pool, 1, 'both'), pool: pool, source: 'builtin'
+});
+eq(paraNoAi.questions.length, 0, 'a paragraph is never synthesised offline');
+ok(paraNoAi.aiError && /needs an AI key/.test(paraNoAi.aiError.friendly), '…and the caller is told why');
+Ai.generateParagraph = realGenerateParagraph;
+
+eq(Quiz.typeLabel('paragraph'), 'Paragraph translation', 'paragraph has its own type label');
+
 section('App wiring');
 const appSrc = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
 const htmlSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
@@ -1147,6 +1349,20 @@ ok(/function toast\(message, kind, ms\)/.test(fs.readFileSync(path.join(root, 'j
   'toasts accept a custom lifetime for long messages');
 ok(/isLocalBaseUrl\(settings\.oaiBase\)[\s\S]{0,400}OLLAMA_ORIGINS/.test(appSrc),
   'the Ollama preset explains the CORS requirement');
+
+// Paragraph translation: its own setup option, card and AI call — and never a
+// built-in stand-in, because the exercise only works with a real correction.
+ok(/id="typeParagraph"/.test(htmlSrc) && /id="paraOpts"/.test(htmlSrc) && /id="paragraphHint"/.test(htmlSrc),
+  'the setup offers paragraph translation with a direction and a count');
+ok(/id="qParagraph"/.test(htmlSrc) && /id="paraInput"/.test(htmlSrc) && /id="btnParaSubmit"/.test(htmlSrc),
+  'the quiz has a paragraph card with its own textarea and check button');
+ok(/planParagraphs\(paraWords, setup\.paragraphCount/.test(appSrc), 'startQuiz adds the paragraph cards');
+ok(/Ai\.correctParagraph\(/.test(appSrc) && /function finishParagraph/.test(appSrc),
+  'a paragraph answer is corrected by the AI and scored');
+ok(/typeParagraph\.disabled = !paraOk/.test(appSrc) && /Paragraph translation needs an AI key/.test(appSrc),
+  'the exercise is disabled — not faked — when AI is unavailable');
+ok(/state\.paraBusy/.test(appSrc) && /if \(q\.type === 'paragraph'\)[\s\S]{0,260}submitParagraph\(\)/.test(appSrc),
+  'plain Enter stays in the textarea; Ctrl+Enter checks');
 
 // Settings → AI offers the whole provider list, and the menu is built from that
 // one table — so a new provider can never end up missing from the picker.
