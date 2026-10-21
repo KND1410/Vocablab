@@ -9,15 +9,24 @@
 
   /* ---------- Settings ---------- */
   const DEFAULTS = {
-    aiProvider: 'gemini', geminiKey: '', geminiModel: '',
+    aiMode: 'simple', aiProvider: 'gemini', geminiKey: '', geminiModel: '',
     oaiBase: 'https://api.groq.com/openai/v1', oaiKey: '', oaiModel: '', aiConns: {},
+    simpleModel: 'openai-fast', simpleModels: [],
     targetLang: 'French', targetCode: 'fr-FR', autoPlay: true,
     sheetMode: 'links', sheetUrl: '', sheetApiKey: '', scriptUrl: '', links: '',
     quizTypes: ['mc', 'blank', 'translate'], direction: 'mixed', count: 20, source: 'auto',
     paragraphDirection: 'both', paragraphCount: 1,
     rotation: 0
   };
-  const settings = Object.assign({}, DEFAULTS, U.lsGet('settings', {}));
+  const storedSettings = U.lsGet('settings', {}) || {};
+  const settings = Object.assign({}, DEFAULTS, storedSettings);
+  // New users start with the keyless free model (Simple). Anyone who already
+  // pasted a key keeps their setup (Advanced) instead of losing it silently.
+  if (!storedSettings.aiMode) {
+    const hadKey = !!(storedSettings.geminiKey || storedSettings.oaiKey ||
+      (storedSettings.aiConns && Object.keys(storedSettings.aiConns).length));
+    settings.aiMode = hadKey ? 'advanced' : 'simple';
+  }
   function saveSettings() { U.lsSet('settings', settings); }
 
   /* ---------- State ---------- */
@@ -51,6 +60,7 @@
       'fcMeaning', 'fcExample', 'btnFcAgain', 'btnFcGood', 'btnFcPrev', 'btnFcNext',
       'settingsDialog', 'selProvider', 'providerHint', 'paneGemini', 'inpGeminiKey', 'btnToggleKey',
       'paneOai', 'inpOaiBase', 'inpOaiKey', 'btnToggleOaiKey',
+      'modeSimple', 'modeAdvanced', 'paneSimple', 'aiAdvanced', 'selSimpleModel', 'btnTestSimple',
       'btnTestKey', 'inpModel', 'modelList', 'btnRefreshModels',
       'aiStatus', 'aiIssue', 'usageToday', 'cachedCount', 'btnClearQCache', 'inpTargetLang', 'inpTargetCode', 'chkAutoPlay',
       'inpSheetUrl', 'inpSheetApiKey', 'btnLoadApi', 'inpScriptUrl', 'btnLoadScript', 'inpLinks', 'btnLoadLinks',
@@ -232,7 +242,7 @@
     if (!paraOk) {
       E.paragraphHint.textContent = E.selSource.value === 'builtin'
         ? 'Paragraph translation needs AI — set Generator to “Auto” or “AI only”.'
-        : 'Paragraph translation needs an AI key — add one in Settings → AI.';
+        : 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.';
     }
     E.paraOpts.hidden = !paraOn;
     E.btnStart.disabled = !(hasDeck && hasTopics && hasTypes) || (paraOn && !paraOk);
@@ -306,16 +316,26 @@
   const PROVIDERS = Ai.providers;
 
   function providerDef(id) { return Ai.providerById(id) || PROVIDERS[0]; }
-  /** The provider the learner picked (an id from the provider table). */
+  /** Simple mode = the keyless free provider; Advanced = whatever the learner picked. */
+  function aiMode() { return settings.aiMode === 'advanced' ? 'advanced' : 'simple'; }
+  const FREE_PROVIDER = Ai.providerById('pollinations');
+  function simpleModel() { return settings.simpleModel || FREE_PROVIDER.model; }
+  function aiKeyless() { return !!providerDef(activeProviderId()).keyless; }
+  /** The provider in use: the free keyless one in Simple, the picked one in Advanced. */
   function activeProviderId() {
+    if (aiMode() === 'simple') return FREE_PROVIDER.id;
     return Ai.providerById(settings.aiProvider) ? settings.aiProvider : 'gemini';
   }
   /** How we talk to it: Google's API, or OpenAI-compatible. */
   function activeProvider() { return providerDef(activeProviderId()).transport; }
   function activeKey() {
+    if (aiKeyless()) return '';
     return Ai.normalizeKey(activeProvider() === 'openai' ? settings.oaiKey : settings.geminiKey);
   }
-  function activeBase() { return activeProvider() === 'openai' ? (settings.oaiBase || '') : ''; }
+  function activeBase() {
+    if (aiKeyless()) return FREE_PROVIDER.base;
+    return activeProvider() === 'openai' ? (settings.oaiBase || '') : '';
+  }
   function baseKey(base) { return String(base || '').trim().replace(/\/+$/, '').toLowerCase(); }
   function sameBase(a, b) { return !!baseKey(a) && baseKey(a) === baseKey(b); }
   function defaultModelForBase(base) {
@@ -326,6 +346,7 @@
     return '';
   }
   function activeModel() {
+    if (aiKeyless()) return simpleModel();
     if (activeProvider() === 'openai') {
       return settings.oaiModel || defaultModelForBase(settings.oaiBase) ||
         providerDef(activeProviderId()).model || 'openrouter/free';
@@ -333,6 +354,7 @@
     return settings.geminiModel || 'gemini-flash-latest';
   }
   function setActiveModel(id) {
+    if (aiKeyless()) { settings.simpleModel = id; saveSettings(); return; }
     if (activeProvider() === 'openai') settings.oaiModel = id; else settings.geminiModel = id;
     rememberConn();
     saveSettings();
@@ -346,7 +368,7 @@
   }
   function rememberConn() {
     const id = activeProviderId();
-    if (id === 'gemini') return;
+    if (id === 'gemini' || aiKeyless()) return;
     connStore()[id] = {
       base: settings.oaiBase || '', key: Ai.normalizeKey(settings.oaiKey), model: settings.oaiModel || ''
     };
@@ -382,11 +404,15 @@
       saveSettings();
     }
   }
-  // Ready when a key exists — or, for local servers (Ollama), when the base URL is localhost.
+  // Ready when the provider needs no key (Simple), a key exists — or, for local
+  // servers (Ollama), when the base URL is localhost.
   function aiReady() {
-    return !!activeKey() || (activeProvider() === 'openai' && Ai.isLocalBaseUrl(activeBase()));
+    return aiKeyless() || !!activeKey() || (activeProvider() === 'openai' && Ai.isLocalBaseUrl(activeBase()));
   }
-  function providerName() { return activeProvider() === 'openai' ? 'AI provider' : 'Gemini'; }
+  function providerName() {
+    if (aiMode() === 'simple') return 'free AI';
+    return activeProvider() === 'openai' ? 'AI provider' : 'Gemini';
+  }
 
   async function startQuiz(opts) {
     opts = opts || {};
@@ -396,7 +422,7 @@
     if (setup.types.indexOf('paragraph') !== -1 && !paragraphAvailable()) {
       U.toast(setup.source === 'builtin'
         ? 'Paragraph translation needs AI — set Generator to “Auto” or “AI only”.'
-        : 'Paragraph translation needs an AI key — add one in Settings → AI.', 'warn');
+        : 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.', 'warn');
       return;
     }
 
@@ -412,8 +438,11 @@
     // candidates to choose its 5–6 required words from.
     const paraWords = words.length >= 12 ? words : (available.length >= 12 ? available : words);
 
-    const items = Quiz.planItems(words, setup.types, setup.direction, settings.rotation)
-      .concat(Quiz.planParagraphs(paraWords, setup.paragraphCount, setup.paragraphDirection));
+    let items = Quiz.planItems(words, setup.types, setup.direction, settings.rotation);
+    // Paragraphs are their own card and only exist when the learner ticks them.
+    if (setup.types.indexOf('paragraph') !== -1) {
+      items = items.concat(Quiz.planParagraphs(paraWords, setup.paragraphCount, setup.paragraphDirection));
+    }
     settings.rotation = (settings.rotation + words.length) % 1000;
     saveSettings();
 
@@ -430,6 +459,7 @@
         aiProvider: activeProvider(),
         aiBaseUrl: activeBase(),
         aiKey: activeKey(),
+        aiKeyless: aiKeyless(),
         aiModel: activeModel(),
         targetLang: settings.targetLang,
         meaningLang: 'Vietnamese',
@@ -718,13 +748,14 @@
     const text = E.paraInput.value.trim();
     if (!text) { U.toast('Write your translation first.', 'warn'); E.paraInput.focus(); return; }
     if (!aiReady()) {
-      U.toast('Paragraph translation needs an AI key — add one in Settings → AI.', 'warn');
-      showAiIssue('Paragraph translation needs an AI key — add one in Settings → AI.');
+      const msg = 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.';
+      U.toast(msg, 'warn');
+      showAiIssue(msg);
       return;
     }
     state.paraBusy = true;
     E.btnParaSubmit.disabled = true;
-    E.btnParaSubmit.textContent = 'Checking…';
+    E.btnParaSubmit.textContent = aiMode() === 'simple' ? 'Checking… (free AI)' : 'Checking…';
     E.paraInput.disabled = true;
     E.btnParaSkip.disabled = true;
     let fb = null;
@@ -732,7 +763,13 @@
       fb = await Ai.correctParagraph({
         provider: activeProvider(), baseUrl: activeBase(), key: activeKey(), model: activeModel(),
         source: q.prompt, reference: q.reference, userText: text, direction: q.direction,
-        keywords: q.keywords, targetLang: settings.targetLang, meaningLang: 'Vietnamese'
+        keywords: q.keywords, targetLang: settings.targetLang, meaningLang: 'Vietnamese',
+        onWait: function (ms) {
+          const secs = Math.round(ms / 1000);
+          E.btnParaSubmit.textContent = 'Waiting ' + secs + ' s…';
+          U.toast('Free AI allows one request every 30 seconds — waiting ' + secs + ' s. ' +
+            'Switch to Advanced for no waiting.', 'warn', 8000);
+        }
       });
     } catch (e) {
       state.paraBusy = false;
@@ -796,7 +833,7 @@
     const headText = paraEl('div', 'pf-headtext');
     headText.appendChild(paraEl('p', 'pf-title', fb.verdict === 'good'
       ? 'Well done — only small fixes'
-      : fb.verdict === 'fair' ? 'Good try — a few fixes' : 'Needs work — see the fixes'));
+      : fb.verdict === 'fair' ? 'Good try — a few fixes' : 'Needs work — see the comment and words'));
     headText.appendChild(paraEl('p', 'muted small', fb.comment || 'Corrected with the smallest changes possible.'));
     head.appendChild(headText);
     box.appendChild(head);
@@ -806,7 +843,7 @@
       box.appendChild(textBlock('Your text', text));
       box.appendChild(textBlock('With minimal fixes', fb.corrected, 'pf-fixed'));
     } else {
-      box.appendChild(textBlock('Your text — no changes needed', text, 'pf-fixed'));
+      box.appendChild(textBlock('Your text — no wording fixes', text, 'pf-fixed'));
     }
 
     if (fb.notes.length) {
@@ -1020,9 +1057,20 @@
   }
 
   function syncAiUI() {
+    const mode = aiMode();
     const id = activeProviderId();
     const transport = activeProvider();
     renderProviderOptions();
+    if (E.modeSimple) {
+      E.modeSimple.classList.toggle('is-on', mode === 'simple');
+      E.modeSimple.setAttribute('aria-pressed', mode === 'simple' ? 'true' : 'false');
+    }
+    if (E.modeAdvanced) {
+      E.modeAdvanced.classList.toggle('is-on', mode === 'advanced');
+      E.modeAdvanced.setAttribute('aria-pressed', mode === 'advanced' ? 'true' : 'false');
+    }
+    if (E.paneSimple) E.paneSimple.hidden = mode !== 'simple';
+    if (E.aiAdvanced) E.aiAdvanced.hidden = mode !== 'advanced';
     E.selProvider.value = id;
     if (E.providerHint) E.providerHint.innerHTML = providerHint(id);
     E.paneGemini.hidden = transport !== 'gemini';
@@ -1030,12 +1078,52 @@
     E.inpGeminiKey.value = settings.geminiKey || '';
     E.inpOaiBase.value = settings.oaiBase || '';
     E.inpOaiKey.value = settings.oaiKey || '';
+    if (mode === 'simple') renderSimpleModels();
     const model = activeModel();
-    ensureModelOption(model);
-    E.inpModel.value = model;
-    E.btnTestKey.textContent = transport === 'openai' ? 'Test & load models' : 'Test key & load models';
+    if (mode === 'advanced') {
+      ensureModelOption(model);
+      E.inpModel.value = model;
+      E.btnTestKey.textContent = transport === 'openai' ? 'Test & load models' : 'Test key & load models';
+    }
     // A key/provider change decides whether paragraph translation is available.
     if (E.typeParagraph) updateControls();
+  }
+
+  /** Options for the keyless mode. Cached after a check so opening Settings is offline-safe. */
+  function renderSimpleModels() {
+    const sel = E.selSimpleModel;
+    if (!sel) return;
+    const model = simpleModel();
+    const saved = Array.isArray(settings.simpleModels) ? settings.simpleModels : [];
+    const list = saved.length ? saved.slice() : [{ id: model, label: model }];
+    if (!list.some(function (m) { return m && m.id === model; })) list.unshift({ id: model, label: model });
+    sel.innerHTML = '';
+    list.forEach(function (m) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.id + (m.id === FREE_PROVIDER.model ? ' — free' : '');
+      sel.appendChild(opt);
+    });
+    sel.value = model;
+  }
+
+  /** Simple (no key) ↔ Advanced (own key). The other mode's setup is kept. */
+  function setAiMode(mode) {
+    const next = mode === 'advanced' ? 'advanced' : 'simple';
+    if (settings.aiMode === next) { syncAiUI(); return; }
+    settings.aiMode = next;
+    saveSettings();
+    syncAiUI();
+    showAiIssue('');
+    keyShapeShown = '';
+    if (next === 'advanced') {
+      providerStatus(activeProviderId());
+      U.toast('Advanced mode — pick a provider and paste your own key.', 'ok');
+    } else {
+      E.aiStatus.textContent = 'Free AI selected — no key needed. Press “Check the free AI” to test it.';
+      U.toast('Simple mode — free AI, no key needed.', 'ok');
+    }
+    updateControls();
   }
 
   function renderProviderOptions() {
@@ -1058,6 +1146,9 @@
       what it costs (so “out of free tier” is visible before it happens). */
   function providerHint(id) {
     const def = providerDef(id);
+    if (id === 'pollinations') {
+      return 'Free and keyless — a shared public service, no sign-up. If it is busy, wait a minute or switch to Advanced with your own key.';
+    }
     if (id === 'ollama') {
       return 'Runs on your computer, not online: install <a href="' + def.keyUrl + '" target="_blank" rel="noopener">Ollama</a>, ' +
         'start it (<code>ollama serve</code>) and pull a model (<code>ollama pull llama3.2</code>). No key, no sign-up.';
@@ -1106,7 +1197,11 @@
 
   /** Switch provider, keeping whatever was set up for the previous one. */
   function useProvider(id) {
-    if (id === activeProviderId()) return;
+    if (aiMode() === 'advanced' && id === activeProviderId()) return;
+    // Picking a real provider is an Advanced action (the Simple pane has no
+    // provider picker), so it also leaves the keyless mode.
+    const fromSimple = aiMode() === 'simple';
+    if (fromSimple) settings.aiMode = 'advanced';
     rememberConn();
     settings.aiProvider = id;
     if (id !== 'gemini') loadConn(id);
@@ -1216,7 +1311,34 @@
     setActiveModel(preferred);
   }
 
+  async function testSimple() {
+    E.aiStatus.textContent = 'Checking the free AI…';
+    try {
+      const models = await Ai.listModels({ provider: 'openai', key: '', baseUrl: FREE_PROVIDER.base, keyless: true });
+      showAiIssue('');
+      if (!models.length) {
+        E.aiStatus.textContent = 'The free service answered, but listed no chat model. Try a quiz — or switch to Advanced with your own key.';
+        return;
+      }
+      settings.simpleModels = models.map(function (m) { return { id: m.id, label: m.label || m.id }; });
+      if (!models.some(function (m) { return m.id === simpleModel(); })) {
+        settings.simpleModel = Ai.pickDefaultModel(models, 'openai') || models[0].id;
+      }
+      saveSettings();
+      syncAiUI();
+      E.aiStatus.textContent = '✓ Free AI works — ' + models.length + ' model' + (models.length === 1 ? '' : 's') +
+        ' available. Using: ' + activeModel() + '. No key needed.';
+      U.toast('Free AI works — no key needed. Model: ' + activeModel(), 'ok');
+    } catch (e) {
+      const detail = e.friendly || e.message;
+      E.aiStatus.textContent = '✕ ' + detail;
+      showAiIssue(detail);
+      U.toast(detail, 'bad', 12000);
+    }
+  }
+
   async function testKey() {
+    if (aiMode() === 'simple') return testSimple();
     const provider = activeProvider();
     if (provider === 'openai') {
       settings.oaiBase = E.inpOaiBase.value.trim();
@@ -1429,6 +1551,15 @@
     });
     E.btnTestKey.addEventListener('click', testKey);
     E.btnRefreshModels.addEventListener('click', testKey);
+    if (E.modeSimple) E.modeSimple.addEventListener('click', function () { setAiMode('simple'); });
+    if (E.modeAdvanced) E.modeAdvanced.addEventListener('click', function () { setAiMode('advanced'); });
+    if (E.btnTestSimple) E.btnTestSimple.addEventListener('click', testKey);
+    if (E.selSimpleModel) E.selSimpleModel.addEventListener('change', function () {
+      settings.simpleModel = E.selSimpleModel.value;
+      saveSettings();
+      updateControls();
+      U.toast('Free model: ' + settings.simpleModel, 'ok');
+    });
     E.inpModel.addEventListener('change', function () { setActiveModel(E.inpModel.value.trim()); });
     E.inpModel.addEventListener('input', function () { setActiveModel(E.inpModel.value.trim()); });
     E.inpTargetLang.addEventListener('change', function () { settings.targetLang = E.inpTargetLang.value.trim() || 'English'; saveSettings(); });

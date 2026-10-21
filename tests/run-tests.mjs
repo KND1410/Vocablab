@@ -20,12 +20,14 @@ Object.defineProperties(storage, {
   removeItem: { value: (k) => { store.delete(k); delete storage[k]; } }
 });
 /* ---------- fake fetch for link-loading tests ---------- */
-function fakeResponse(body, status = 200) {
+function fakeResponse(body, status = 200, headers) {
   const text = typeof body === 'string' ? body : '';
   const bytes = body instanceof Uint8Array ? body : null;
+  const head = headers || {};
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: { get: (name) => head[String(name).toLowerCase()] },
     text: async () => text,
     json: async () => JSON.parse(text),
     arrayBuffer: async () => {
@@ -806,6 +808,10 @@ eq(reqBody.messages[0].role, 'system', 'first message is the system prompt');
 eq(reqBody.messages[1].content, 'usr', 'user content passed through');
 eq(reqBody.response_format, { type: 'json_object' }, 'json mode sets response_format');
 ok(!('response_format' in Ai.oai.buildBody({ model: 'm', system: 's', user: 'u', jsonMode: false })), 'no response_format without json mode');
+const freeBody = Ai.oai.buildBody({ model: 'openai-fast', system: 's', user: 'u', keyless: true });
+eq(freeBody.reasoning_effort, 'low', 'the keyless reasoning model is asked to think less');
+ok(freeBody.max_tokens >= 8192, '…and gets room for a 20-word batch');
+ok(!('reasoning_effort' in reqBody), 'other providers are left untouched');
 eq(Ai.oai.extractText({ choices: [{ message: { content: '{"a":1}' }, finish_reason: 'stop' }] }).text, '{"a":1}', 'extracts choices[0].message.content');
 eq(Ai.oai.extractText({ choices: [{ message: { content: '', reasoning_content: 'thought text' } }] }).text, 'thought text', 'falls back to reasoning_content');
 let emptyThrew = false;
@@ -944,6 +950,55 @@ try { await Ai.listModels({ provider: 'openai', baseUrl: 'https://api.groq.com/o
 catch (e) { remoteErr = e; }
 ok(remoteErr && remoteErr.hint === 'unreachable', 'a remote host is reported as unreachable');
 ok(remoteErr && /internet connection/.test(remoteErr.friendly), 'the remote advice mentions the connection');
+aiFetch = null;
+
+/* The keyless provider (Simple mode): its own /models URL, no Authorization
+   header, and only the tier that works without a key. */
+const freeDef = Ai.providerById('pollinations');
+ok(freeDef && freeDef.keyless === true, 'the free provider is marked keyless');
+eq(freeDef && freeDef.base, 'https://text.pollinations.ai/openai', 'the free provider speaks the OpenAI shape');
+eq(freeDef && freeDef.modelsUrl, 'https://text.pollinations.ai/models', 'its model list lives beside /openai');
+let freeReq = null;
+aiFetch = async function (url, opts) {
+  freeReq = { url: String(url), headers: (opts && opts.headers) || {} };
+  return fakeResponse(JSON.stringify([
+    { name: 'openai-fast', tier: 'anonymous' },
+    { name: 'seed-only', tier: 'seed' },
+    { name: 'openai', tier: 'anonymous', aliases: ['gpt-oss'] }
+  ]), 200);
+};
+const freeModels = await Ai.listModels({ provider: 'openai', key: '', baseUrl: freeDef.base });
+eq(freeModels.map((m) => m.id), ['openai', 'openai-fast'], 'keyless mode lists only models usable without a key');
+eq(freeReq && freeReq.url, 'https://text.pollinations.ai/models', 'keyless mode asks the provider’s own model list URL');
+ok(freeReq && !freeReq.headers.Authorization, 'keyless requests send no Authorization header');
+
+aiFetch = async function () {
+  return fakeResponse(JSON.stringify({ error: { message: 'queue is full' } }), 429);
+};
+let busyErr = null;
+try { await Ai.listModels({ provider: 'openai', key: '', baseUrl: freeDef.base }); }
+catch (e) { busyErr = e; }
+ok(busyErr && /free AI is busy/.test(busyErr.friendly), 'a busy free service says so, instead of “rate limit by this provider”');
+ok(busyErr && /Advanced/.test(busyErr.friendly), '…and points at the own-key mode as the way out');
+
+let freeWait = null;
+aiFetch = async function () {
+  return fakeResponse(JSON.stringify({
+    error: { message: 'Free limit reached: 1 reply every 30 seconds per IP.' }
+  }), 402, { 'retry-after': '1' });
+};
+let freeLimit = null;
+try {
+  await Ai.generateQuestions({
+    provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+    targetLang: 'French', meaningLang: 'Vietnamese',
+    onWait: (ms) => { freeWait = ms; }
+  });
+} catch (e) { freeLimit = e; }
+eq(freeWait, 1000, 'the free-slot wait is reported to the UI');
+ok(freeLimit && /one request every 30 seconds/.test(freeLimit.friendly),
+  'a 402 free-slot limit is explained as the free service’s own rule');
+ok(freeLimit && !/OpenRouter/.test(freeLimit.friendly), '…and not mistaken for OpenRouter credits');
 aiFetch = null;
 
 /* ---------- planning + session ---------- */
@@ -1163,8 +1218,9 @@ ok(/not agree with the subject the learner actually wrote/.test(fixPrompt.user),
   'agreement is checked against the learner’s own subject');
 ok(/never write a note whose "fix" is the same as its "text"/.test(fixPrompt.user),
   'no note is written when nothing changed');
-ok(/subtract only for the genuine errors/.test(fixPrompt.user),
-  'the score only drops for genuine errors and missing words');
+ok(/must convey the ideas of the SOURCE/.test(fixPrompt.user) &&
+  /Each required word that the learner does not use costs 10 points/.test(fixPrompt.user),
+  'the score drops for meaning errors and missing required words');
 ok(/do not replace a correct phrase with more elegant wording/.test(fixPrompt.user),
   'and never to restyle a correct phrase');
 ok(/LEARNER'S TRANSLATION/.test(fixPrompt.user) && /REFERENCE TRANSLATION/.test(fixPrompt.user),
@@ -1215,11 +1271,25 @@ eq(Ai.normalizeCorrection({ score: 999, corrected: 'x', used: [] }, kwWords, { d
   100, 'the score is clamped');
 eq(Ai.normalizeCorrection({ correct: 'x' }, kwWords, {}), null, 'a reply without corrected text is unusable');
 const sameNote = Ai.normalizeCorrection({
-  score: 55, corrected: 'Les habitants constatent.',
+  score: 55, corrected: 'Les habitants constatent la pollution et cela peut aggraver la situation.',
   notes: [{ text: 'constatent', fix: 'constatent', why: 'no-op' }]
-}, kwWords, { direction: 'vi2fr', userText: 'Les habitants constatent.' });
+}, kwWords, {
+  direction: 'vi2fr',
+  userText: 'Les habitants constatent la pollution et cela peut aggraver la situation.'
+});
 eq(sameNote.notes.length, 0, 'a note that changes nothing is dropped');
-eq(sameNote.score, 100, '…and unchanged text scores 100, not the model’s guess');
+eq(sameNote.score, 100, '…and unchanged text with all required words scores 100, not the model’s guess');
+const missingWord = Ai.normalizeCorrection({
+  score: 55, corrected: 'Les habitants constatent.',
+  notes: []
+}, kwWords, { direction: 'vi2fr', userText: 'Les habitants constatent.' });
+eq(missingWord.score, 80, 'missing required words cost points even when the wording needs no fix');
+eq(missingWord.verdict, 'good', '…but two missing words is not a failed answer');
+const unrelated = Ai.normalizeCorrection({
+  score: 95, corrected: 'Đây là một câu không liên quan.',
+  notes: []
+}, kwWords, { direction: 'fr2vi', userText: 'Đây là một câu không liên quan.' });
+eq(unrelated.score, 70, 'a text that uses none of the required words loses 10 points per word');
 const dupNotes = Ai.normalizeCorrection({
   score: 70, corrected: 'Les habitants constatent.',
   notes: [{ text: 'habitant', fix: 'habitants', why: 'plural' },
@@ -1336,10 +1406,26 @@ const paraNoAi = await Quiz.buildPool({
   items: Quiz.planParagraphs(pool, 1, 'both'), pool: pool, source: 'builtin'
 });
 eq(paraNoAi.questions.length, 0, 'a paragraph is never synthesised offline');
-ok(paraNoAi.aiError && /needs an AI key/.test(paraNoAi.aiError.friendly), '…and the caller is told why');
+ok(paraNoAi.aiError && /needs AI/.test(paraNoAi.aiError.friendly), '…and the caller is told why');
+
+// Simple mode must work with no key at all: the provider itself is keyless.
+Ai.generateParagraph = async function () {
+  return {
+    paragraph: 'Les habitants constatent que la pollution augmente.',
+    reference: 'Người dân nhận thấy ô nhiễm gia tăng.',
+    keywords: kwWords
+  };
+};
+const paraKeyless = await Quiz.buildPool({
+  items: Quiz.planParagraphs(pool, 1, 'fr2vi'), pool: pool, source: 'auto',
+  aiProvider: 'openai', aiBaseUrl: 'https://text.pollinations.ai/openai',
+  aiKey: '', aiKeyless: true, aiModel: 'openai-fast'
+});
+eq(paraKeyless.questions.length, 1, 'Simple mode generates AI content without any key');
 Ai.generateParagraph = realGenerateParagraph;
 
 eq(Quiz.typeLabel('paragraph'), 'Paragraph translation', 'paragraph has its own type label');
+eq(Quiz.AI_BATCH_FREE, 20, 'the keyless free service gets bigger batches (fewer 30-second waits)');
 
 section('App wiring');
 const appSrc = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
@@ -1388,8 +1474,14 @@ ok(/id="qParagraph"/.test(htmlSrc) && /id="paraInput"/.test(htmlSrc) && /id="btn
 ok(/planParagraphs\(paraWords, setup\.paragraphCount/.test(appSrc), 'startQuiz adds the paragraph cards');
 ok(/Ai\.correctParagraph\(/.test(appSrc) && /function finishParagraph/.test(appSrc),
   'a paragraph answer is corrected by the AI and scored');
-ok(/typeParagraph\.disabled = !paraOk/.test(appSrc) && /Paragraph translation needs an AI key/.test(appSrc),
+ok(/typeParagraph\.disabled = !paraOk/.test(appSrc) && /Paragraph translation needs AI/.test(appSrc),
   'the exercise is disabled — not faked — when AI is unavailable');
+ok(/if \(setup\.types\.indexOf\('paragraph'\) !== -1\)[\s\S]{0,140}planParagraphs/.test(appSrc),
+  'a paragraph card is planned only when that box is ticked');
+ok(/aiMode: 'simple'/.test(appSrc) && /id="paneSimple"/.test(htmlSrc) && /id="modeAdvanced"/.test(htmlSrc),
+  'Settings offers Simple (no key) and Advanced (own key)');
+ok(/aiKeyless: aiKeyless\(\)/.test(appSrc) && /aiKeyless/.test(fs.readFileSync(path.join(root, 'js/quiz.js'), 'utf8')),
+  'Simple mode tells the quiz builder that AI needs no key');
 ok(/state\.paraBusy/.test(appSrc) && /if \(q\.type === 'paragraph'\)[\s\S]{0,260}submitParagraph\(\)/.test(appSrc),
   'plain Enter stays in the textarea; Ctrl+Enter checks');
 
@@ -1397,7 +1489,7 @@ ok(/state\.paraBusy/.test(appSrc) && /if \(q\.type === 'paragraph'\)[\s\S]{0,260
 // one table — so a new provider can never end up missing from the picker.
 const provs = Ai.providers;
 const provIds = provs.map((p) => p.id);
-eq(provIds, ['gemini', 'groq', 'cerebras', 'openrouter', 'mistral', 'deepseek', 'xai', 'cloudflare', 'ollama', 'openai'],
+eq(provIds, ['pollinations', 'gemini', 'groq', 'cerebras', 'openrouter', 'mistral', 'deepseek', 'xai', 'cloudflare', 'ollama', 'openai'],
   'provider list order');
 eq(provs.filter((p) => p.transport === 'gemini').map((p) => p.id), ['gemini'], 'only Gemini speaks Google\'s own API');
 ok(provs.every((p) => p.label && /^(gemini|openai)$/.test(p.transport)), 'every provider has a label and a transport');

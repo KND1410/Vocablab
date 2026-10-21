@@ -7,6 +7,9 @@
   'use strict';
 
   const AI_BATCH = 10;          // words per Gemini request
+  // The keyless free service allows one reply per IP every ~30 s, so ask for as
+  // many words as one reply can carry instead of spending a minute on two calls.
+  const AI_BATCH_FREE = 20;
   const CACHE_MAX = 2200;       // cached questions before pruning
 
   /* ---------- Mastery & stats ---------- */
@@ -311,15 +314,16 @@
 
   /**
    * Build one question per item.
-   * opts: { items, pool, source: 'auto'|'ai'|'builtin', aiProvider, aiBaseUrl, aiKey, aiModel,
-   *         targetLang, meaningLang, onProgress, signal }
+   * opts: { items, pool, source: 'auto'|'ai'|'builtin', aiProvider, aiBaseUrl, aiKey,
+   *         aiKeyless, aiModel, targetLang, meaningLang, onProgress, signal }
    */
   async function buildPool(opts) {
     const { items, pool, source, aiProvider, aiBaseUrl, aiKey, aiModel, targetLang, meaningLang, onProgress, signal } = opts;
     const progress = onProgress || function () {};
-    // Ready when a key exists, or for local servers (Ollama/LM Studio) with a localhost base URL.
+    // Ready with a key, with a provider that needs none (Simple mode), or for
+    // local servers (Ollama/LM Studio) with a localhost base URL.
     const wantAi = (source === 'ai' || source === 'auto') &&
-      (!!aiKey || (!!aiBaseUrl && Ai.isLocalBaseUrl(aiBaseUrl)));
+      (!!aiKey || !!opts.aiKeyless || (!!aiBaseUrl && Ai.isLocalBaseUrl(aiBaseUrl)));
     const allowFallback = source !== 'ai' || opts.strictAi !== true;
     // Cache questions per provider + endpoint + model so switching providers
     // doesn't replay questions made by a different one.
@@ -346,7 +350,8 @@
     let aiUsed = 0;
 
     if (pending.length && wantAi) {
-      const batches = Util.chunk(pending, AI_BATCH);
+      const batchSize = opts.aiKeyless ? AI_BATCH_FREE : AI_BATCH;
+      const batches = Util.chunk(pending, batchSize);
       progress(0, batches.length, 'Generating with AI…');
       for (let b = 0; b < batches.length; b++) {
         const batch = batches[b];
@@ -355,7 +360,10 @@
           const questions = await Ai.generateQuestions({
             provider: aiProvider || 'gemini', baseUrl: aiBaseUrl || '',
             key: aiKey, model: aiModel, items: batch,
-            targetLang: targetLang, meaningLang: meaningLang, signal: signal
+            targetLang: targetLang, meaningLang: meaningLang, signal: signal,
+            onWait: function (ms) {
+              progress(b, batches.length, 'Free AI is shared — waiting ' + Math.round(ms / 1000) + ' s for the next request…');
+            }
           });
           const pairs = [];
           for (const q of questions) {
@@ -391,7 +399,7 @@
     if (paragraphs.length) {
       if (!wantAi) {
         aiError = aiError || Object.assign(new Error('Paragraph translation needs AI'), {
-          friendly: 'Paragraph translation needs an AI key — add one in Settings → AI (or set Generator to Auto).',
+          friendly: 'Paragraph translation needs AI — use the free model (no key) in Settings → AI, or set Generator to Auto.',
           paragraph: true
         });
       } else {
@@ -403,7 +411,10 @@
             const para = await Ai.generateParagraph({
               provider: aiProvider || 'gemini', baseUrl: aiBaseUrl || '',
               key: aiKey, model: aiModel, words: item.candidates, direction: item.direction,
-              targetLang: targetLang, meaningLang: meaningLang, signal: signal
+              targetLang: targetLang, meaningLang: meaningLang, signal: signal,
+              onWait: function (ms) {
+                progress(p, paragraphs.length, 'Free AI is shared — waiting ' + Math.round(ms / 1000) + ' s for the next request…');
+              }
             });
             out.push({
               question: {
@@ -598,6 +609,7 @@
 
   global.Quiz = {
     AI_BATCH: AI_BATCH,
+    AI_BATCH_FREE: AI_BATCH_FREE,
     masteryKey: masteryKey, masteryAll: masteryAll, wordStats: wordStats,
     isMastered: isMastered, masteredCount: masteredCount,
     recordAnswer: recordAnswer, getStats: getStats,

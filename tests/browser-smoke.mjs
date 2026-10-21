@@ -406,6 +406,14 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '       model of the provider picked, and remembers a key per provider. */',
     '    byId("btnSettings").click();',
     '    await wait(60);',
+    '    out("simple mode: on=" + byId("modeSimple").classList.contains("is-on") +',
+    '        " pane=" + !byId("paneSimple").hidden + " advanced-hidden=" + byId("aiAdvanced").hidden +',
+    '        " models=" + byId("selSimpleModel").options.length +',
+    '        " free-model=" + JSON.stringify(byId("selSimpleModel").value));',
+    '    byId("modeAdvanced").click();',
+    '    await wait(40);',
+    '    out("advanced mode: on=" + byId("modeAdvanced").classList.contains("is-on") +',
+    '        " advanced-visible=" + !byId("aiAdvanced").hidden + " simple-hidden=" + byId("paneSimple").hidden);',
     '    var providerIds = Array.prototype.map.call(byId("selProvider").options, function (o) { return o.value; });',
     '    out("providers: ids=" + JSON.stringify(providerIds) + " hint=" + JSON.stringify(byId("providerHint").textContent.slice(0, 60)));',
     '    byId("selProvider").value = "deepseek";',
@@ -641,8 +649,12 @@ check(/typed submit: feedback=true title="Correct!"/m.test(log), 'a correct type
 check(/typed dont-know: feedback=true/m.test(log), '"I don\'t know" reveals the answer');
 check(/Quiz\.grade\(user case\)=correct/m.test(log), 'comma-list meaning accepts one of its items');
 check(/Quiz\.sameAnswer\(variant\)=true/m.test(log), 'an alternative option matches the answer');
-check(/^providers: ids=\["gemini","groq","cerebras","openrouter","mistral","deepseek","xai","cloudflare","ollama","openai"\]/m.test(log),
+check(/^providers: ids=\["pollinations","gemini","groq","cerebras","openrouter","mistral","deepseek","xai","cloudflare","ollama","openai"\]/m.test(log),
   'Settings → AI lists the whole provider list, not just Gemini', (log.match(/^providers: .*/m) || [''])[0]);
+check(/^simple mode: on=true pane=true advanced-hidden=true models=[1-9]\d* free-model="[^"]+"/m.test(log),
+  'Settings starts in Simple mode — free AI with no key to paste', (log.match(/^simple mode: .*/m) || [''])[0]);
+check(/^advanced mode: on=true advanced-visible=true simple-hidden=true/m.test(log),
+  'Advanced reveals the provider list and key fields', (log.match(/^advanced mode: .*/m) || [''])[0]);
 check(/^deepseek picked: base=https:\/\/api\.deepseek\.com\/v1 model=deepseek-flash gemini-pane=false oai-pane=true hint-has-link=true/m.test(log),
   'picking DeepSeek fills in its base URL, model and key link', (log.match(/^deepseek picked: .*/m) || [''])[0]);
 check(/^groq picked: base=https:\/\/api\.groq\.com\/openai\/v1 key=""$/m.test(log),

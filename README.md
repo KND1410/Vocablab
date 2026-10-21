@@ -8,9 +8,10 @@ learning **French** (Vietnamese meanings out of the box), but works with any
 language.
 
 - Every **tab** of your sheet becomes a **topic**.
-- Questions are written by an **AI model you choose** — Google Gemini, Groq,
+- Questions are written by an **AI model** — a free keyless model works out of the
+  box (no account, no key), or bring your own key for Google Gemini, Groq,
   Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare or a local
-  Ollama — with a solid built-in generator when there is no key / no quota left.
+  Ollama — with a solid built-in generator when AI is unavailable.
 - No build step, no backend, no dependencies: a static page + your browser.
 
 ```
@@ -168,15 +169,23 @@ Things to know:
 
 ## 3 · AI questions (free models)
 
-Open **Settings → AI** and pick a provider from the menu — the menu *is* the whole
-list, not a choice between Gemini and “something else”. Keys are stored in your
-browser only and requests go straight from your browser to the provider. Each
-provider remembers its own base URL, key and model, so you can switch back and
-forth without retyping anything.
+Open **Settings → AI**. There are two modes, both stored only in your browser:
+
+- **Simple** *(default)* — pick a free model and go. **No account, no API key.**
+  It uses a shared public AI service limited to **one request every 30 seconds**;
+  VocabLab batches up to 20 words per request and automatically waits for the next
+  free slot (a paragraph costs one request to write, one to correct). For heavy
+  use, switch to Advanced.
+- **Advanced** — choose any provider below and paste your own key. Requests then
+  go straight from your browser to that provider, with no shared queue.
+
+Each provider remembers its own base URL, key and model, so you can switch back
+and forth without retyping anything.
 
 | Provider | Free tier | Base URL (OpenAI-compatible mode) | Key from |
 |---|---|---|---|
-| **Google Gemini** *(default)* | Flash models, daily allowance **per project** | built in — select *Google Gemini* | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| **Free AI** *(Simple mode)* | shared, keyless, no sign-up — one request per 30 s | `https://text.pollinations.ai/openai` | — none |
+| **Google Gemini** *(first in Advanced)* | Flash models, daily allowance **per project** | built in — select *Google Gemini* | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | **Groq** | ~30 req/min · 1000 req/day · very fast — **not** xAI's Grok | `https://api.groq.com/openai/v1` | [console.groq.com/keys](https://console.groq.com/keys) — keys look like `gsk_…`, 56 characters |
 | **Cerebras** | free trial credit, then pay as you go · fastest | `https://api.cerebras.ai/v1` | [cloud.cerebras.ai](https://cloud.cerebras.ai) |
 | **OpenRouter** | every model ending in `:free` + the `openrouter/free` router | `https://openrouter.ai/api/v1` | [openrouter.ai/keys](https://openrouter.ai/keys) |
@@ -195,7 +204,7 @@ Gemini's daily quota? Pick another provider instead of making a new project:
 Groq, Cerebras and OpenRouter have free tiers of their own, and a `429` offers a
 one-click switch.
 
-**Google Gemini (default):** get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey),
+**Google Gemini (first in Advanced):** get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey),
 paste it, press **Test key & load models**.
 
 **Groq / Cerebras / OpenRouter / Mistral / DeepSeek / xAI Grok / Cloudflare:** pick the
@@ -217,12 +226,14 @@ will fail too. If VocabLab reports *“nothing is running there”*, it couldn't
 anything on that port (not installed, not started, or another port); *“a server
 answered, but it blocked this page”* means CORS (restart with `OLLAMA_ORIGINS=*`
 and serve VocabLab over `http://` rather than `file://`). The full text stays in
-**Settings → AI**. No local setup at all? Use a free Gemini/Groq key — or set
-Generator to *Built-in*.
+**Settings → AI**. No local setup at all? Leave Simple mode on (free, no key) —
+or set Generator to *Built-in*.
 
 How it keeps you inside the free tier:
 
-- **Batching** — up to 10 words per request (a 20-question quiz ≈ 2 requests).
+- **Batching** — up to 10 words per request with your own key (20 in Simple mode,
+  whose free service only allows one request every 30 s); a 20-question quiz is
+  usually 1–2 requests.
 - **Caching** — every generated question is stored locally by word + type +
   provider/model, so replays and reviews cost **0 requests**.
 - **Retries/fallback** — rate limits and 5xx are retried briefly, JSON mode falls
@@ -281,15 +292,18 @@ Notes:
     accents, a verb that doesn't agree with **the subject you wrote**, adjective
     agreement, a wrong preposition, or a word that changes the meaning. Your own
     pronoun (`je`, `elle`, `nous`, `vous`, `on`…), tense and synonyms are accepted:
-    the reference translation is only a guide to the meaning, not the required answer,
+    the reference translation is only a guide to the meaning, not the required answer.
+    The score still weighs the source's meaning and the required words, so omitting an
+    idea or a required word costs points even when the grammar is perfect.
   * a **Corrections** list quoting exactly what changed and why (one note per fix —
     never a bundle, never a note where nothing changed),
   * the sheet words you used (✓) and the ones you missed (✗).
 
-  Paragraphs are never faked locally: without a key (or with Generator set to
-  *Built-in*) the option is disabled with the reason, and a failed generation or
-  correction says so in Settings → AI instead of quietly swapping in another
-  exercise. `Ctrl/⌘ + Enter` checks without leaving the textarea.
+  Paragraphs are never faked locally: when AI is unavailable (Generator set to
+  *Built-in*, or Advanced with no key) the option is disabled with the reason, and
+  a failed generation or correction says so in Settings → AI instead of quietly
+  swapping in another exercise. Simple mode (free, keyless) is enough for it.
+  `Ctrl/⌘ + Enter` checks without leaving the textarea.
 - **🔊 pronunciation** uses your browser's speech synthesis — set the voice code
   in Settings → AI (`fr-FR`, `de-DE`, `ja-JP`, …); “Auto-play” reads the word
   when a card is revealed.
@@ -304,7 +318,7 @@ Keyboard: `1`–`4` answer · `Enter` check/next · `Space` flip card · `←`/`
 
 | Tab | What's there |
 |---|---|
-| **AI** | provider menu (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, target language + voice, auto-play |
+| **AI** | Simple mode (free, keyless model picker) / Advanced mode (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, target language + voice, auto-play |
 | **Google Sheet** | the three connection modes, load buttons, setup help |
 | **Data** | cached deck info, forget deck, reset progress, wipe everything |
 
@@ -320,10 +334,11 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 | `403` from Sheets (API mode) | Sheet is not “Anyone with the link”, or the API key is restricted and doesn't allow the Sheets API |
 | “Missing Sheets API key” | That mode needs a Google Cloud key — switch to **⭐ Sheet link — no key** instead |
 | “Could not open the sheet” (Sheet link mode) | Set sharing to “Anyone with the link → Viewer” |
-| `429` from the AI provider | Free-tier limit. Wait a minute, or pick another provider in Settings → AI (Groq, Cerebras and OpenRouter are free too) — the error offers a one-click switch, and the app falls back to built-in questions meanwhile |
+| `429` from the AI provider | Free-tier limit. Wait a minute, or pick another provider in Settings → AI (Groq, Cerebras and OpenRouter are free too) — the error offers a one-click switch, and the app falls back to built-in questions meanwhile. In Simple mode, the keyless service is shared: retry, or switch to Advanced |
+| Free AI is busy / slow (Simple) | It is a public, shared service with a queue. Retry in a minute, press **Check the free AI**, or switch to Advanced with your own key (Groq and Gemini have free tiers). The built-in generator still covers everything except paragraphs |
 | Provider rejects the key (`401`/`403`) | The app now names the provider and its own reason (“Invalid API Key”). Keys are *not* shared between providers: `gsk_…` (56 chars) = Groq, `xai-…` = xAI **Grok**, `sk-or-…` = OpenRouter, `sk-…` = DeepSeek, `AIza…` = Gemini. **Groq (fast inference, free) and Grok (xAI, paid) are different companies one letter apart** — a key from a “Grok” page will never work on the Groq provider. A key that matches no provider's format, or another provider's, is called out the moment you paste it, with the console it should come from. A pasted `Bearer ` prefix, quotes or a stray newline are stripped automatically (keys saved earlier are repaired on load). On OpenRouter use a `:free` model; on Cloudflare include your account ID in the Base URL |
 | AI replies, but the quiz still shows built-in questions | The model answered in a shape VocabLab can't use. The prompt now spells out the exact JSON (`{"questions":[…]}`, one object per word) and the app retries once, colder and with more room, before giving up. If it still fails, the model ignores JSON mode: open Settings → AI (the box shows how the reply began) and pick a plain chat model instead of a reasoning one |
-| Paragraph translation is greyed out | It is AI-only, by design: add a key in Settings → AI (or set Generator to *Auto* / *AI only*). A paragraph is written **and** corrected by AI, so it is never replaced by a built-in question; if a generation fails mid-session the reason is kept in Settings → AI |
+| Paragraph translation is greyed out | It is AI-only, by design: use Simple mode (free, no key) in Settings → AI, or add your own key in Advanced (and set Generator to *Auto* / *AI only*). A paragraph is written **and** corrected by AI, so it is never replaced by a built-in question; if a generation fails mid-session the reason is kept in Settings → AI |
 | Can't reach the provider (CORS/network) | The message says which side is broken. *“nothing is running there”* → for a local server: it isn't installed/started (`ollama serve`, then `ollama pull <model>`; check `http://localhost:11434/api/tags` in a new tab); *“a server answered, but it blocked this page”* → CORS: restart Ollama with `OLLAMA_ORIGINS=*` and serve the page over `http(s)://`, not `file://`. Gemini, Groq, OpenRouter and Mistral need no CORS setup |
 | A renamed tab shows up twice | Only happens with a manual tab-name list: Google serves the *first* tab for an unknown name. Delete/rename that line, or use the link-only mode for auto-detection |
 | New words/tabs don't show up | Press **↻ Reload** in the header |
