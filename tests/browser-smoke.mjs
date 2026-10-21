@@ -81,8 +81,67 @@ function freePort() {
   });
 }
 
+/* ---------- a local AI that answers like a cloud provider (CORS on) ---------- */
+/* It writes a paragraph out of the words in the request, and a correction when
+   the request is a correction prompt — enough to drive the whole exercise. */
+function startParaProvider() {
+  const seen = [];
+  const cors = {
+    'access-control-allow-origin': '*',
+    'access-control-allow-headers': '*',
+    'access-control-allow-methods': 'POST, GET, OPTIONS'
+  };
+  const server = http.createServer((req, res) => {
+    seen.push(req.method + ' ' + req.url);
+    if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
+    if (req.url.indexOf('/models') !== -1) {
+      res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors));
+      res.end(JSON.stringify({ object: 'list', data: [{ id: 'test-model', object: 'model' }] }));
+      return;
+    }
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      // The prompt lists the sheet words as pretty-printed JSON. Read the user
+      // message (the body is an envelope) and echo three of those words back, so
+      // the exercise's own keyword check always accepts them.
+      let promptText = body;
+      try {
+        const parsed = JSON.parse(body);
+        promptText = (parsed.messages || []).map((m) => String(m.content || '')).join('\n');
+      } catch (e) { /* not an envelope — use the raw body */ }
+      const picks = [];
+      const rx = /"term":\s*"((?:[^"\\]|\\.)*)",\s*"meaning":\s*"((?:[^"\\]|\\.)*)"/g;
+      let m;
+      while ((m = rx.exec(promptText)) && picks.length < 3) {
+        picks.push({ term: JSON.parse('"' + m[1] + '"'), meaning: JSON.parse('"' + m[2] + '"') });
+      }
+      const keywords = picks.map((p, i) => ({
+        term: p.term, meaning: p.meaning, note: i === 0 ? 'note for the first word' : ''
+      }));
+      const content = promptText.indexOf("LEARNER'S TRANSLATION") !== -1
+        ? JSON.stringify({
+          score: 82,
+          corrected: 'Les habitants constatent que la pollution augmente.',
+          notes: [{ text: 'les habittants', fix: 'les habitants', why: 'plural takes -s' }],
+          used: keywords.map((k) => k.term),
+          comment: 'Close — mind the plural.'
+        })
+        : JSON.stringify({
+          paragraph: 'Les habitants constatent que la pollution augmente chaque année.',
+          reference: 'Người dân nhận thấy ô nhiễm gia tăng mỗi năm.',
+          keywords: keywords
+        });
+      res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors));
+      res.end(JSON.stringify({ choices: [{ message: { content: content }, finish_reason: 'stop' }] }));
+    });
+  });
+  return { server: server, seen: seen };
+}
+
 /* ---------- build the probe page ---------- */
-function buildProbe(deadPort, blockedPort) {
+function buildProbe(deadPort, blockedPort, paraPort) {
   let html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
   const early = [
@@ -440,6 +499,50 @@ function buildProbe(deadPort, blockedPort) {
     '    byId("btnExitQuiz").click();',
     '    await wait(200);',
     '',
+    '    /* Paragraph translation: an AI-written text, the words it must contain,',
+    '       and an AI correction that keeps the learner’s wording. */',
+    '    byId("btnSettings").click();',
+    '    await wait(60);',
+    '    byId("selProvider").value = "openai";',
+    '    byId("selProvider").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    byId("inpOaiBase").value = "http://127.0.0.1:' + paraPort + '/v1";',
+    '    byId("inpOaiBase").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    byId("inpOaiKey").value = "gsk_" + "0".repeat(52);',
+    '    byId("inpOaiKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    byId("settingsDialog").close();',
+    '    await wait(80);',
+    '    setTypes(false, false, false);',
+    '    byId("selSource").value = "ai";',
+    '    byId("selSource").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    byId("typeParagraph").checked = true;',
+    '    byId("typeParagraph").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    out("paragraph: enabled=" + !byId("typeParagraph").disabled + " opts=" + !byId("paraOpts").hidden);',
+    '    byId("selParaDir").value = "fr2vi";',
+    '    byId("selParaDir").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    byId("selParaCount").value = "1";',
+    '    byId("selParaCount").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    byId("btnStart").click();',
+    '    await waitFor(function () { return screen("Quiz") && vis(byId("qParagraph")); }, 25000, "paragraph card");',
+    '    out("paragraph start: issue=" + JSON.stringify(byId("aiIssue").textContent.slice(0, 100)));',
+    '    out("paragraph card: dir=" + byId("paraDir").textContent +',
+    '        " text=" + (byId("paraText").textContent.length > 40) +',
+    '        " words=" + document.querySelectorAll("#paraKeywords .pw").length +',
+    '        " prompt-hidden=" + byId("qPrompt").hidden + " textarea=" + vis(byId("paraInput")));',
+    '    byId("paraInput").value = "Les habittants constatent que la pollution augmente.";',
+    '    byId("paraInput").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    out("paragraph count=" + byId("paraCount").textContent);',
+    '    byId("btnParaSubmit").click();',
+    '    await waitFor(function () { return !byId("paraFeedback").hidden; }, 20000, "paragraph feedback");',
+    '    var pfScore = document.querySelector("#paraFeedback .pf-score");',
+    '    out("paragraph feedback: score=" + (pfScore ? pfScore.textContent : "none") +',
+    '        " notes=" + document.querySelectorAll("#paraFeedback .pf-note").length +',
+    '        " used=" + document.querySelectorAll("#paraFeedback .pf-words li.ok").length +',
+    '        " corrected=" + !!document.querySelector("#paraFeedback .pf-fixed") +',
+    '        " next=" + !!document.querySelector("#paraFeedback .pf-actions button"));',
+    '    document.querySelector("#paraFeedback .pf-actions button").click();',
+    '    await waitFor(function () { return screen("Results"); }, 20000, "results after a paragraph");',
+    '    out("paragraph results=" + screen("Results") + " fraction=" + byId("resFraction").textContent);',
+    '',
     '    byId("btnFlashcards").click();',
     '    await waitFor(function () { return screen("Flashcards"); }, 8000, "flashcards");',
     '    out("flashcards: first=" + JSON.stringify(byId("fcTerm").textContent.slice(0, 20)) + " progress=" + byId("fcProgress").textContent);',
@@ -488,15 +591,19 @@ const port = await freePort();
 const deadPort = await freePort(); // nothing listens here: models the “Ollama is not running” case
 const blockedPort = await freePort(); // answers, but sends no CORS headers: models “Ollama is running, page refused”
 const blocked = startFakeProvider();
+const para = startParaProvider(); // a working provider (CORS on) for the paragraph exercise
+const paraPort = await freePort();
 await new Promise((r) => server.listen(port, '127.0.0.1', r));
 await new Promise((r) => blocked.server.listen(blockedPort, '127.0.0.1', r));
-buildProbe(deadPort, blockedPort);
+await new Promise((r) => para.server.listen(paraPort, '127.0.0.1', r));
+buildProbe(deadPort, blockedPort, paraPort);
 
 console.log('Browser smoke test (' + (discover ? 'bare link, auto-discovery' : live ? 'live sheet' : 'demo deck') + ') → ' + chrome);
 const dom = await runChrome(chrome, 'http://127.0.0.1:' + port + '/_probe.html');
 fs.rmSync(path.join(root, '_probe.html'), { force: true });
 server.close();
 blocked.server.close();
+para.server.close();
 
 const pre = dom.match(/<pre id="probeOut">([\s\S]*?)<\/pre>/);
 const block = pre ? pre[1].match(/===PROBE===([\s\S]*?)===END===/) : null;
@@ -572,6 +679,18 @@ check(/^blocked AI: toast="AI generation issue[^"]*a server answered, but it blo
 check(/^blocked AI: still-quizzing=true/m.test(log), 'the quiz still runs when the provider blocks the page');
 check(blocked.seen.some((r) => /\/v1\/models/.test(r)), 'the reachability probe really reached the local server');
 check(blocked.seen.some((r) => /\/v1\/chat\/completions/.test(r)), 'the provider really was called before the fallback');
+check(/^paragraph: enabled=true opts=true/m.test(log),
+  'paragraph translation is offered as soon as a key is set');
+check(/^paragraph card: dir=French → Vietnamese text=true words=[3-9] prompt-hidden=true textarea=true/m.test(log),
+  'the paragraph card shows the text, the words to use and a textarea',
+  (log.match(/^paragraph card: .*/m) || [''])[0]);
+check(/^paragraph count=\d+ words/m.test(log), 'the textarea counts what you type',
+  (log.match(/^paragraph count=.*/m) || [''])[0]);
+check(/^paragraph feedback: score=82\/100 notes=1 used=3 corrected=true next=true/m.test(log),
+  'the AI correction shows a score, the fixes, the words used and a way on',
+  (log.match(/^paragraph feedback: .*/m) || [''])[0]);
+check(/^paragraph results=true fraction=1\/1/m.test(log), 'a paragraph counts in the results',
+  (log.match(/^paragraph results=.*/m) || [''])[0]);
 check(/flashcard flipped=true/m.test(log), 'flashcard flips');
 check(/flashcard next=\d+\s*\/\s*\d+/m.test(log), 'flashcard advances');
 check(/DONE/m.test(log), 'probe ran to the end');

@@ -99,7 +99,11 @@
 
   /* ---------- Question planning ---------- */
   function planItems(words, types, directionSetting, rotation) {
-    const typesWanted = (types && types.length) ? types : ['mc'];
+    // Paragraph translation is planned separately (one card per paragraph, not
+    // one per word), so it never consumes a word here.
+    const typesWanted = (types && types.length ? types : ['mc'])
+      .filter(function (t) { return t !== 'paragraph'; });
+    if (!typesWanted.length) return [];
     const rot = (rotation || 0) % 1000;
     return words.map(function (word, i) {
       const n = rot + i;
@@ -118,6 +122,31 @@
         type: type, direction: direction
       };
     });
+  }
+
+  /**
+   * One card per paragraph: 12 candidate words go to the model, which picks the
+   * 5–6 it will force into the text. `directionSetting` is 'fr2vi', 'vi2fr' or
+   * 'both' (default). Paragraphs are heavy, so at most three per session.
+   */
+  function planParagraphs(words, count, directionSetting) {
+    const total = Util.clamp(parseInt(count, 10) || 1, 1, 3);
+    const pool = Util.shuffle((words || []).slice());
+    const out = [];
+    for (let i = 0; i < total; i++) {
+      const take = pool.splice(0, 12);
+      if (take.length < 6) break;
+      const dir = directionSetting === 'fr2vi' || directionSetting === 'vi2fr'
+        ? directionSetting
+        : (i % 2 === 0 ? 'fr2vi' : 'vi2fr');
+      out.push({
+        type: 'paragraph', direction: dir,
+        term: 'Paragraph ' + (i + 1), meaning: 'Paragraph translation',
+        pron: '', example: '', topicId: take[0].topicId, topicName: take[0].topicName,
+        candidates: take
+      });
+    }
+    return out;
   }
 
   /* ---------- Question cache ---------- */
@@ -302,6 +331,7 @@
     const cacheSnapshot = wantAi ? Util.lsGet('qcache', {}) : {};
 
     for (const item of items) {
+      if (item.type === 'paragraph') continue; // one card, generated on its own
       let cached = null;
       const key = cacheKeyFor(item, aiId);
       if (wantAi && cacheSnapshot[key] && cacheSnapshot[key].q) cached = cacheSnapshot[key].q;
@@ -354,10 +384,51 @@
       }
     }
 
+    // A paragraph cannot be faked offline: it is one AI call per card, and the
+    // built-in generator has nothing to put in it. When AI is unavailable the
+    // card is simply left out and the caller explains why.
+    const paragraphs = items.filter(function (i) { return i.type === 'paragraph'; });
+    if (paragraphs.length) {
+      if (!wantAi) {
+        aiError = aiError || Object.assign(new Error('Paragraph translation needs AI'), {
+          friendly: 'Paragraph translation needs an AI key — add one in Settings → AI (or set Generator to Auto).',
+          paragraph: true
+        });
+      } else {
+        for (let p = 0; p < paragraphs.length; p++) {
+          const item = paragraphs[p];
+          if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          progress(p, paragraphs.length, 'Writing a paragraph…');
+          try {
+            const para = await Ai.generateParagraph({
+              provider: aiProvider || 'gemini', baseUrl: aiBaseUrl || '',
+              key: aiKey, model: aiModel, words: item.candidates, direction: item.direction,
+              targetLang: targetLang, meaningLang: meaningLang, signal: signal
+            });
+            out.push({
+              question: {
+                type: 'paragraph', direction: item.direction, term: item.term,
+                prompt: para.paragraph, hint: '', options: [], answer: '', explanation: '',
+                keywords: para.keywords, reference: para.reference, source: 'ai'
+              },
+              item: item
+            });
+            aiUsed += 1;
+          } catch (e) {
+            if (e && e.name === 'AbortError') throw e;
+            if (!allowFallback) throw e;
+            aiError = e;
+          }
+          progress(p + 1, paragraphs.length, 'Writing a paragraph…');
+        }
+      }
+    }
+
     // Fill any item that ended up without a question (AI skipped it, invalid output…).
     const covered = Object.create(null);
     for (const o of out) covered[Util.normalize(o.item.term) + '|' + Util.normalize(o.item.meaning)] = true;
     for (const item of items) {
+      if (item.type === 'paragraph') continue;
       const k = Util.normalize(item.term) + '|' + Util.normalize(item.meaning);
       if (!covered[k]) {
         out.push({ question: Object.assign({}, builtinFor(item, pool, [item.type]), { source: 'builtin' }), item: item });
@@ -501,6 +572,7 @@
   function typeLabel(type) {
     if (type === 'mc') return 'Multiple choice';
     if (type === 'blank') return 'Fill in the blank';
+    if (type === 'paragraph') return 'Paragraph translation';
     return 'Translate';
   }
 
@@ -530,6 +602,7 @@
     isMastered: isMastered, masteredCount: masteredCount,
     recordAnswer: recordAnswer, getStats: getStats,
     flattenDeck: flattenDeck, selectWords: selectWords, planItems: planItems,
+    planParagraphs: planParagraphs,
     buildPool: buildPool, makeSession: makeSession,
     grade: grade, answerCandidates: answerCandidates, sameAnswer: sameAnswer,
     counterpart: counterpart,

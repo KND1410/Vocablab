@@ -14,6 +14,7 @@
     targetLang: 'French', targetCode: 'fr-FR', autoPlay: true,
     sheetMode: 'links', sheetUrl: '', sheetApiKey: '', scriptUrl: '', links: '',
     quizTypes: ['mc', 'blank', 'translate'], direction: 'mixed', count: 20, source: 'auto',
+    paragraphDirection: 'both', paragraphCount: 1,
     rotation: 0
   };
   const settings = Object.assign({}, DEFAULTS, U.lsGet('settings', {}));
@@ -25,6 +26,7 @@
     selected: [],
     session: null,
     answered: false,
+    paraBusy: false,
     flashcards: null,
     controller: null,
     screen: 'welcome'
@@ -34,12 +36,16 @@
   function cacheEls() {
     const ids = ['srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnReload', 'srcName', 'srcMeta',
       'btnChangeSource', 'btnAllTopics', 'btnNoTopics', 'topicSearch', 'topicList', 'selectedSummary',
-      'typeMc', 'typeBlank', 'typeTranslate', 'selDirection', 'selCount', 'selSource', 'btnStart', 'btnFlashcards',
+      'typeMc', 'typeBlank', 'typeTranslate', 'typeParagraph', 'paraOpts', 'paragraphHint',
+      'selParaDir', 'selParaCount',
+      'selDirection', 'selCount', 'selSource', 'btnStart', 'btnFlashcards',
       'statWords', 'statMastered', 'statAcc', 'screenWelcome', 'btnDemo', 'btnQuickSheet', 'btnQuickAi',
       'screenQuiz', 'progressBar', 'qProgressText', 'qStreak', 'qScore', 'btnExitQuiz', 'qCard', 'qTypeBadge',
       'qTopicBadge', 'btnSpeakPrompt', 'qPrompt', 'qHintBox', 'qOptions', 'qInputRow', 'qInput', 'btnSubmit',
       'btnDontKnow', 'qFeedback', 'fbIcon', 'fbTitle', 'fbBody', 'fbTerm', 'fbSpeak', 'fbPron', 'fbMeaning',
-      'fbExample', 'btnNext', 'screenResults', 'resRing', 'resPct', 'resFraction', 'resTitle', 'resMeta',
+      'fbExample', 'btnNext', 'qParagraph', 'paraDir', 'btnParaSpeak', 'paraText', 'paraKeywords',
+      'paraInput', 'paraCount', 'btnParaSubmit', 'btnParaSkip', 'paraFeedback',
+      'screenResults', 'resRing', 'resPct', 'resFraction', 'resTitle', 'resMeta',
       'resBreakdown', 'btnRetryMistakes', 'btnNewQuiz', 'btnResultsFlashcards', 'resMistakes', 'resMistakeList',
       'screenFlashcards', 'fcProgress', 'btnFcShuffle', 'btnFcExit', 'fcCard', 'fcTerm', 'fcPron', 'fcSpeak',
       'fcMeaning', 'fcExample', 'btnFcAgain', 'btnFcGood', 'btnFcPrev', 'btnFcNext',
@@ -85,6 +91,7 @@
   /* ---------- Screens ---------- */
   function showScreen(name) {
     state.screen = name;
+    document.body.dataset.screen = name;
     const map = { welcome: E.screenWelcome, quiz: E.screenQuiz, results: E.screenResults, flashcards: E.screenFlashcards };
     Object.keys(map).forEach(function (k) { map[k].hidden = k !== name; });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -207,11 +214,28 @@
     E.statAcc.textContent = stats.accuracy == null ? '–' : stats.accuracy + '%';
   }
 
+  /** Paragraphs are written and corrected by AI, so the exercise needs both a key and an AI generator. */
+  function paragraphAvailable() {
+    return aiReady() && E.selSource.value !== 'builtin';
+  }
+
   function updateControls() {
     const hasDeck = !!state.deck && state.deck.topics.length > 0;
     const hasTopics = state.selected.length > 0;
-    const hasTypes = E.typeMc.checked || E.typeBlank.checked || E.typeTranslate.checked;
-    E.btnStart.disabled = !(hasDeck && hasTopics && hasTypes);
+    const paraOk = paragraphAvailable();
+    const paraOn = E.typeParagraph.checked;
+    const hasTypes = E.typeMc.checked || E.typeBlank.checked || E.typeTranslate.checked || (paraOn && paraOk);
+    E.typeParagraph.disabled = !paraOk;
+    const chip = E.typeParagraph.closest ? E.typeParagraph.closest('.chip') : null;
+    if (chip) chip.classList.toggle('chip-disabled', !paraOk);
+    E.paragraphHint.hidden = paraOk;
+    if (!paraOk) {
+      E.paragraphHint.textContent = E.selSource.value === 'builtin'
+        ? 'Paragraph translation needs AI — set Generator to “Auto” or “AI only”.'
+        : 'Paragraph translation needs an AI key — add one in Settings → AI.';
+    }
+    E.paraOpts.hidden = !paraOn;
+    E.btnStart.disabled = !(hasDeck && hasTopics && hasTypes) || (paraOn && !paraOk);
     E.btnFlashcards.disabled = !(hasDeck && hasTopics);
   }
 
@@ -261,12 +285,18 @@
     if (E.typeMc.checked) types.push('mc');
     if (E.typeBlank.checked) types.push('blank');
     if (E.typeTranslate.checked) types.push('translate');
+    if (E.typeParagraph.checked) types.push('paragraph');
     settings.quizTypes = types;
     settings.direction = E.selDirection.value;
+    settings.paragraphDirection = E.selParaDir.value;
+    settings.paragraphCount = parseInt(E.selParaCount.value, 10) || 1;
     settings.count = parseInt(E.selCount.value, 10) || 0;
     settings.source = E.selSource.value;
     saveSettings();
-    return { types: types, direction: settings.direction, count: settings.count, source: settings.source };
+    return {
+      types: types, direction: settings.direction, count: settings.count, source: settings.source,
+      paragraphDirection: settings.paragraphDirection, paragraphCount: settings.paragraphCount
+    };
   }
 
   /* ---------- Active AI provider ---------- */
@@ -363,16 +393,27 @@
     if (!state.deck) { U.toast('Load a vocabulary deck first.', 'warn'); return; }
     const setup = readSetup();
     if (!setup.types.length) { U.toast('Pick at least one question type.', 'warn'); return; }
+    if (setup.types.indexOf('paragraph') !== -1 && !paragraphAvailable()) {
+      U.toast(setup.source === 'builtin'
+        ? 'Paragraph translation needs AI — set Generator to “Auto” or “AI only”.'
+        : 'Paragraph translation needs an AI key — add one in Settings → AI.', 'warn');
+      return;
+    }
 
     let words = opts.words;
+    const available = selectedWords();
     if (!words) {
-      const available = selectedWords();
       if (!available.length) { U.toast('Select at least one topic.', 'warn'); return; }
       words = Quiz.selectWords(available, setup.count);
     }
     if (!words.length) { U.toast('No words to practise.', 'warn'); return; }
 
-    const items = Quiz.planItems(words, setup.types, setup.direction, settings.rotation);
+    // “Questions” limits the word cards; a paragraph still needs a dozen
+    // candidates to choose its 5–6 required words from.
+    const paraWords = words.length >= 12 ? words : (available.length >= 12 ? available : words);
+
+    const items = Quiz.planItems(words, setup.types, setup.direction, settings.rotation)
+      .concat(Quiz.planParagraphs(paraWords, setup.paragraphCount, setup.paragraphDirection));
     settings.rotation = (settings.rotation + words.length) % 1000;
     saveSettings();
 
@@ -397,8 +438,12 @@
       });
 
       if (!result.questions.length) {
-        throw Object.assign(new Error('No questions'),
-          { friendly: 'Could not build any questions from these words.' });
+        const why = result.aiError;
+        throw Object.assign(new Error('No questions'), {
+          friendly: why && why.paragraph
+            ? 'Paragraph translation could not be generated — ' + (why.friendly || 'the AI reply was unusable.')
+            : 'Could not build any questions from these words.'
+        });
       }
 
       state.session = {
@@ -454,11 +499,14 @@
     E.qTopicBadge.hidden = !q.word.topicName;
     E.qTopicBadge.textContent = q.word.topicName || '';
 
+    E.qPrompt.hidden = false;
     E.qPrompt.innerHTML = U.esc(q.prompt).replace(/(_{2,})/g, '<span class="blank">$1</span>');
     E.qHintBox.hidden = !q.hint;
     E.qHintBox.textContent = q.hint || '';
 
-    const speakable = q.type !== 'blank' && q.direction !== 'meaning2term';
+    // The global speaker reads a one-word prompt; a paragraph has its own button
+    // so it can use the right language for the source text.
+    const speakable = q.type !== 'blank' && q.type !== 'paragraph' && q.direction !== 'meaning2term';
     E.btnSpeakPrompt.hidden = !speakable;
 
     E.qFeedback.hidden = true;
@@ -468,8 +516,15 @@
     E.qInputRow.hidden = true;
     E.btnDontKnow.hidden = false;
     E.qInput.disabled = false;
+    E.qParagraph.hidden = true;
+    E.paraFeedback.hidden = true;
+    E.paraFeedback.innerHTML = '';
+    E.paraFeedback.className = 'para-feedback';
+    state.paraBusy = false;
 
-    if (q.type === 'mc') {
+    if (q.type === 'paragraph') {
+      renderParagraph(q);
+    } else if (q.type === 'mc') {
       E.qOptions.hidden = false;
       q.options.forEach(function (option, i) {
         const btn = document.createElement('button');
@@ -602,6 +657,207 @@
     else renderQuestion();
   }
 
+  /* ---------- Paragraph translation ---------- */
+  /** A paragraph card: source text + the sheet words that must appear, then a textarea. */
+  function renderParagraph(q) {
+    const fr2vi = q.direction !== 'vi2fr';
+    E.qParagraph.hidden = false;
+    E.qPrompt.hidden = true;
+    E.qHintBox.hidden = true;
+    E.btnDontKnow.hidden = true;
+
+    E.paraDir.textContent = fr2vi ? 'French → Vietnamese' : 'Vietnamese → French';
+    E.paraText.textContent = q.prompt;
+    E.paraText.lang = fr2vi ? 'fr' : 'vi';
+    E.btnParaSpeak.hidden = false;
+
+    // The word the learner must produce is the main line: the Vietnamese
+    // meaning when they write Vietnamese, the French term when they write French.
+    E.paraKeywords.innerHTML = '';
+    (q.keywords || []).forEach(function (k) {
+      const li = document.createElement('li');
+      li.className = 'pw';
+      const main = document.createElement('span');
+      main.className = 'pw-main';
+      main.textContent = fr2vi ? k.meaning : k.term;
+      const sub = document.createElement('span');
+      sub.className = 'pw-sub';
+      sub.textContent = fr2vi ? k.term : k.meaning;
+      li.appendChild(main);
+      li.appendChild(sub);
+      if (k.note) {
+        const note = document.createElement('span');
+        note.className = 'pw-note';
+        note.textContent = k.note;
+        li.appendChild(note);
+      }
+      E.paraKeywords.appendChild(li);
+    });
+
+    E.paraInput.value = '';
+    E.paraInput.lang = fr2vi ? 'vi' : 'fr';
+    E.paraInput.placeholder = fr2vi ? 'Write the Vietnamese translation…' : 'Write the French translation…';
+    E.paraInput.disabled = false;
+    E.paraCount.textContent = '0 words';
+    E.btnParaSubmit.textContent = 'Check with AI';
+    E.btnParaSubmit.disabled = false;
+    E.btnParaSkip.disabled = false;
+    E.paraInput.focus();
+  }
+
+  function paraEl(tag, cls, text) {
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (text != null) el.textContent = text;
+    return el;
+  }
+
+  async function submitParagraph() {
+    const q = currentQuestion();
+    if (!q || q.type !== 'paragraph' || state.answered || state.paraBusy) return;
+    const text = E.paraInput.value.trim();
+    if (!text) { U.toast('Write your translation first.', 'warn'); E.paraInput.focus(); return; }
+    if (!aiReady()) {
+      U.toast('Paragraph translation needs an AI key — add one in Settings → AI.', 'warn');
+      showAiIssue('Paragraph translation needs an AI key — add one in Settings → AI.');
+      return;
+    }
+    state.paraBusy = true;
+    E.btnParaSubmit.disabled = true;
+    E.btnParaSubmit.textContent = 'Checking…';
+    E.paraInput.disabled = true;
+    E.btnParaSkip.disabled = true;
+    let fb = null;
+    try {
+      fb = await Ai.correctParagraph({
+        provider: activeProvider(), baseUrl: activeBase(), key: activeKey(), model: activeModel(),
+        source: q.prompt, reference: q.reference, userText: text, direction: q.direction,
+        keywords: q.keywords, targetLang: settings.targetLang, meaningLang: 'Vietnamese'
+      });
+    } catch (e) {
+      state.paraBusy = false;
+      E.paraInput.disabled = false;
+      E.btnParaSubmit.disabled = false;
+      E.btnParaSubmit.textContent = 'Try again';
+      E.btnParaSkip.disabled = false;
+      const detail = (e && (e.detail || e.friendly)) || (e && e.message) || 'The AI could not check this translation.';
+      const quota = e && (e.status === 429 || /429|quota|rate limit/i.test(String(detail)));
+      showAiIssue(detail, quota ? 'quota' : '');
+      U.toast(detail.split('\n')[0], 'bad', 12000);
+      renderParaError(detail);
+      return;
+    }
+    state.paraBusy = false;
+    finishParagraph(q, text, fb);
+  }
+
+  /** A paragraph is one essay, not one word: it scores, but writes no word mastery. */
+  function finishParagraph(q, text, fb) {
+    if (state.answered) return;
+    state.answered = true;
+    const s = state.session;
+    const correct = fb.score >= 70;
+    s.answers.push({
+      question: q, response: text, verdict: fb.verdict, correct: correct, score: fb.score, at: Date.now()
+    });
+    if (correct) { s.score += 1; s.streak += 1; s.bestStreak = Math.max(s.bestStreak, s.streak); }
+    else s.streak = 0;
+
+    E.qScore.textContent = s.score + ' ✓';
+    if (s.streak >= 2) { E.qStreak.hidden = false; E.qStreak.querySelector('span').textContent = String(s.streak); }
+    E.progressBar.style.width = Math.round(((s.index + 1) / s.questions.length) * 100) + '%';
+    E.btnParaSubmit.disabled = true;
+    E.btnParaSubmit.textContent = 'Checked';
+    renderParaFeedback(text, fb, correct);
+    updateStatsUI();
+  }
+
+  function renderParaError(detail) {
+    const box = E.paraFeedback;
+    box.innerHTML = '';
+    box.hidden = false;
+    box.className = 'para-feedback bad';
+    box.appendChild(paraEl('p', 'pf-title', 'The AI could not check this translation'));
+    box.appendChild(paraEl('p', 'pf-text', detail));
+    box.appendChild(paraEl('p', 'muted small',
+      'Fix the AI connection in Settings → AI, then press “Try again”. Paragraph translation stays unavailable until it works.'));
+  }
+
+  function renderParaFeedback(text, fb, correct) {
+    const box = E.paraFeedback;
+    box.innerHTML = '';
+    box.hidden = false;
+    box.className = 'para-feedback ' + (correct ? 'ok' : (fb.score >= 45 ? 'close' : 'bad'));
+
+    const head = paraEl('div', 'pf-head');
+    const score = paraEl('div', 'pf-score', String(fb.score));
+    score.appendChild(paraEl('small', '', '/100'));
+    head.appendChild(score);
+    const headText = paraEl('div', 'pf-headtext');
+    headText.appendChild(paraEl('p', 'pf-title', fb.verdict === 'good'
+      ? 'Well done — only small fixes'
+      : fb.verdict === 'fair' ? 'Good try — a few fixes' : 'Needs work — see the fixes'));
+    headText.appendChild(paraEl('p', 'muted small', fb.comment || 'Corrected with the smallest changes possible.'));
+    head.appendChild(headText);
+    box.appendChild(head);
+
+    // Show the learner's version only when it changed, so the panel stays short.
+    if (fb.corrected && fb.corrected !== text) {
+      box.appendChild(textBlock('Your text', text));
+      box.appendChild(textBlock('With minimal fixes', fb.corrected, 'pf-fixed'));
+    } else {
+      box.appendChild(textBlock('Your text — no changes needed', text, 'pf-fixed'));
+    }
+
+    if (fb.notes.length) {
+      const block = paraEl('div', 'pf-block');
+      block.appendChild(paraEl('h4', 'pf-h', 'Corrections'));
+      const ol = paraEl('ol', 'pf-notes');
+      fb.notes.forEach(function (n) {
+        const li = paraEl('li', 'pf-note');
+        if (n.text) li.appendChild(paraEl('q', 'pf-quote', n.text));
+        if (n.fix) {
+          if (n.text) li.appendChild(paraEl('span', 'pf-arrow', '→'));
+          li.appendChild(paraEl('span', 'pf-fix', n.fix));
+        }
+        if (n.why) li.appendChild(paraEl('p', 'pf-why', n.why));
+        ol.appendChild(li);
+      });
+      block.appendChild(ol);
+      box.appendChild(block);
+    }
+
+    if (fb.used && fb.used.length) {
+      const block = paraEl('div', 'pf-block');
+      block.appendChild(paraEl('h4', 'pf-h', 'Words from your sheet'));
+      const ul = paraEl('ul', 'pf-words');
+      fb.used.forEach(function (w) {
+        const li = paraEl('li', w.used ? 'ok' : 'miss');
+        li.appendChild(paraEl('span', 'pf-tick', w.used ? '✓' : '✗'));
+        li.appendChild(paraEl('span', 'pf-term', w.term));
+        li.appendChild(paraEl('span', 'pf-meaning', w.meaning));
+        ul.appendChild(li);
+      });
+      block.appendChild(ul);
+      box.appendChild(block);
+    }
+
+    const actions = paraEl('div', 'pf-actions');
+    const next = paraEl('button', 'btn btn-primary', 'Next question');
+    next.type = 'button';
+    next.addEventListener('click', nextQuestion);
+    actions.appendChild(next);
+    box.appendChild(actions);
+    next.focus();
+  }
+
+  function textBlock(title, body, cls) {
+    const block = paraEl('div', 'pf-block' + (cls ? ' ' + cls : ''));
+    block.appendChild(paraEl('h4', 'pf-h', title));
+    block.appendChild(paraEl('p', 'pf-text', body));
+    return block;
+  }
+
   /* ---------- Results ---------- */
   function showResults() {
     const s = state.session;
@@ -647,6 +903,7 @@
     const byWord = {};
     s.answers.forEach(function (a) {
       if (a.correct) return;
+      if (a.question.type === 'paragraph') return; // one essay is not a word to review
       const key = Quiz.masteryKey(a.question.word);
       if (!byWord[key]) byWord[key] = { word: a.question.word, count: 0 };
       byWord[key].count += 1;
@@ -748,7 +1005,10 @@
     E.typeMc.checked = settings.quizTypes.indexOf('mc') !== -1;
     E.typeBlank.checked = settings.quizTypes.indexOf('blank') !== -1;
     E.typeTranslate.checked = settings.quizTypes.indexOf('translate') !== -1;
+    E.typeParagraph.checked = settings.quizTypes.indexOf('paragraph') !== -1;
     E.selDirection.value = settings.direction;
+    E.selParaDir.value = settings.paragraphDirection || 'both';
+    E.selParaCount.value = String(settings.paragraphCount || 1);
     E.selCount.value = String(settings.count);
     E.selSource.value = settings.source;
     const mode = settings.sheetMode || 'api';
@@ -774,6 +1034,8 @@
     ensureModelOption(model);
     E.inpModel.value = model;
     E.btnTestKey.textContent = transport === 'openai' ? 'Test & load models' : 'Test key & load models';
+    // A key/provider change decides whether paragraph translation is available.
+    if (E.typeParagraph) updateControls();
   }
 
   function renderProviderOptions() {
@@ -1056,7 +1318,8 @@
     });
 
     // Quiz setup controls
-    ['typeMc', 'typeBlank', 'typeTranslate', 'selDirection', 'selCount', 'selSource'].forEach(function (id) {
+    ['typeMc', 'typeBlank', 'typeTranslate', 'typeParagraph', 'selDirection', 'selCount', 'selSource',
+      'selParaDir', 'selParaCount'].forEach(function (id) {
       E[id].addEventListener('change', function () { readSetup(); updateControls(); });
     });
     E.btnStart.addEventListener('click', function () { startQuiz(); });
@@ -1064,6 +1327,20 @@
     E.btnSubmit.addEventListener('click', function () { submitTyped(false); });
     E.btnDontKnow.addEventListener('click', function () { submitTyped(true); });
     E.btnNext.addEventListener('click', nextQuestion);
+    E.btnParaSubmit.addEventListener('click', submitParagraph);
+    E.btnParaSkip.addEventListener('click', function () { if (!state.paraBusy) nextQuestion(); });
+    E.paraInput.addEventListener('input', function () {
+      const n = E.paraInput.value.trim() ? E.paraInput.value.trim().split(/\s+/).length : 0;
+      E.paraCount.textContent = n + (n === 1 ? ' word' : ' words');
+    });
+    E.paraInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitParagraph(); }
+    });
+    E.btnParaSpeak.addEventListener('click', function () {
+      const q = currentQuestion();
+      if (!q || q.type !== 'paragraph') return;
+      U.speak(q.prompt, q.direction === 'fr2vi' ? settings.targetCode : 'vi-VN');
+    });
     E.btnExitQuiz.addEventListener('click', function () {
       if (state.session && state.session.answers.length) showResults();
       else { state.session = null; showScreen('welcome'); }
@@ -1234,7 +1511,7 @@
         if (tab === 'data') updateDataInfo();
       });
     });
-    E.settingsDialog.addEventListener('close', function () { updateDataInfo(); updateUsageUI(); });
+    E.settingsDialog.addEventListener('close', function () { updateDataInfo(); updateUsageUI(); updateControls(); });
 
     // Overlay cancel
     E.btnCancelLoad.addEventListener('click', function () {
@@ -1250,6 +1527,14 @@
       if (state.screen === 'quiz' && state.session) {
         const q = currentQuestion();
         if (!q) return;
+        if (q.type === 'paragraph') {
+          // Enter belongs to the textarea; Ctrl/⌘ + Enter checks, as the card says.
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !state.answered) {
+            e.preventDefault();
+            submitParagraph();
+          }
+          return;
+        }
         if (q.type === 'mc') {
           const n = parseInt(e.key, 10);
           if (!state.answered && n >= 1 && n <= q.options.length) {

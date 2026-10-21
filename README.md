@@ -231,7 +231,8 @@ Notes:
 ## 4 · Studying
 
 - **Question types**: Multiple choice · Fill in the blank (AI sentence with `___`,
-  or spelling practice / example cloze in built-in mode) · Translate (typed).
+  or spelling practice / example cloze in built-in mode) · Translate (typed) ·
+  **Paragraph translation**.
 - **Direction**: mixed, French ➜ Vietnamese, or Vietnamese ➜ French.
 - **Smart picking**: words you get wrong come back more often; unseen words first.
   Progress is stored per word (mastered = ≥3 attempts, ≥80 % correct).
@@ -255,6 +256,23 @@ Notes:
   until you answer, so they never give the answer away. Every option is a word
   your sheet defines: if the AI writes an option your sheet does not have, the
   app swaps it for one of your own words, so nothing is ever left untranslated.
+- **📝 Paragraph translation** (needs AI): tick *Paragraph translation* in the setup.
+  The AI writes a short paragraph (4–6 sentences) out of your own sheet words, and
+  picks the **5–6 words you must use** — they sit next to the text, so the paragraph
+  stays comfortable to read and the page doesn't grow long. Write your translation
+  below (French ➜ Vietnamese, Vietnamese ➜ French, or both, one card per paragraph),
+  press **Check with AI**, and get:
+  * a score out of 100 and a one-line comment,
+  * your text next to the **minimally corrected** version — the AI is told to keep
+    your words, sentence order and length, and only fix spelling, accents, agreement,
+    tense, prepositions or a word that changes the meaning,
+  * a **Corrections** list quoting exactly what changed and why,
+  * the sheet words you used (✓) and the ones you missed (✗).
+
+  Paragraphs are never faked locally: without a key (or with Generator set to
+  *Built-in*) the option is disabled with the reason, and a failed generation or
+  correction says so in Settings → AI instead of quietly swapping in another
+  exercise. `Ctrl/⌘ + Enter` checks without leaving the textarea.
 - **🔊 pronunciation** uses your browser's speech synthesis — set the voice code
   in Settings → AI (`fr-FR`, `de-DE`, `ja-JP`, …); “Auto-play” reads the word
   when a card is revealed.
@@ -288,6 +306,7 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 | `429` from the AI provider | Free-tier limit. Wait a minute, or pick another provider in Settings → AI (Groq, Cerebras and OpenRouter are free too) — the error offers a one-click switch, and the app falls back to built-in questions meanwhile |
 | Provider rejects the key (`401`/`403`) | The app now names the provider and its own reason (“Invalid API Key”). Keys are *not* shared between providers: `gsk_…` (56 chars) = Groq, `xai-…` = xAI **Grok**, `sk-or-…` = OpenRouter, `sk-…` = DeepSeek, `AIza…` = Gemini. **Groq (fast inference, free) and Grok (xAI, paid) are different companies one letter apart** — a key from a “Grok” page will never work on the Groq provider. A key that matches no provider's format, or another provider's, is called out the moment you paste it, with the console it should come from. A pasted `Bearer ` prefix, quotes or a stray newline are stripped automatically (keys saved earlier are repaired on load). On OpenRouter use a `:free` model; on Cloudflare include your account ID in the Base URL |
 | AI replies, but the quiz still shows built-in questions | The model answered in a shape VocabLab can't use. The prompt now spells out the exact JSON (`{"questions":[…]}`, one object per word) and the app retries once, colder and with more room, before giving up. If it still fails, the model ignores JSON mode: open Settings → AI (the box shows how the reply began) and pick a plain chat model instead of a reasoning one |
+| Paragraph translation is greyed out | It is AI-only, by design: add a key in Settings → AI (or set Generator to *Auto* / *AI only*). A paragraph is written **and** corrected by AI, so it is never replaced by a built-in question; if a generation fails mid-session the reason is kept in Settings → AI |
 | Can't reach the provider (CORS/network) | The message says which side is broken. *“nothing is running there”* → for a local server: it isn't installed/started (`ollama serve`, then `ollama pull <model>`; check `http://localhost:11434/api/tags` in a new tab); *“a server answered, but it blocked this page”* → CORS: restart Ollama with `OLLAMA_ORIGINS=*` and serve the page over `http(s)://`, not `file://`. Gemini, Groq, OpenRouter and Mistral need no CORS setup |
 | A renamed tab shows up twice | Only happens with a manual tab-name list: Google serves the *first* tab for an unknown name. Delete/rename that line, or use the link-only mode for auto-detection |
 | New words/tabs don't show up | Press **↻ Reload** in the header |
