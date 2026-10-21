@@ -52,28 +52,114 @@
       <p id="selectedSummary" class="muted small"></p>
     </section>
 
-    <section class="card">
-      <div class="card-head"><h2>Quiz setup</h2></div>
-
-      <div class="field">
-        <label class="field-label">Question types</label>
-        <div class="chip-row">
-          <label class="chip"><input id="typeMc" type="checkbox" checked><span>Multiple choice</span></label>
-          <label class="chip"><input id="typeBlank" type="checkbox" checked><span>Fill in the blank</span></label>
-          <label class="chip"><input id="typeTranslate" type="checkbox" checked><span>Translate (typed)</span></label>
-          <label class="chip"><input id="typeParagraph" type="checkbox"><span>Paragraph translation</span></label>
-        </div>
-        <p id="paragraphHint" class="muted small" hidden>Paragraph translation needs AI — use the free model (no key) in Settings → AI.</p>
+    <section class="card setup-card">
+      <div class="card-head">
+        <h2>Practice</h2>
+        <span id="setupAiBadge" class="pill pill-accent" title="AI is used for this practice" hidden>AI</span>
       </div>
 
-      <div class="field" id="paraOpts" hidden>
+      <div class="seg practice-tabs" id="segPractice" data-select="selPractice" role="group" aria-label="Practice mode">
+        <button type="button" class="seg-btn is-on" data-value="quiz" aria-pressed="true">Quiz</button>
+        <button type="button" class="seg-btn" data-value="paragraph" aria-pressed="false">Paragraph</button>
+      </div>
+      <select id="selPractice" hidden>
+        <option value="quiz" selected>Quiz</option>
+        <option value="paragraph">Paragraph</option>
+      </select>
+
+      <div class="field">
+        <div class="label-row">
+          <span class="field-label" id="lblDifficulty">Difficulty <span class="muted">(AI)</span></span>
+          <span id="difficultyHint" class="muted tiny">A2–B2 · everyday (default)</span>
+        </div>
+        <div class="seg" id="segDifficulty" data-select="selDifficulty" role="group" aria-labelledby="lblDifficulty">
+          <button type="button" class="seg-btn" data-value="easy">Easy</button>
+          <button type="button" class="seg-btn is-on" data-value="standard" aria-pressed="true">Standard</button>
+          <button type="button" class="seg-btn" data-value="hard">Hard</button>
+        </div>
+        <select id="selDifficulty" hidden>
+          <option value="easy">Easy</option>
+          <option value="standard" selected>Standard</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <div class="label-row">
+          <label class="field-label" for="inpRequirement">Topic or focus <span class="muted">(optional, AI)</span></label>
+          <span class="muted tiny"><span id="reqCount">0/600</span> <button type="button" id="btnClearRequirement" class="req-clear" hidden>Clear</button></span>
+        </div>
+        <textarea id="inpRequirement" class="input req-input" rows="2" maxlength="600"
+          placeholder="e.g. Short sentences about city life; focus on the passé composé."></textarea>
+        <div class="req-chips" id="reqChips">
+          <button type="button" class="req-chip" data-fill="everyday situations">Daily life</button>
+          <button type="button" class="req-chip" data-fill="travel situations">Travel</button>
+          <button type="button" class="req-chip" data-fill="work and study">Work</button>
+          <button type="button" class="req-chip" data-fill="the environment">Environment</button>
+        </div>
+      </div>
+
+      <div id="quizSetupPane">
+        <div class="field">
+          <span class="field-label">Question types</span>
+          <div class="chip-row">
+            <label class="chip" title="Multiple choice"><input id="typeMc" type="checkbox" checked><span>Multiple choice</span></label>
+            <label class="chip" title="Fill in the blank"><input id="typeBlank" type="checkbox" checked><span>Fill blank</span></label>
+            <label class="chip" title="Translate (typed)"><input id="typeTranslate" type="checkbox" checked><span>Translate</span></label>
+          </div>
+        </div>
+
+        <details id="moreOptions" class="setup-more">
+          <summary>More options</summary>
+          <div class="setup-more-body">
+            <div class="field-row">
+              <div class="field">
+                <label class="field-label" for="selCount">Questions</label>
+                <select id="selCount" class="input input-sm">
+                  <option value="10">10</option>
+                  <option value="15">15</option>
+                  <option value="20" selected>20</option>
+                  <option value="30">30</option>
+                  <option value="50">50</option>
+                  <option value="0">All words</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label" for="selDirection">Direction</label>
+                <select id="selDirection" class="input input-sm">
+                  <option value="mixed" selected>Mixed</option>
+                  <option value="t2m">Target → VI</option>
+                  <option value="m2t">VI → Target</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="field" style="margin-bottom:.15rem">
+              <label class="field-label" for="selSource">Generator</label>
+              <select id="selSource" class="input input-sm">
+                <option value="auto" selected>Auto (AI when available)</option>
+                <option value="ai">AI only</option>
+                <option value="builtin">Built-in (offline)</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <div class="setup-actions">
+          <button id="btnStart" class="btn btn-primary" disabled>Start quiz</button>
+          <button id="btnFlashcards" class="btn btn-subtle" disabled title="Practice with flashcards">🃏 Flashcards</button>
+        </div>
+      </div>
+
+      <div id="paraSetupPane" hidden>
+        <p class="muted small para-intro">AI writes a short text from your words, then checks your translation with the smallest fixes.</p>
         <div class="field-row">
           <div class="field">
-            <label class="field-label" for="selParaDir">Paragraph direction</label>
+            <label class="field-label" for="selParaDir">Direction</label>
             <select id="selParaDir" class="input input-sm">
-              <option value="fr2vi">French ➜ Vietnamese</option>
-              <option value="vi2fr">Vietnamese ➜ French</option>
-              <option value="both" selected>Both (one each)</option>
+              <option value="fr2vi">Target → VI</option>
+              <option value="vi2fr">VI → Target</option>
+              <option value="both" selected>Both</option>
             </select>
           </div>
           <div class="field">
@@ -85,42 +171,9 @@
             </select>
           </div>
         </div>
-        <p class="muted small">AI writes a short text from your own words, then corrects your translation with the smallest changes.</p>
+        <p id="paraStartHint" class="muted small" hidden></p>
+        <button id="btnStartParagraph" class="btn btn-primary btn-block" disabled>Start paragraph</button>
       </div>
-
-      <div class="field">
-        <label class="field-label" for="selDirection">Direction</label>
-        <select id="selDirection" class="input input-sm">
-          <option value="mixed" selected>Mixed (both ways)</option>
-          <option value="t2m">Target ➜ Vietnamese</option>
-          <option value="m2t">Vietnamese ➜ Target</option>
-        </select>
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label class="field-label" for="selCount">Questions</label>
-          <select id="selCount" class="input input-sm">
-            <option value="10">10</option>
-            <option value="15">15</option>
-            <option value="20" selected>20</option>
-            <option value="30">30</option>
-            <option value="50">50</option>
-            <option value="0">All words</option>
-          </select>
-        </div>
-        <div class="field">
-          <label class="field-label" for="selSource">Generator</label>
-          <select id="selSource" class="input input-sm">
-            <option value="auto" selected>Auto (AI when available)</option>
-            <option value="ai">AI only</option>
-            <option value="builtin">Built-in (offline)</option>
-          </select>
-        </div>
-      </div>
-
-      <button id="btnStart" class="btn btn-primary btn-block" disabled>Start quiz</button>
-      <button id="btnFlashcards" class="btn btn-subtle btn-block" style="margin-top:.5rem" disabled>🃏 Flashcards</button>
     </section>
 
     <section class="card stats-card">
@@ -286,6 +339,7 @@
             <button id="btnRetryMistakes" class="btn btn-primary" hidden>Practice mistakes</button>
             <button id="btnNewQuiz" class="btn btn-subtle">New quiz</button>
             <button id="btnResultsFlashcards" class="btn btn-ghost">🃏 Flashcards</button>
+            <button id="btnBackSetup" class="btn btn-ghost">← Setup</button>
           </div>
         </div>
       </div>
@@ -607,20 +661,30 @@
       Each provider keeps its own key, so you can switch back and forth without retyping.
       Questions are generated in small batches and cached, so replays barely use quota. If AI is unavailable or
       quota runs out, the built-in generator takes over automatically — the app never gets stuck.</p>
+    <p class="muted small"><strong>Difficulty</strong> (Easy / Standard / Hard) sets the sentence length and CEFR
+      level of AI questions and paragraphs. The optional <strong>Topic or focus</strong> box takes a short
+      instruction, e.g. “short sentences about city life; focus on the passé composé”, and the suggestion chips
+      add common themes. Both settings steer AI questions and the paragraph exercise; the built-in generator
+      ignores them. Question count, direction and the generator are under <strong>More options</strong> in the
+      <strong>Quiz</strong> tab.</p>
 
     <h3>3b · Paragraph translation</h3>
-    <p class="muted small">Tick <strong>Paragraph translation</strong> in the setup, choose the direction
-      (French ➜ Vietnamese, Vietnamese ➜ French, or both) and how many paragraphs. The AI writes a short text
-      from your own sheet words and lists the 5–6 words you must use next to it; write your translation in the
-      box and press <strong>Check with AI</strong>. The correction keeps your wording wherever it is acceptable
+    <p class="muted small">Paragraph translation is its own practice mode, not a quiz type: open the
+      <strong>Paragraph</strong> tab, choose its direction (French ➜ Vietnamese, Vietnamese ➜ French, or both)
+      and how many paragraphs, then press <strong>Start paragraph</strong>. The AI writes a short text
+      from your own sheet words and lists the required words next to it (4–5 on Easy, 5–6 on Standard and Hard);
+      write your translation in the box and press <strong>Check with AI</strong>. The shared
+      <strong>Difficulty</strong> also controls the text length — Easy 3–4 sentences, Standard 4–6, Hard 6–8 —
+      and <strong>Topic or focus</strong> guides its subject and style. The correction keeps your wording wherever it is acceptable
       and only fixes real errors (spelling, accents, agreement with <em>your</em> subject, prepositions, a word
       that changes the meaning). Your own pronoun, tense and synonyms are fine — the reference translation is
       only a guide to the meaning, never the answer you had to produce. The score still reflects the source's
       ideas and the required words: leaving out an idea or a required word costs points even when the grammar
       is fine. The feedback shows your text, the fixed
-      version, one short note per actual change, and which sheet words you used. This exercise is AI-only: with
-      no key (or Generator set to <em>Built-in</em>) the option is disabled and says why, and a failed generation
-      is reported in Settings → AI rather than replaced by another question type.</p>
+      version, one short note per actual change, and which sheet words you used. This exercise is AI-only: if AI
+      is not set up, <strong>Start paragraph</strong> is disabled and says why, and a failed generation
+      is reported in Settings → AI rather than replaced by another question type. The quiz Generator setting does
+      not affect paragraph practice — it always uses AI.</p>
 
     <h3>Keyboard shortcuts</h3>
     <ul class="small muted">

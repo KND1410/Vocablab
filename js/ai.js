@@ -690,7 +690,8 @@
   async function generateOaiQuestions(cfg) {
     const { baseUrl, key, model, items, targetLang, meaningLang, signal } = cfg;
     if (!items || !items.length) return [];
-    const built = buildPrompt(items, targetLang || 'French', meaningLang || 'Vietnamese');
+    const built = buildPrompt(items, targetLang || 'French', meaningLang || 'Vietnamese',
+      { difficulty: cfg.difficulty, requirement: cfg.requirement });
     return askForQuestions(function (extra) {
       return oaiCallWithFallbacks({
         baseUrl: baseUrl, key: key, model: model, system: built.system,
@@ -731,19 +732,56 @@
     };
   }
 
+  /* Difficulty is a promise about the language, not a label: each level changes
+     sentence length, CEFR range and how much support the explanation gives. */
+  const DIFFICULTIES = {
+    easy: {
+      label: 'easy', cefr: 'A1–A2', blankWords: '5–9', keywords: '4–5',
+      quizTip: 'Use very common words and short, simple sentences. Keep each explanation to one plain idea.',
+      para: '3–4 sentences, 40–70 words, CEFR A1–A2',
+      paraTip: 'Use short sentences and simple connectors (et, mais, parce que).'
+    },
+    standard: {
+      label: 'standard', cefr: 'A2–B2', blankWords: '6–14', keywords: '5–6',
+      quizTip: 'Use natural, everyday sentences at a comfortable level.',
+      para: '4–6 sentences, 60–110 words, CEFR A2–B2',
+      paraTip: 'Use varied but clear sentences with everyday connectors.'
+    },
+    hard: {
+      label: 'hard', cefr: 'B1–C1', blankWords: '10–20', keywords: '5–6',
+      quizTip: 'Use longer, richer sentences with subordinate clauses and precise vocabulary. Keep explanations accurate and under 12 words.',
+      para: '6–8 sentences, 90–150 words, CEFR B1–C1',
+      paraTip: 'Use varied, more complex sentences (relative clauses, contrast, cause) while staying natural.'
+    }
+  };
+  function difficultyOf(value) {
+    const key = String(value || '').toLowerCase();
+    return DIFFICULTIES[key] || DIFFICULTIES.standard;
+  }
+  function requirementOf(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+  }
+
   function buildParagraphPrompt(cfg) {
     const sides = paraSides(cfg);
+    const level = difficultyOf(cfg.difficulty);
+    const request = requirementOf(cfg.requirement);
     const words = (cfg.words || []).map(function (w) { return { term: w.term, meaning: w.meaning }; });
     const system = 'You are VocabLab, an expert ' + (cfg.targetLang || 'French') + ' tutor. You write short, ' +
       'natural, classroom-safe texts for a learner whose native language is ' + (cfg.meaningLang || 'Vietnamese') +
       '. You reply with the requested JSON object only and never add commentary.';
     const user =
-      'Write ONE coherent ' + sides.sourceLang + ' paragraph (4–6 sentences, 60–110 words, CEFR A2–B2) about a ' +
+      'Write ONE coherent ' + sides.sourceLang + ' paragraph (' + level.para + ') about a ' +
       'single everyday topic (city life, transport, environment, work, health, travel, food…).\n\n' +
+      (request
+        ? 'TOPIC OR FOCUS REQUESTED BY THE LEARNER (follow it when it does not conflict with the rules below):\n"""' +
+          request + '"""\n\n'
+        : '') +
       'VOCABULARY from the learner\'s own sheet (term = ' + (cfg.targetLang || 'French') + ', meaning = ' +
       (cfg.meaningLang || 'Vietnamese') + '):\n' + JSON.stringify(words, null, 1) + '\n\n' +
       'Rules:\n' +
-      '• Pick the 5–6 words that fit the topic best. The paragraph MUST contain each of them ' +
+      '• Difficulty: ' + level.label + ' (' + level.cefr + '). ' + level.paraTip + '\n' +
+      '• Pick ' + level.keywords + ' words that fit the topic best. The paragraph MUST contain each of them ' +
       (sides.vi2fr
         ? 'in its ' + (cfg.meaningLang || 'Vietnamese') + ' form (the learner has to produce the ' +
           (cfg.targetLang || 'French') + ').\n'
@@ -1155,7 +1193,10 @@
     '"prompt":"<question text>","hint":"","options":["<wrong>","<wrong>","<wrong>","<answer>"],' +
     '"answer":"<answer text>","explanation":"<max 12 words, English>"}]}';
 
-  function buildPrompt(items, targetLang, meaningLang) {
+  function buildPrompt(items, targetLang, meaningLang, opts) {
+    opts = opts || {};
+    const level = difficultyOf(opts.difficulty);
+    const request = requirementOf(opts.requirement);
     const payload = items.map(function (i) {
       const entry = { term: i.term, meaning: i.meaning, type: i.type, direction: i.direction };
       if (i.pron) entry.pron = i.pron;
@@ -1177,13 +1218,18 @@
       'ITEMS. Distractors must be plausible same-kind words but clearly wrong: never a synonym or near-synonym ' +
       'of the answer, and never text from another ITEM that could also be read as the answer. ' +
       'prompt = question text: for term2meaning put the term, for meaning2term put the meaning.\n' +
-      '• type "blank": write one natural ' + targetLang + ' sentence (6–14 words) containing the term, then replace the term with ___. ' +
+      '• type "blank": write one natural ' + targetLang + ' sentence (' + level.blankWords + ' words) containing the term, then replace the term with ___. ' +
       'hint must start with "Meaning: " followed by the Vietnamese meaning. prompt = the sentence. answer = the term.\n' +
       '• type "translate": term2meaning → prompt = term, answer = meaning; meaning2term → prompt = meaning, answer = term. ' +
       'If the term is a phrase, keep it a phrase.\n' +
       '• "term" must repeat the ITEMS term exactly. "explanation": max 12 words, in English, useful for memorising.\n' +
-      '• Classroom-safe, CEFR A2–B2 sentences.\n\n' +
-      'Reply with ONE JSON object and nothing else — no prose, no code fences — in exactly this shape:\n' +
+      '• Difficulty: ' + level.label + ' (' + level.cefr + '). ' + level.quizTip + '\n' +
+      '• Classroom-safe at CEFR ' + level.cefr + '.\n' +
+      (request
+        ? '\nEXTRA REQUEST FROM THE LEARNER (optional; follow it when it does not conflict with the rules above):\n"""' +
+          request + '"""\n'
+        : '') +
+      '\nReply with ONE JSON object and nothing else — no prose, no code fences — in exactly this shape:\n' +
       REPLY_SHAPE + '\n' +
       '• "questions" is an array with exactly one object per ITEM, in the same order (' + items.length + ' total).\n' +
       '• "type" is exactly "mc", "blank" or "translate"; "direction" is "term2meaning", "meaning2term" or "blank".\n' +
@@ -1364,7 +1410,8 @@
   async function generateGeminiQuestions(opts) {
     const { key, model, items, targetLang, meaningLang, signal } = opts;
     if (!items || !items.length) return [];
-    const built = buildPrompt(items, targetLang || 'French', meaningLang || 'Vietnamese');
+    const built = buildPrompt(items, targetLang || 'French', meaningLang || 'Vietnamese',
+      { difficulty: opts.difficulty, requirement: opts.requirement });
     return askForQuestions(function (extra) {
       return callWithFallbacks({
         key: key, model: model, system: built.system, user: extra.user, signal: signal

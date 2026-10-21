@@ -717,6 +717,23 @@ ok(/"questions"/.test(prompt.user) && /"term"/.test(prompt.user) && /"options"/.
   'the prompt spells out the exact JSON shape');
 ok(/one object per ITEM/.test(prompt.user), 'it says how many objects to return');
 ok(/no code fences/i.test(prompt.user), 'it forbids code fences');
+ok(/Difficulty: standard \(A2–B2\)/.test(prompt.user) && /6–14 words/.test(prompt.user),
+  'without a choice, questions use the standard level');
+
+const easyPrompt = Ai.buildPrompt(
+  [{ term: 'gare', meaning: 'nhà ga', type: 'blank', direction: 'blank' }],
+  'French', 'Vietnamese', { difficulty: 'easy', requirement: 'Talk about a train station.' });
+ok(/Difficulty: easy \(A1–A2\)/.test(easyPrompt.user) && /5–9 words/.test(easyPrompt.user),
+  'easy questions ask for short A1–A2 sentences');
+ok(/EXTRA REQUEST FROM THE LEARNER[\s\S]*train station/.test(easyPrompt.user),
+  'the learner\'s optional focus reaches the question prompt');
+const hardPrompt = Ai.buildPrompt(
+  [{ term: 'gare', meaning: 'nhà ga', type: 'mc', direction: 'term2meaning' }],
+  'French', 'Vietnamese', { difficulty: 'hard' });
+ok(/Difficulty: hard \(B1–C1\)/.test(hardPrompt.user) && /10–20 words/.test(hardPrompt.user),
+  'hard questions ask for longer B1–C1 sentences');
+ok(!/EXTRA REQUEST FROM THE LEARNER/.test(hardPrompt.user),
+  'an empty focus adds no extra-request block');
 
 const shapeItems = [
   { term: 'la gare', meaning: 'nhà ga', type: 'mc', direction: 'term2meaning' },
@@ -1202,6 +1219,23 @@ const paraPromptVi = Ai.buildParagraphPrompt({
 ok(/Vietnamese paragraph/.test(paraPromptVi.user), 'VI→FR writes the source in Vietnamese');
 ok(/produce the French/.test(paraPromptVi.user), 'and the learner must produce French');
 
+const paraEasy = Ai.buildParagraphPrompt({
+  direction: 'fr2vi', words: pool.slice(0, 8), targetLang: 'French', meaningLang: 'Vietnamese',
+  difficulty: 'easy', requirement: 'Talk about a weekend market.'
+});
+ok(/3–4 sentences, 40–70 words, CEFR A1–A2/.test(paraEasy.user),
+  'easy paragraphs are shorter and simpler');
+ok(/Pick 4–5 words/.test(paraEasy.user), 'easy paragraphs require fewer sheet words');
+ok(/TOPIC OR FOCUS REQUESTED BY THE LEARNER[\s\S]*weekend market/.test(paraEasy.user),
+  'the learner\'s optional focus reaches the paragraph prompt');
+const paraHard = Ai.buildParagraphPrompt({
+  direction: 'fr2vi', words: pool.slice(0, 8), targetLang: 'French', meaningLang: 'Vietnamese',
+  difficulty: 'hard'
+});
+ok(/6–8 sentences, 90–150 words, CEFR B1–C1/.test(paraHard.user),
+  'hard paragraphs are longer and richer');
+ok(/Pick 5–6 words/.test(paraHard.user), 'hard paragraphs still cap the required words');
+
 const fixPrompt = Ai.buildCorrectionPrompt({
   direction: 'fr2vi', source: 'Les habitants constatent que la pollution augmente.',
   reference: 'Người dân nhận thấy ô nhiễm gia tăng.', userText: 'Les habitant constate que pollution augmente.',
@@ -1465,19 +1499,48 @@ ok(/function toast\(message, kind, ms\)/.test(fs.readFileSync(path.join(root, 'j
 ok(/isLocalBaseUrl\(settings\.oaiBase\)[\s\S]{0,400}OLLAMA_ORIGINS/.test(appSrc),
   'the Ollama preset explains the CORS requirement');
 
-// Paragraph translation: its own setup option, card and AI call — and never a
+// Paragraph translation: its own practice mode, card and AI call — and never a
 // built-in stand-in, because the exercise only works with a real correction.
-ok(/id="typeParagraph"/.test(htmlSrc) && /id="paraOpts"/.test(htmlSrc) && /id="paragraphHint"/.test(htmlSrc),
-  'the setup offers paragraph translation with a direction and a count');
+ok(/id="segPractice"/.test(htmlSrc) && /data-value="paragraph"/.test(htmlSrc) &&
+  /id="paraSetupPane"/.test(htmlSrc) && /id="btnStartParagraph"/.test(htmlSrc),
+  'paragraph translation has its own practice tab and start button');
 ok(/id="qParagraph"/.test(htmlSrc) && /id="paraInput"/.test(htmlSrc) && /id="btnParaSubmit"/.test(htmlSrc),
-  'the quiz has a paragraph card with its own textarea and check button');
-ok(/planParagraphs\(paraWords, setup\.paragraphCount/.test(appSrc), 'startQuiz adds the paragraph cards');
+  'the quiz screen has a paragraph card with its own textarea and check button');
+ok(/async function startParagraphPractice/.test(appSrc) &&
+  /planParagraphs\(paraWords, setup\.paragraphCount/.test(appSrc),
+  'the paragraph practice plans its own cards');
 ok(/Ai\.correctParagraph\(/.test(appSrc) && /function finishParagraph/.test(appSrc),
   'a paragraph answer is corrected by the AI and scored');
-ok(/typeParagraph\.disabled = !paraOk/.test(appSrc) && /Paragraph translation needs AI/.test(appSrc),
+ok(/id="paraStartHint"/.test(htmlSrc) && /Paragraph translation needs AI/.test(appSrc),
   'the exercise is disabled — not faked — when AI is unavailable');
-ok(/if \(setup\.types\.indexOf\('paragraph'\) !== -1\)[\s\S]{0,140}planParagraphs/.test(appSrc),
-  'a paragraph card is planned only when that box is ticked');
+ok(!/id="typeParagraph"/.test(htmlSrc) && !/types\.indexOf\('paragraph'\)/.test(appSrc) &&
+  /paragraphOnly: true/.test(appSrc),
+  'paragraph translation is a separate practice, not a quiz question type');
+
+// Quiz setup: difficulty and an optional focus note, as pill controls.
+ok(/id="segDifficulty"/.test(htmlSrc) && /id="selDifficulty"/.test(htmlSrc) &&
+  /data-value="easy"/.test(htmlSrc) && /data-value="hard"/.test(htmlSrc),
+  'the setup offers Easy / Standard / Hard pills');
+ok(/id="inpRequirement"/.test(htmlSrc) && /id="reqChips"/.test(htmlSrc) &&
+  /data-fill="travel situations"/.test(htmlSrc),
+  'the setup offers an optional focus box with suggestion chips');
+ok(/id="moreOptions"/.test(htmlSrc) && /<summary>More options<\/summary>/.test(htmlSrc) &&
+  /id="selCount"[^>]*class="input input-sm"/.test(htmlSrc) && !/id="paraOpts"/.test(htmlSrc),
+  'count, direction and generator sit in the closed Quiz drawer');
+ok(/difficulty: setup\.difficulty/.test(appSrc) && /requirement: setup\.requirement/.test(appSrc),
+  'startQuiz sends difficulty and focus to the quiz builder');
+const paraStartSrc = appSrc.slice(appSrc.indexOf('async function startParagraphPractice'),
+  appSrc.indexOf('function renderQuestion'));
+ok(/difficulty: setup\.difficulty/.test(paraStartSrc) && /requirement: setup\.requirement/.test(paraStartSrc),
+  'startParagraphPractice sends difficulty and focus to the paragraph AI');
+ok(/id="segPractice"[^>]*data-select="selPractice"/.test(htmlSrc) &&
+  /settings\.practiceMode = mode === 'paragraph' \? 'paragraph' : 'quiz'/.test(appSrc),
+  'the practice tabs persist the chosen mode');
+ok(/difficulty: difficulty, requirement: requirement/.test(fs.readFileSync(path.join(root, 'js/quiz.js'), 'utf8')),
+  'the quiz builder forwards both to AI question and paragraph calls');
+const quizSrc = fs.readFileSync(path.join(root, 'js/quiz.js'), 'utf8');
+ok(/difficulty \|\| 'standard'[\s\S]{0,80}requirement \? Util\.hash\(requirement\)/.test(quizSrc),
+  'the question cache is separated by difficulty and focus');
 ok(/aiMode: 'simple'/.test(appSrc) && /id="paneSimple"/.test(htmlSrc) && /id="modeAdvanced"/.test(htmlSrc),
   'Settings offers Simple (no key) and Advanced (own key)');
 ok(/aiKeyless: aiKeyless\(\)/.test(appSrc) && /aiKeyless/.test(fs.readFileSync(path.join(root, 'js/quiz.js'), 'utf8')),

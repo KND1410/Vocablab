@@ -201,15 +201,85 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 
 .chip-row { display: flex; flex-wrap: wrap; gap: .4rem; }
 .chip {
+  position: relative;
   display: inline-flex; align-items: center; gap: .4rem;
   border: 1px solid var(--border); border-radius: 999px;
-  padding: .3rem .7rem; font-size: .8rem; cursor: pointer; background: var(--surface);
+  padding: .4rem .72rem; font-size: .81rem; cursor: pointer; background: var(--surface);
   transition: border-color .15s ease, background .15s ease;
 }
-.chip input { accent-color: var(--primary); margin: 0; }
+.chip input { accent-color: var(--primary); margin: 0; position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.chip span::before { content: '✓'; display: none; margin-right: .3em; font-weight: 700; }
 .chip:has(input:checked) { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.chip:has(input:checked) span::before { display: inline; }
+.chip:has(input:focus-visible) { outline: 2px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset: 2px; }
 .chip:has(input:disabled) { opacity: .5; cursor: not-allowed; }
 .chip:has(input:disabled) span { cursor: not-allowed; }
+
+/* ---------- Segmented pill controls (quiz setup) ---------- */
+.seg { display: flex; flex-wrap: wrap; gap: .35rem; }
+.seg-btn {
+  font: inherit; font-size: .8rem; font-weight: 600; line-height: 1.2;
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .42rem .7rem; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+.seg-btn:hover { border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.seg-btn.is-on { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
+.seg-btn.is-on::before { content: '✓'; font-size: .82em; }
+.seg-btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset: 2px; }
+
+/* The setup card is the sidebar's tallest block: keep the everyday choices
+   compact and push count/direction/generator into a closed drawer. */
+.setup-card .field { margin-bottom: .7rem; }
+.setup-card .field-label { font-size: .78rem; }
+.setup-card .field-row { gap: .5rem; }
+.setup-card .chip-row { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; }
+.setup-card .chip { padding: .34rem .55rem; font-size: .76rem; }
+.setup-card .seg-btn { padding: .36rem .62rem; font-size: .78rem; }
+.practice-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; margin-bottom: .8rem; }
+.practice-tabs .seg-btn { justify-content: center; }
+.para-intro { margin: 0 0 .6rem; line-height: 1.45; }
+#paraSetupPane .field { margin-bottom: .55rem; }
+#paraSetupPane .btn-block { margin-top: .2rem; }
+.label-row { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
+.tiny { font-size: .72rem; }
+.field-label.minor { font-size: .72rem; font-weight: 600; color: var(--muted); }
+.req-input {
+  font-family: inherit; font-size: .82rem; line-height: 1.5;
+  min-height: 3.6rem; resize: vertical;
+}
+.req-input::placeholder { font-style: italic; color: color-mix(in srgb, var(--muted) 85%, transparent); }
+.req-input:disabled { opacity: .55; cursor: not-allowed; }
+.req-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.req-chip {
+  font: inherit; font-size: .72rem; font-weight: 600; color: var(--muted);
+  border: 1px solid var(--border); background: var(--surface); border-radius: 999px;
+  padding: .22rem .52rem; cursor: pointer;
+  transition: color .15s ease, border-color .15s ease;
+}
+.req-chip:hover { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
+.req-chip:disabled { opacity: .45; cursor: not-allowed; color: var(--muted); border-color: var(--border); }
+.req-clear {
+  font: inherit; font-size: .72rem; font-weight: 600; color: var(--muted);
+  background: transparent; border: 0; padding: 0; cursor: pointer; text-decoration: underline;
+}
+.req-clear:hover { color: var(--primary); }
+.req-clear:disabled { opacity: .5; cursor: not-allowed; }
+.setup-more { border-top: 1px solid var(--border); margin: .15rem 0 .75rem; padding-top: .45rem; }
+.setup-more > summary {
+  cursor: pointer; list-style: none;
+  font-size: .78rem; font-weight: 600; color: var(--muted);
+  display: flex; align-items: center; gap: .35rem;
+  padding: .3rem 0;
+}
+.setup-more > summary::-webkit-details-marker { display: none; }
+.setup-more > summary::before { content: '▸'; font-size: .85em; }
+.setup-more[open] > summary::before { content: '▾'; }
+.setup-more > summary:hover { color: var(--primary); }
+.setup-more-body { padding-top: .6rem; }
+.setup-actions { display: flex; gap: .5rem; }
+.setup-actions .btn { flex: 1; }
 
 /* ---------- Simple / Advanced AI modes ---------- */
 .ai-mode { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: 1rem; }
