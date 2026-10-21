@@ -679,7 +679,9 @@
       return { term: k.term, meaning: k.meaning };
     });
     const system = 'You are VocabLab, a patient ' + (cfg.targetLang || 'French') + ' tutor who corrects a ' +
-      'learner\'s translation with the smallest possible change. You reply with the requested JSON object only.';
+      'learner\'s translation with the smallest possible change. The learner may legitimately choose their own ' +
+      'pronoun, tense or wording — only genuine errors are corrected. You reply with the requested JSON ' +
+      'object only.';
     const user =
       'The learner translated a ' + sides.sourceLang + ' paragraph into ' + sides.answerLang + '.\n\n' +
       'SOURCE (' + sides.sourceLang + '):\n"""' + String(cfg.source || '') + '"""\n\n' +
@@ -687,18 +689,26 @@
       'WORDS THE LEARNER HAD TO USE (' + sides.answerLang + ' side):\n' + JSON.stringify(keywords, null, 1) + '\n\n' +
       'LEARNER\'S TRANSLATION (' + sides.answerLang + '):\n"""' + String(cfg.userText || '') + '"""\n\n' +
       'Rules:\n' +
-      '• Correct ONLY what is wrong: spelling, accents, agreement, tense, preposition, word order, or a word ' +
-      'that changes the meaning.\n' +
-      '• Keep the learner\'s own words, sentence order and sentence count wherever they are acceptable. Do NOT ' +
-      'rewrite for style, do not add or drop sentences, do not make the text longer or more elegant.\n' +
-      '• If a phrase is already correct, leave it exactly as written.\n' +
-      '• "corrected": the whole translation with only those minimal fixes (it may be identical to the learner\'s).\n' +
-      '• "notes": one entry per change — "text" quotes the learner\'s exact wording, "fix" is the corrected ' +
-      'wording, "why" explains it in English in at most 15 words. Never write a note for text you did not ' +
-      'change; at most 10 notes.\n' +
+      '• The REFERENCE is only a guide to the meaning — it is NOT the answer the learner had to produce. ' +
+      'The learner may choose another subject pronoun (je, tu, il, elle, on, nous, vous, ils, elles), another ' +
+      'tense or mood (présent, passé composé, imparfait, futur, conditionnel…), another correct word order, ' +
+      'or a synonym. Never “correct” any of those just because the reference used something else.\n' +
+      '• Correct only genuine errors in the learner\'s own sentence: spelling and accents, a verb that does ' +
+      'not agree with the subject the learner actually wrote, an adjective that does not agree with its noun, ' +
+      'a wrong preposition, word order that is really wrong (not merely different), or a word that changes ' +
+      'the meaning of the source.\n' +
+      '• Keep the learner\'s words, sentence order and sentence count. Do not restructure, merge or split a ' +
+      'phrase, and do not replace a correct phrase with more elegant wording.\n' +
+      '• If a phrase is already acceptable, leave it exactly as written. When you are not sure something is ' +
+      'an error, leave it unchanged — a missing note is better than a wrong one.\n' +
+      '• One note per individual fix: "text" quotes the learner\'s exact wording, "fix" is the corrected ' +
+      'wording, "why" explains it in English in at most 15 words. Never bundle several fixes into one note, ' +
+      'and never write a note whose "fix" is the same as its "text". At most 10 notes.\n' +
       '• "used": the exact "term" values from the word list the learner actually used (an inflected form counts).\n' +
-      '• "score": 0–100 for meaning, required words and grammar. "verdict": "good" (80+), "fair" (60–79) or ' +
-      '"weak" (below 60). "comment": one encouraging English sentence naming the main thing to improve.\n\n' +
+      '• "score": start from 100 and subtract only for the genuine errors above and for required words that ' +
+      'are missing. Do not lower it for a different pronoun, tense or synonym. A text with no errors scores ' +
+      '100. "verdict": "good" (80+), "fair" (60–79) or "weak" (below 60). "comment": one encouraging ' +
+      'English sentence naming the main thing to improve.\n\n' +
       'Reply with ONE JSON object, no prose, no code fences, exactly this shape:\n' + FIX_SHAPE;
     return { system: system, user: user };
   }
@@ -750,10 +760,11 @@
     const needle = Util.normalizeForCompare(Util.stripDiacritics(word));
     if (!hay || !needle) return false;
     if (hay.indexOf(needle) !== -1) return true;
-    // “constater” → “constate”, “provenir” → “provient”: compare the first stem.
+    // “constater” → “constate”, “rester” → “restent”: compare the first stem,
+    // long enough not to match an unrelated word that merely starts the same.
     const stem = needle.split(' ').filter(function (w) { return w.length >= 5; })[0];
     if (!stem) return false;
-    return hay.indexOf(stem.slice(0, Math.min(6, stem.length - 2))) !== -1;
+    return hay.indexOf(stem.slice(0, Math.max(5, Math.min(7, stem.length - 1)))) !== -1;
   }
 
   function normalizeCorrection(raw, keywords, cfg) {
@@ -765,18 +776,32 @@
     if (!isFinite(score)) score = 60;
     score = Math.max(0, Math.min(100, Math.round(score)));
     const notes = [];
+    const seen = new Set();
     const rawNotes = pickField(raw, ['notes', 'corrections', 'changes', 'errors']);
+    const flat = function (s) { return String(s || '').trim().replace(/\s+/g, ' '); };
     for (const n of (Array.isArray(rawNotes) ? rawNotes : [])) {
+      let note = null;
       if (typeof n === 'string') {
-        if (n.trim()) notes.push({ text: '', fix: '', why: n.trim() });
+        if (n.trim()) note = { text: '', fix: '', why: n.trim() };
       } else if (n && typeof n === 'object') {
         const text = String(n.text || n.quote || n.original || '').trim();
         const fix = String(n.fix || n.corrected || n.correction || '').trim();
         const why = String(n.why || n.note || n.explanation || n.reason || '').trim();
-        if (text || fix || why) notes.push({ text: text, fix: fix, why: why });
+        if (text || fix || why) note = { text: text, fix: fix, why: why };
       }
+      if (!note) continue;
+      // A “correction” that leaves the wording unchanged is noise, and asking
+      // for the same fix twice only makes the panel look harsher than it is.
+      if (note.text && flat(note.text) === flat(note.fix)) continue;
+      const key = flat(note.text) + '|' + flat(note.fix);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      notes.push(note);
       if (notes.length >= 10) break;
     }
+    // Unchanged text + no notes is a perfect answer, whatever score the model
+    // guessed — a different pronoun or tense must never cost points.
+    if (!notes.length && flat(corrected) === flat(cfg && cfg.userText)) score = 100;
     // Trust the model's judgement of what the learner used; only guess locally
     // when it did not say (a wrong “you missed it” is worse than no badge).
     const rawUsed = pickField(raw, ['used', 'usedKeywords', 'used_keywords']);
@@ -787,7 +812,11 @@
     const vi2fr = cfg && cfg.direction === 'vi2fr';
     const used = list.map(function (k) {
       const local = mentionsForm(cfg && cfg.userText, vi2fr ? k.term : k.meaning);
-      return { term: k.term, meaning: k.meaning, used: aiUsed ? usedSet.has(Util.normalize(k.term)) : local };
+      // The model may give credit for an inflection we cannot see, but it must
+      // not mark a word missing when it is plainly in the text: a false ✗ is
+      // unfair and demotivating.
+      const byModel = aiUsed && usedSet.has(Util.normalize(k.term));
+      return { term: k.term, meaning: k.meaning, used: byModel || local };
     });
     return {
       score: score,

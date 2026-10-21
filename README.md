@@ -264,9 +264,13 @@ Notes:
   press **Check with AI**, and get:
   * a score out of 100 and a one-line comment,
   * your text next to the **minimally corrected** version — the AI is told to keep
-    your words, sentence order and length, and only fix spelling, accents, agreement,
-    tense, prepositions or a word that changes the meaning,
-  * a **Corrections** list quoting exactly what changed and why,
+    your words, sentence order and length, and only fix real errors: spelling,
+    accents, a verb that doesn't agree with **the subject you wrote**, adjective
+    agreement, a wrong preposition, or a word that changes the meaning. Your own
+    pronoun (`je`, `elle`, `nous`, `vous`, `on`…), tense and synonyms are accepted:
+    the reference translation is only a guide to the meaning, not the required answer,
+  * a **Corrections** list quoting exactly what changed and why (one note per fix —
+    never a bundle, never a note where nothing changed),
   * the sheet words you used (✓) and the ones you missed (✗).
 
   Paragraphs are never faked locally: without a key (or with Generator set to
