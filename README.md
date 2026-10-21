@@ -214,8 +214,10 @@ How it keeps you inside the free tier:
   provider/model, so replays and reviews cost **0 requests**.
 - **Retries/fallback** — rate limits and 5xx are retried briefly, JSON mode falls
   back to plain prompting, then the built-in generator fills the gaps so a quiz is
-  never blocked. A provider that is out of quota tells you to switch provider (or
-  switches for you in one click) instead of leaving you stuck.
+  never blocked. A reply that isn't the requested JSON gets one explicit second
+  ask (shape spelled out, colder, more room), and a provider that is out of quota
+  tells you to switch provider (or switches for you in one click) instead of
+  leaving you stuck.
 - **Counter** — Settings → AI shows requests used today and cache size.
 
 Notes:
@@ -285,6 +287,7 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 | “Could not open the sheet” (Sheet link mode) | Set sharing to “Anyone with the link → Viewer” |
 | `429` from the AI provider | Free-tier limit. Wait a minute, or pick another provider in Settings → AI (Groq, Cerebras and OpenRouter are free too) — the error offers a one-click switch, and the app falls back to built-in questions meanwhile |
 | Provider rejects the key (`401`/`403`) | The app now names the provider and its own reason (“Invalid API Key”). Keys are *not* shared between providers: `gsk_…` (56 chars) = Groq, `xai-…` = xAI **Grok**, `sk-or-…` = OpenRouter, `sk-…` = DeepSeek, `AIza…` = Gemini. **Groq (fast inference, free) and Grok (xAI, paid) are different companies one letter apart** — a key from a “Grok” page will never work on the Groq provider. A key that matches no provider's format, or another provider's, is called out the moment you paste it, with the console it should come from. A pasted `Bearer ` prefix, quotes or a stray newline are stripped automatically (keys saved earlier are repaired on load). On OpenRouter use a `:free` model; on Cloudflare include your account ID in the Base URL |
+| AI replies, but the quiz still shows built-in questions | The model answered in a shape VocabLab can't use. The prompt now spells out the exact JSON (`{"questions":[…]}`, one object per word) and the app retries once, colder and with more room, before giving up. If it still fails, the model ignores JSON mode: open Settings → AI (the box shows how the reply began) and pick a plain chat model instead of a reasoning one |
 | Can't reach the provider (CORS/network) | The message says which side is broken. *“nothing is running there”* → for a local server: it isn't installed/started (`ollama serve`, then `ollama pull <model>`; check `http://localhost:11434/api/tags` in a new tab); *“a server answered, but it blocked this page”* → CORS: restart Ollama with `OLLAMA_ORIGINS=*` and serve the page over `http(s)://`, not `file://`. Gemini, Groq, OpenRouter and Mistral need no CORS setup |
 | A renamed tab shows up twice | Only happens with a manual tab-name list: Google serves the *first* tab for an unknown name. Delete/rename that line, or use the link-only mode for auto-detection |
 | New words/tabs don't show up | Press **↻ Reload** in the header |

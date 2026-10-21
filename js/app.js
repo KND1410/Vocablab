@@ -421,7 +421,7 @@
         // A local server that is not there, or a provider whose quota ran out:
         // both have an obvious way out, so offer it.
         const quota = err.status === 429 || /429|quota|rate limit|free-tier limit/i.test(String(detail));
-        showAiIssue(detail, err.hint === 'offline' ? 'local' : (quota ? 'quota' : ''));
+        showAiIssue(err.detail || detail, err.hint === 'offline' ? 'local' : (quota ? 'quota' : ''));
         U.toast('AI generation issue — built-in questions cover the rest.\n' + detail, 'warn', 14000);
       } else if (result.aiUsed) {
         showAiIssue('');
