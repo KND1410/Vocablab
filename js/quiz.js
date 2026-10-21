@@ -318,16 +318,18 @@
    *         aiKeyless, aiModel, targetLang, meaningLang, onProgress, signal }
    */
   async function buildPool(opts) {
-    const { items, pool, source, aiProvider, aiBaseUrl, aiKey, aiModel, targetLang, meaningLang, onProgress, signal } = opts;
+    const { items, pool, source, aiProvider, aiBaseUrl, aiKey, aiModel, targetLang, meaningLang,
+      difficulty, requirement, onProgress, signal } = opts;
     const progress = onProgress || function () {};
     // Ready with a key, with a provider that needs none (Simple mode), or for
     // local servers (Ollama/LM Studio) with a localhost base URL.
     const wantAi = (source === 'ai' || source === 'auto') &&
       (!!aiKey || !!opts.aiKeyless || (!!aiBaseUrl && Ai.isLocalBaseUrl(aiBaseUrl)));
     const allowFallback = source !== 'ai' || opts.strictAi !== true;
-    // Cache questions per provider + endpoint + model so switching providers
-    // doesn't replay questions made by a different one.
-    const aiId = [aiProvider || 'gemini', Ai.normalizeBaseUrl(aiBaseUrl || ''), aiModel || ''].join('|');
+    // Cache questions per provider + endpoint + model + level + request so
+    // changing difficulty or focus doesn't replay questions made for another setup.
+    const aiId = [aiProvider || 'gemini', Ai.normalizeBaseUrl(aiBaseUrl || ''), aiModel || '',
+      difficulty || 'standard', requirement ? Util.hash(requirement) : ''].join('|');
 
     const out = [];
     const pending = [];
@@ -360,7 +362,8 @@
           const questions = await Ai.generateQuestions({
             provider: aiProvider || 'gemini', baseUrl: aiBaseUrl || '',
             key: aiKey, model: aiModel, items: batch,
-            targetLang: targetLang, meaningLang: meaningLang, signal: signal,
+            targetLang: targetLang, meaningLang: meaningLang,
+            difficulty: difficulty, requirement: requirement, signal: signal,
             onWait: function (ms) {
               progress(b, batches.length, 'Free AI is shared — waiting ' + Math.round(ms / 1000) + ' s for the next request…');
             }
@@ -411,7 +414,8 @@
             const para = await Ai.generateParagraph({
               provider: aiProvider || 'gemini', baseUrl: aiBaseUrl || '',
               key: aiKey, model: aiModel, words: item.candidates, direction: item.direction,
-              targetLang: targetLang, meaningLang: meaningLang, signal: signal,
+              targetLang: targetLang, meaningLang: meaningLang,
+              difficulty: difficulty, requirement: requirement, signal: signal,
               onWait: function (ms) {
                 progress(p, paragraphs.length, 'Free AI is shared — waiting ' + Math.round(ms / 1000) + ' s for the next request…');
               }

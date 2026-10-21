@@ -15,6 +15,7 @@
     targetLang: 'French', targetCode: 'fr-FR', autoPlay: true,
     sheetMode: 'links', sheetUrl: '', sheetApiKey: '', scriptUrl: '', links: '',
     quizTypes: ['mc', 'blank', 'translate'], direction: 'mixed', count: 20, source: 'auto',
+    difficulty: 'standard', requirement: '', practiceMode: 'quiz',
     paragraphDirection: 'both', paragraphCount: 1,
     rotation: 0
   };
@@ -28,6 +29,14 @@
     settings.aiMode = hadKey ? 'advanced' : 'simple';
   }
   function saveSettings() { U.lsSet('settings', settings); }
+  // Paragraph translation is its own practice mode now, not a question type.
+  // Drop it from an older saved quiz setup instead of silently mixing it back in.
+  if (!Array.isArray(settings.quizTypes)) settings.quizTypes = DEFAULTS.quizTypes.slice();
+  if (settings.quizTypes.indexOf('paragraph') !== -1) {
+    settings.quizTypes = settings.quizTypes.filter(function (t) { return t !== 'paragraph'; });
+    saveSettings();
+  }
+  if (settings.practiceMode !== 'paragraph') settings.practiceMode = 'quiz';
 
   /* ---------- State ---------- */
   const state = {
@@ -45,9 +54,12 @@
   function cacheEls() {
     const ids = ['srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnReload', 'srcName', 'srcMeta',
       'btnChangeSource', 'btnAllTopics', 'btnNoTopics', 'topicSearch', 'topicList', 'selectedSummary',
-      'typeMc', 'typeBlank', 'typeTranslate', 'typeParagraph', 'paraOpts', 'paragraphHint',
+      'typeMc', 'typeBlank', 'typeTranslate', 'selPractice', 'quizSetupPane', 'paraSetupPane',
+      'btnStartParagraph', 'paraStartHint',
       'selParaDir', 'selParaCount',
-      'selDirection', 'selCount', 'selSource', 'btnStart', 'btnFlashcards',
+      'selDirection', 'selCount', 'selSource', 'selDifficulty', 'difficultyHint',
+      'inpRequirement', 'reqCount', 'btnClearRequirement', 'setupAiBadge', 'moreOptions',
+      'btnStart', 'btnFlashcards',
       'statWords', 'statMastered', 'statAcc', 'screenWelcome', 'btnDemo', 'btnQuickSheet', 'btnQuickAi',
       'screenQuiz', 'progressBar', 'qProgressText', 'qStreak', 'qScore', 'btnExitQuiz', 'qCard', 'qTypeBadge',
       'qTopicBadge', 'btnSpeakPrompt', 'qPrompt', 'qHintBox', 'qOptions', 'qInputRow', 'qInput', 'btnSubmit',
@@ -55,7 +67,7 @@
       'fbExample', 'btnNext', 'qParagraph', 'paraDir', 'btnParaSpeak', 'paraText', 'paraKeywords',
       'paraInput', 'paraCount', 'btnParaSubmit', 'btnParaSkip', 'paraFeedback',
       'screenResults', 'resRing', 'resPct', 'resFraction', 'resTitle', 'resMeta',
-      'resBreakdown', 'btnRetryMistakes', 'btnNewQuiz', 'btnResultsFlashcards', 'resMistakes', 'resMistakeList',
+      'resBreakdown', 'btnRetryMistakes', 'btnNewQuiz', 'btnResultsFlashcards', 'btnBackSetup', 'resMistakes', 'resMistakeList',
       'screenFlashcards', 'fcProgress', 'btnFcShuffle', 'btnFcExit', 'fcCard', 'fcTerm', 'fcPron', 'fcSpeak',
       'fcMeaning', 'fcExample', 'btnFcAgain', 'btnFcGood', 'btnFcPrev', 'btnFcNext',
       'settingsDialog', 'selProvider', 'providerHint', 'paneGemini', 'inpGeminiKey', 'btnToggleKey',
@@ -224,29 +236,74 @@
     E.statAcc.textContent = stats.accuracy == null ? '–' : stats.accuracy + '%';
   }
 
-  /** Paragraphs are written and corrected by AI, so the exercise needs both a key and an AI generator. */
+  /** Paragraph practice is written and corrected by AI, independent of the quiz generator. */
   function paragraphAvailable() {
-    return aiReady() && E.selSource.value !== 'builtin';
+    return aiReady();
+  }
+
+  /** Keep the pill controls in step with the hidden selects they drive. */
+  function syncSegments() {
+    U.$$('.seg[data-select]').forEach(function (seg) {
+      const sel = U.$('#' + seg.getAttribute('data-select'));
+      if (!sel) return;
+      U.$$('.seg-btn', seg).forEach(function (btn) {
+        const on = btn.getAttribute('data-value') === sel.value;
+        btn.classList.toggle('is-on', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    });
+    if (E.difficultyHint && E.selDifficulty) {
+      const hints = {
+        easy: 'A1–A2 · short sentences',
+        standard: 'A2–B2 · everyday (default)',
+        hard: 'B1–C1 · richer sentences'
+      };
+      E.difficultyHint.textContent = hints[E.selDifficulty.value] || hints.standard;
+    }
+  }
+
+  function updateRequirementUI() {
+    if (!E.inpRequirement) return;
+    if (E.reqCount) E.reqCount.textContent = E.inpRequirement.value.length + '/600';
+    if (E.btnClearRequirement) E.btnClearRequirement.hidden = !E.inpRequirement.value;
+  }
+
+  /** Quiz and paragraph translation are separate practices, never mixed. */
+  function setPracticeMode(mode) {
+    settings.practiceMode = mode === 'paragraph' ? 'paragraph' : 'quiz';
+    if (E.selPractice) E.selPractice.value = settings.practiceMode;
+    syncSegments();
+    saveSettings();
+    updateControls();
   }
 
   function updateControls() {
     const hasDeck = !!state.deck && state.deck.topics.length > 0;
     const hasTopics = state.selected.length > 0;
-    const paraOk = paragraphAvailable();
-    const paraOn = E.typeParagraph.checked;
-    const hasTypes = E.typeMc.checked || E.typeBlank.checked || E.typeTranslate.checked || (paraOn && paraOk);
-    E.typeParagraph.disabled = !paraOk;
-    const chip = E.typeParagraph.closest ? E.typeParagraph.closest('.chip') : null;
-    if (chip) chip.classList.toggle('chip-disabled', !paraOk);
-    E.paragraphHint.hidden = paraOk;
-    if (!paraOk) {
-      E.paragraphHint.textContent = E.selSource.value === 'builtin'
-        ? 'Paragraph translation needs AI — set Generator to “Auto” or “AI only”.'
-        : 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.';
-    }
-    E.paraOpts.hidden = !paraOn;
-    E.btnStart.disabled = !(hasDeck && hasTopics && hasTypes) || (paraOn && !paraOk);
+    const mode = settings.practiceMode === 'paragraph' ? 'paragraph' : 'quiz';
+    const aiOk = aiReady();
+    const hasTypes = E.typeMc.checked || E.typeBlank.checked || E.typeTranslate.checked;
+    if (E.quizSetupPane) E.quizSetupPane.hidden = mode !== 'quiz';
+    if (E.paraSetupPane) E.paraSetupPane.hidden = mode !== 'paragraph';
+    E.btnStart.disabled = !(hasDeck && hasTopics && hasTypes);
     E.btnFlashcards.disabled = !(hasDeck && hasTopics);
+    if (E.btnStartParagraph) E.btnStartParagraph.disabled = !(hasDeck && hasTopics && aiOk);
+    if (E.paraStartHint) {
+      E.paraStartHint.hidden = aiOk;
+      if (!aiOk) {
+        E.paraStartHint.textContent = 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.';
+      }
+    }
+    const builtin = E.selSource.value === 'builtin';
+    // The quiz generator only controls quiz questions. Paragraph practice always
+    // uses AI, so the shared focus box stays editable there.
+    const reqDisabled = mode === 'quiz' && builtin;
+    if (E.inpRequirement) E.inpRequirement.disabled = reqDisabled;
+    if (E.btnClearRequirement) E.btnClearRequirement.disabled = reqDisabled;
+    U.$$('#reqChips .req-chip[data-fill]').forEach(function (b) { b.disabled = reqDisabled; });
+    if (E.setupAiBadge) {
+      E.setupAiBadge.hidden = mode === 'paragraph' ? !aiOk : (builtin || !aiOk);
+    }
   }
 
   /* ---------- Loading decks ---------- */
@@ -295,16 +352,18 @@
     if (E.typeMc.checked) types.push('mc');
     if (E.typeBlank.checked) types.push('blank');
     if (E.typeTranslate.checked) types.push('translate');
-    if (E.typeParagraph.checked) types.push('paragraph');
     settings.quizTypes = types;
     settings.direction = E.selDirection.value;
     settings.paragraphDirection = E.selParaDir.value;
     settings.paragraphCount = parseInt(E.selParaCount.value, 10) || 1;
     settings.count = parseInt(E.selCount.value, 10) || 0;
     settings.source = E.selSource.value;
+    settings.difficulty = E.selDifficulty.value || 'standard';
+    settings.requirement = (E.inpRequirement.value || '').trim().slice(0, 600);
     saveSettings();
     return {
       types: types, direction: settings.direction, count: settings.count, source: settings.source,
+      difficulty: settings.difficulty, requirement: settings.requirement,
       paragraphDirection: settings.paragraphDirection, paragraphCount: settings.paragraphCount
     };
   }
@@ -417,14 +476,9 @@
   async function startQuiz(opts) {
     opts = opts || {};
     if (!state.deck) { U.toast('Load a vocabulary deck first.', 'warn'); return; }
+    setPracticeMode('quiz');
     const setup = readSetup();
     if (!setup.types.length) { U.toast('Pick at least one question type.', 'warn'); return; }
-    if (setup.types.indexOf('paragraph') !== -1 && !paragraphAvailable()) {
-      U.toast(setup.source === 'builtin'
-        ? 'Paragraph translation needs AI — set Generator to “Auto” or “AI only”.'
-        : 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.', 'warn');
-      return;
-    }
 
     let words = opts.words;
     const available = selectedWords();
@@ -434,15 +488,7 @@
     }
     if (!words.length) { U.toast('No words to practise.', 'warn'); return; }
 
-    // “Questions” limits the word cards; a paragraph still needs a dozen
-    // candidates to choose its 5–6 required words from.
-    const paraWords = words.length >= 12 ? words : (available.length >= 12 ? available : words);
-
     let items = Quiz.planItems(words, setup.types, setup.direction, settings.rotation);
-    // Paragraphs are their own card and only exist when the learner ticks them.
-    if (setup.types.indexOf('paragraph') !== -1) {
-      items = items.concat(Quiz.planParagraphs(paraWords, setup.paragraphCount, setup.paragraphDirection));
-    }
     settings.rotation = (settings.rotation + words.length) % 1000;
     saveSettings();
 
@@ -461,6 +507,8 @@
         aiKey: activeKey(),
         aiKeyless: aiKeyless(),
         aiModel: activeModel(),
+        difficulty: setup.difficulty,
+        requirement: setup.requirement,
         targetLang: settings.targetLang,
         meaningLang: 'Vietnamese',
         onProgress: overlayProgress,
@@ -468,11 +516,8 @@
       });
 
       if (!result.questions.length) {
-        const why = result.aiError;
         throw Object.assign(new Error('No questions'), {
-          friendly: why && why.paragraph
-            ? 'Paragraph translation could not be generated — ' + (why.friendly || 'the AI reply was unusable.')
-            : 'Could not build any questions from these words.'
+          friendly: 'Could not build any questions from these words.'
         });
       }
 
@@ -484,7 +529,8 @@
         streak: 0,
         bestStreak: 0,
         startedAt: Date.now(),
-        fromMistakes: !!opts.words
+        fromMistakes: !!opts.words,
+        paragraphOnly: false
       };
       state.answered = false;
 
@@ -514,14 +560,110 @@
     }
   }
 
+  /** Paragraph translation is its own practice: AI-only, never mixed with quiz questions. */
+  async function startParagraphPractice() {
+    if (!state.deck) { U.toast('Load a vocabulary deck first.', 'warn'); return; }
+    const setup = readSetup();
+    setPracticeMode('paragraph');
+    if (!paragraphAvailable()) {
+      const msg = 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.';
+      U.toast(msg, 'warn');
+      showAiIssue(msg);
+      return;
+    }
+    const available = selectedWords();
+    if (!available.length) { U.toast('Select at least one topic.', 'warn'); return; }
+    // A paragraph needs a pool of candidate words. Prefer the selected topics;
+    // fall back to the whole deck only when a topic is too small to draw from.
+    let paraWords = available;
+    if (paraWords.length < 6) {
+      const all = allWords();
+      if (all.length >= 6) paraWords = all;
+    }
+    const items = Quiz.planParagraphs(paraWords, setup.paragraphCount, setup.paragraphDirection);
+    if (!items.length) {
+      U.toast('Add at least 6 words to the selected topic to write a paragraph.', 'warn');
+      return;
+    }
+
+    const pool = available.length >= 4 ? available : allWords();
+    state.controller = new AbortController();
+    showOverlay('Writing a paragraph…',
+      aiMode() === 'simple' ? 'Asking the free AI for a short text…' : 'Asking the AI for a short text…');
+    try {
+      const result = await Quiz.buildPool({
+        items: items,
+        pool: pool,
+        source: 'ai',
+        aiProvider: activeProvider(),
+        aiBaseUrl: activeBase(),
+        aiKey: activeKey(),
+        aiKeyless: aiKeyless(),
+        aiModel: activeModel(),
+        difficulty: setup.difficulty,
+        requirement: setup.requirement,
+        targetLang: settings.targetLang,
+        meaningLang: 'Vietnamese',
+        onProgress: overlayProgress,
+        signal: state.controller.signal
+      });
+
+      if (!result.questions.length) {
+        const why = result.aiError;
+        throw Object.assign(new Error('No paragraph'), {
+          friendly: why
+            ? 'Paragraph translation could not be generated — ' + (why.friendly || 'the AI reply was unusable.')
+            : 'Could not generate a paragraph from these words.'
+        });
+      }
+
+      state.session = {
+        questions: Quiz.makeSession(result.questions, 0),
+        index: 0,
+        answers: [],
+        score: 0,
+        streak: 0,
+        bestStreak: 0,
+        startedAt: Date.now(),
+        fromMistakes: false,
+        paragraphOnly: true
+      };
+      state.answered = false;
+      if (result.aiError) {
+        const err = result.aiError;
+        const detail = err.friendly || err.message || 'Some paragraphs could not be generated.';
+        showAiIssue(err.detail || detail);
+        U.toast(detail, 'warn', 12000);
+      } else {
+        showAiIssue('');
+      }
+      updateUsageUI();
+      showScreen('quiz');
+      renderQuestion();
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        U.toast('Generation cancelled.', 'warn');
+      } else {
+        const msg = e.friendly || e.message || 'Could not write a paragraph.';
+        showAiIssue(e.detail || msg);
+        U.toast(msg, 'bad', 12000);
+      }
+    } finally {
+      state.controller = null;
+      hideOverlay();
+    }
+  }
+
   function renderQuestion() {
     const s = state.session;
     const q = s.questions[s.index];
     state.answered = false;
 
     E.progressBar.style.width = Math.round((s.index / s.questions.length) * 100) + '%';
-    E.qProgressText.textContent = 'Question ' + (s.index + 1) + ' of ' + s.questions.length;
+    E.qProgressText.textContent = (s.paragraphOnly ? 'Paragraph ' : 'Question ') +
+      (s.index + 1) + ' of ' + s.questions.length;
     E.qScore.textContent = s.score + ' ✓';
+    E.btnExitQuiz.title = s.paragraphOnly ? 'End this practice' : 'End this quiz';
     if (s.streak >= 2) { E.qStreak.hidden = false; E.qStreak.querySelector('span').textContent = String(s.streak); }
     else E.qStreak.hidden = true;
 
@@ -880,7 +1022,9 @@
     }
 
     const actions = paraEl('div', 'pf-actions');
-    const next = paraEl('button', 'btn btn-primary', 'Next question');
+    const last = state.session && state.session.index >= state.session.questions.length - 1;
+    const next = paraEl('button', 'btn btn-primary',
+      last ? 'See results' : (state.session && state.session.paragraphOnly ? 'Next paragraph' : 'Next question'));
     next.type = 'button';
     next.addEventListener('click', nextQuestion);
     actions.appendChild(next);
@@ -902,6 +1046,7 @@
     const total = s.answers.length;
     const correct = s.answers.filter(function (a) { return a.correct; }).length;
     const pct = total ? Math.round((correct / total) * 100) : 0;
+    const paraOnly = !!s.paragraphOnly;
 
     const C = 2 * Math.PI * 52;
     E.resRing.style.strokeDasharray = String(C);
@@ -914,9 +1059,13 @@
       });
     });
 
-    E.resTitle.textContent = pct >= 90 ? 'Outstanding! 🎉' : pct >= 70 ? 'Nice work!' : pct >= 50 ? 'Good effort' : 'Keep practising';
+    E.resTitle.textContent = paraOnly
+      ? (pct >= 90 ? 'Excellent translation! 🎉' : pct >= 70 ? 'Translation complete!' : pct >= 50 ? 'Good effort' : 'Keep practising')
+      : (pct >= 90 ? 'Outstanding! 🎉' : pct >= 70 ? 'Nice work!' : pct >= 50 ? 'Good effort' : 'Keep practising');
     const elapsed = Date.now() - s.startedAt;
-    E.resMeta.textContent = correct + ' of ' + total + ' correct · ' + U.formatDuration(elapsed) +
+    E.resMeta.textContent = correct + ' of ' + total +
+      (paraOnly ? (total === 1 ? ' paragraph passed' : ' paragraphs passed') : ' correct') +
+      ' · ' + U.formatDuration(elapsed) +
       (s.bestStreak >= 3 ? ' · best streak ' + s.bestStreak : '') +
       (s.fromMistakes ? ' · mistake review' : '');
 
@@ -946,7 +1095,7 @@
       byWord[key].count += 1;
     });
     const mistakes = Object.keys(byWord).map(function (k) { return byWord[k]; });
-    E.resMistakes.hidden = !mistakes.length;
+    E.resMistakes.hidden = paraOnly || !mistakes.length;
     E.resMistakeList.innerHTML = mistakes.map(function (m) {
       return '<li class="mistake-row"><span class="mistake-term">' + U.esc(m.word.term) + '</span>' +
         '<span class="mistake-meaning">' + U.esc(m.word.meaning) + '</span>' +
@@ -956,10 +1105,12 @@
     E.resMistakeList.querySelectorAll('.speak-btn').forEach(function (b) {
       b.addEventListener('click', function () { U.speak(b.getAttribute('data-term'), settings.targetCode); });
     });
-    E.btnRetryMistakes.hidden = !mistakes.length;
+    E.btnRetryMistakes.hidden = paraOnly || !mistakes.length;
     E.btnRetryMistakes.onclick = function () {
       startQuiz({ words: mistakes.map(function (m) { return m.word; }) });
     };
+    E.btnNewQuiz.textContent = paraOnly ? 'New paragraph' : 'New quiz';
+    E.btnResultsFlashcards.hidden = paraOnly;
 
     showScreen('results');
     updateStatsUI();
@@ -1042,18 +1193,24 @@
     E.typeMc.checked = settings.quizTypes.indexOf('mc') !== -1;
     E.typeBlank.checked = settings.quizTypes.indexOf('blank') !== -1;
     E.typeTranslate.checked = settings.quizTypes.indexOf('translate') !== -1;
-    E.typeParagraph.checked = settings.quizTypes.indexOf('paragraph') !== -1;
+    E.selPractice.value = settings.practiceMode === 'paragraph' ? 'paragraph' : 'quiz';
     E.selDirection.value = settings.direction;
     E.selParaDir.value = settings.paragraphDirection || 'both';
     E.selParaCount.value = String(settings.paragraphCount || 1);
     E.selCount.value = String(settings.count);
     E.selSource.value = settings.source;
+    E.selDifficulty.value = settings.difficulty === 'easy' || settings.difficulty === 'hard'
+      ? settings.difficulty : 'standard';
+    E.inpRequirement.value = settings.requirement || '';
+    syncSegments();
+    updateRequirementUI();
     const mode = settings.sheetMode || 'api';
     U.$$('input[name="sheetMode"]').forEach(function (r) { r.checked = r.value === mode; });
     syncModePanes(mode);
     syncAiUI();
     updateUsageUI();
     updateDataInfo();
+    updateControls();
   }
 
   function syncAiUI() {
@@ -1085,8 +1242,8 @@
       E.inpModel.value = model;
       E.btnTestKey.textContent = transport === 'openai' ? 'Test & load models' : 'Test key & load models';
     }
-    // A key/provider change decides whether paragraph translation is available.
-    if (E.typeParagraph) updateControls();
+    // A key/provider change decides whether paragraph practice is available.
+    updateControls();
   }
 
   /** Options for the keyless mode. Cached after a check so opening Settings is offline-safe. */
@@ -1440,11 +1597,62 @@
     });
 
     // Quiz setup controls
-    ['typeMc', 'typeBlank', 'typeTranslate', 'typeParagraph', 'selDirection', 'selCount', 'selSource',
-      'selParaDir', 'selParaCount'].forEach(function (id) {
+    ['typeMc', 'typeBlank', 'typeTranslate', 'selDirection', 'selCount', 'selSource',
+      'selParaDir', 'selParaCount', 'selDifficulty'].forEach(function (id) {
       E[id].addEventListener('change', function () { readSetup(); updateControls(); });
     });
+    if (E.selPractice) {
+      E.selPractice.addEventListener('change', function () { setPracticeMode(E.selPractice.value); });
+    }
+
+    // Pills drive their hidden selects, so the rest of the app keeps reading .value.
+    U.$$('.seg[data-select]').forEach(function (seg) {
+      seg.addEventListener('click', function (e) {
+        const btn = e.target.closest ? e.target.closest('.seg-btn') : null;
+        if (!btn || !seg.contains(btn)) return;
+        const sel = U.$('#' + seg.getAttribute('data-select'));
+        if (!sel) return;
+        sel.value = btn.getAttribute('data-value');
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        syncSegments();
+      });
+    });
+    if (E.selDifficulty) E.selDifficulty.addEventListener('change', syncSegments);
+
+    // Optional focus/topic note for AI questions and paragraphs.
+    if (E.inpRequirement) {
+      E.inpRequirement.addEventListener('input', function () {
+        const value = E.inpRequirement.value.slice(0, 600);
+        settings.requirement = value;
+        saveSettings();
+        updateRequirementUI();
+      });
+    }
+    U.$$('#reqChips .req-chip[data-fill]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!E.inpRequirement || E.inpRequirement.disabled) return;
+        const fill = btn.getAttribute('data-fill');
+        const cur = E.inpRequirement.value.replace(/\s+/g, ' ').trim();
+        const next = cur ? cur.replace(/[\s,;.]+$/, '') + ', ' + fill : fill;
+        E.inpRequirement.value = next.slice(0, 600);
+        settings.requirement = E.inpRequirement.value;
+        saveSettings();
+        updateRequirementUI();
+        E.inpRequirement.focus();
+      });
+    });
+    if (E.btnClearRequirement) {
+      E.btnClearRequirement.addEventListener('click', function () {
+        if (!E.inpRequirement) return;
+        E.inpRequirement.value = '';
+        settings.requirement = '';
+        saveSettings();
+        updateRequirementUI();
+        E.inpRequirement.focus();
+      });
+    }
     E.btnStart.addEventListener('click', function () { startQuiz(); });
+    E.btnStartParagraph.addEventListener('click', startParagraphPractice);
     E.btnFlashcards.addEventListener('click', startFlashcards);
     E.btnSubmit.addEventListener('click', function () { submitTyped(false); });
     E.btnDontKnow.addEventListener('click', function () { submitTyped(true); });
@@ -1467,7 +1675,14 @@
       if (state.session && state.session.answers.length) showResults();
       else { state.session = null; showScreen('welcome'); }
     });
-    E.btnNewQuiz.addEventListener('click', function () { startQuiz(); });
+    E.btnNewQuiz.addEventListener('click', function () {
+      if (state.session && state.session.paragraphOnly) startParagraphPractice();
+      else startQuiz();
+    });
+    E.btnBackSetup.addEventListener('click', function () {
+      state.session = null;
+      showScreen('welcome');
+    });
     E.btnResultsFlashcards.addEventListener('click', startFlashcards);
     E.btnSpeakPrompt.addEventListener('click', function () {
       const q = state.session && state.session.questions[state.session.index];

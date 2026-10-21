@@ -290,6 +290,21 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '    out("topics: " + document.querySelectorAll("#topicList .topic-item").length + " topics, " + byId("statWords").textContent + " words");',
     '    out("toasts: " + document.querySelectorAll("#toasts .toast").length + " notes=" + !byId("sheetWarnings").hidden);',
     '',
+    '    /* Setup pills write through to the hidden select the quiz reads. */',
+    '    document.querySelector("#segDifficulty .seg-btn[data-value=hard]").click();',
+    '    byId("inpRequirement").value = "short sentences";',
+    '    byId("inpRequirement").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    document.querySelector("#reqChips .req-chip[data-fill=\\"travel situations\\"]").click();',
+    '    await wait(30);',
+    '    var savedSetup = JSON.parse(localStorage.getItem("vocablab.settings"));',
+    '    out("setup: difficulty=" + byId("selDifficulty").value +',
+    '        " on=" + document.querySelector("#segDifficulty .seg-btn.is-on").getAttribute("data-value") +',
+    '        " req=" + JSON.stringify(byId("inpRequirement").value) + " count=" + byId("reqCount").textContent +',
+    '        " saved=" + savedSetup.difficulty + "/" + JSON.stringify(savedSetup.requirement));',
+    '    document.querySelector("#segDifficulty .seg-btn[data-value=standard]").click();',
+    '    byId("btnClearRequirement").click();',
+    '    await wait(20);',
+    '',
     '    setTypes(true, false, false);',
     '    byId("selCount").value = "15";',
     '    byId("selSource").value = "builtin";',
@@ -507,8 +522,9 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '    byId("btnExitQuiz").click();',
     '    await wait(200);',
     '',
-    '    /* Paragraph translation: an AI-written text, the words it must contain,',
-    '       and an AI correction that keeps the learner’s wording. */',
+    '    /* Paragraph translation is its own practice mode: no quiz type, its own',
+    '       direction/count and start button, and an AI correction that keeps the',
+    '       learner’s wording. */',
     '    byId("btnSettings").click();',
     '    await wait(60);',
     '    byId("selProvider").value = "openai";',
@@ -519,17 +535,17 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '    byId("inpOaiKey").dispatchEvent(new Event("input", { bubbles: true }));',
     '    byId("settingsDialog").close();',
     '    await wait(80);',
-    '    setTypes(false, false, false);',
-    '    byId("selSource").value = "ai";',
-    '    byId("selSource").dispatchEvent(new Event("change", { bubbles: true }));',
-    '    byId("typeParagraph").checked = true;',
-    '    byId("typeParagraph").dispatchEvent(new Event("change", { bubbles: true }));',
-    '    out("paragraph: enabled=" + !byId("typeParagraph").disabled + " opts=" + !byId("paraOpts").hidden);',
+    '    document.querySelector("#segPractice .seg-btn[data-value=paragraph]").click();',
+    '    await wait(40);',
+    '    var paraSaved = JSON.parse(localStorage.getItem("vocablab.settings"));',
+    '    out("paragraph: mode=" + byId("selPractice").value + " pane=" + !byId("paraSetupPane").hidden +',
+    '        " quiz-pane-hidden=" + byId("quizSetupPane").hidden + " start-enabled=" + !byId("btnStartParagraph").disabled +',
+    '        " saved=" + paraSaved.practiceMode);',
     '    byId("selParaDir").value = "fr2vi";',
     '    byId("selParaDir").dispatchEvent(new Event("change", { bubbles: true }));',
     '    byId("selParaCount").value = "1";',
     '    byId("selParaCount").dispatchEvent(new Event("change", { bubbles: true }));',
-    '    byId("btnStart").click();',
+    '    byId("btnStartParagraph").click();',
     '    await waitFor(function () { return screen("Quiz") && vis(byId("qParagraph")); }, 25000, "paragraph card");',
     '    out("paragraph start: issue=" + JSON.stringify(byId("aiIssue").textContent.slice(0, 100)));',
     '    out("paragraph card: dir=" + byId("paraDir").textContent +',
@@ -549,7 +565,10 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '        " next=" + !!document.querySelector("#paraFeedback .pf-actions button"));',
     '    document.querySelector("#paraFeedback .pf-actions button").click();',
     '    await waitFor(function () { return screen("Results"); }, 20000, "results after a paragraph");',
-    '    out("paragraph results=" + screen("Results") + " fraction=" + byId("resFraction").textContent);',
+    '    out("paragraph results=" + screen("Results") + " fraction=" + byId("resFraction").textContent +',
+    '        " title=" + JSON.stringify(byId("resTitle").textContent) +',
+    '        " new=" + JSON.stringify(byId("btnNewQuiz").textContent) +',
+    '        " back=" + !byId("btnBackSetup").hidden);',
     '',
     '    byId("btnFlashcards").click();',
     '    await waitFor(function () { return screen("Flashcards"); }, 8000, "flashcards");',
@@ -627,6 +646,9 @@ console.log(log.trim().split('\n').map((l) => '    ' + l).join('\n'));
 check(/^loaded: /m.test(log), 'app boots (scripts load, init runs)');
 check(/^deck: Loaded/m.test(log), 'deck loads', (log.match(/^deck: .*/m) || [''])[0]);
 check(/^toasts: [01] notes=/m.test(log), 'one load message, not a success toast plus a warning');
+check(/^setup: difficulty=hard on=hard req="short sentences, travel situations" count=\d+\/600 saved=hard\/"short sentences, travel situations"/m.test(log),
+  'difficulty pills and the optional focus are saved and fed to the quiz',
+  (log.match(/^setup: .*/m) || [''])[0]);
 // The welcome card promises "Just paste the sheet link — every tab becomes a topic".
 if (discover) {
   check(/^topics: ([2-9]|\d\d+) topics/m.test(log), 'a bare sheet link auto-detects every tab',
@@ -691,8 +713,9 @@ check(/^blocked AI: toast="AI generation issue[^"]*a server answered, but it blo
 check(/^blocked AI: still-quizzing=true/m.test(log), 'the quiz still runs when the provider blocks the page');
 check(blocked.seen.some((r) => /\/v1\/models/.test(r)), 'the reachability probe really reached the local server');
 check(blocked.seen.some((r) => /\/v1\/chat\/completions/.test(r)), 'the provider really was called before the fallback');
-check(/^paragraph: enabled=true opts=true/m.test(log),
-  'paragraph translation is offered as soon as a key is set');
+check(/^paragraph: mode=paragraph pane=true quiz-pane-hidden=true start-enabled=true saved=paragraph/m.test(log),
+  'paragraph translation is its own practice mode, not a quiz type',
+  (log.match(/^paragraph: .*/m) || [''])[0]);
 check(/^paragraph card: dir=French → Vietnamese text=true words=[3-9] prompt-hidden=true textarea=true/m.test(log),
   'the paragraph card shows the text, the words to use and a textarea',
   (log.match(/^paragraph card: .*/m) || [''])[0]);
@@ -701,7 +724,8 @@ check(/^paragraph count=\d+ words/m.test(log), 'the textarea counts what you typ
 check(/^paragraph feedback: score=82\/100 notes=1 used=3 corrected=true next=true/m.test(log),
   'the AI correction shows a score, the fixes, the words used and a way on',
   (log.match(/^paragraph feedback: .*/m) || [''])[0]);
-check(/^paragraph results=true fraction=1\/1/m.test(log), 'a paragraph counts in the results',
+check(/^paragraph results=true fraction=1\/1 title="[^"]*translation[^"]*" new="New paragraph" back=true/m.test(log),
+  'a paragraph result is a practice result with its own restart and setup button',
   (log.match(/^paragraph results=.*/m) || [''])[0]);
 check(/flashcard flipped=true/m.test(log), 'flashcard flips');
 check(/flashcard next=\d+\s*\/\s*\d+/m.test(log), 'flashcard advances');
