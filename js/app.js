@@ -60,7 +60,9 @@
       'selDirection', 'selCount', 'selSource', 'selDifficulty', 'difficultyHint',
       'inpRequirement', 'reqCount', 'btnClearRequirement', 'setupAiBadge', 'moreOptions',
       'btnStart', 'btnFlashcards',
-      'statWords', 'statMastered', 'statAcc', 'screenWelcome', 'btnDemo', 'btnQuickSheet', 'btnQuickAi',
+      'statWords', 'statMastered', 'statAcc', 'screenWelcome', 'screenGrammar',
+      'studyPct', 'studyBar', 'btnStudy',
+      'btnDemo', 'btnQuickSheet', 'btnQuickAi',
       'screenQuiz', 'progressBar', 'qProgressText', 'qStreak', 'qScore', 'btnExitQuiz', 'qCard', 'qTypeBadge',
       'qTopicBadge', 'btnSpeakPrompt', 'qPrompt', 'qHintBox', 'qOptions', 'qInputRow', 'qInput', 'btnSubmit',
       'btnDontKnow', 'qFeedback', 'fbIcon', 'fbTitle', 'fbBody', 'fbTerm', 'fbSpeak', 'fbPron', 'fbMeaning',
@@ -114,7 +116,10 @@
   function showScreen(name) {
     state.screen = name;
     document.body.dataset.screen = name;
-    const map = { welcome: E.screenWelcome, quiz: E.screenQuiz, results: E.screenResults, flashcards: E.screenFlashcards };
+    const map = {
+      welcome: E.screenWelcome, grammar: E.screenGrammar,
+      quiz: E.screenQuiz, results: E.screenResults, flashcards: E.screenFlashcards
+    };
     Object.keys(map).forEach(function (k) { map[k].hidden = k !== name; });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -304,6 +309,40 @@
     if (E.setupAiBadge) {
       E.setupAiBadge.hidden = mode === 'paragraph' ? !aiOk : (builtin || !aiOk);
     }
+  }
+
+  /* ---------- Grammar study area ---------- */
+  function updateStudyUI(summary) {
+    if (!window.Grammar || !E.studyPct) return;
+    const p = summary || Grammar.progressSummary();
+    E.studyPct.textContent = p.done + ' / ' + p.total;
+    if (E.studyBar) E.studyBar.style.width = p.pct + '%';
+    if (E.btnStudy) {
+      E.btnStudy.textContent = p.done > 0 ? '📖 Continue grammar course' : '📖 Open grammar course';
+    }
+  }
+
+  function openGrammar() {
+    if (!window.Grammar) {
+      U.toast('The grammar course could not be loaded.', 'bad');
+      return;
+    }
+    Grammar.openCourse();
+    showScreen('grammar');
+  }
+
+  /** Prose reply from the grammar tutor, using the same provider as everything else. */
+  async function askTutor(prompt, opts) {
+    opts = opts || {};
+    if (!aiReady()) {
+      const err = new Error('AI is not set up yet.');
+      err.friendly = 'AI is not set up yet. Open Settings → AI and use the free model (no key), or add your own key.';
+      throw err;
+    }
+    return Ai.askTutor({
+      provider: activeProvider(), baseUrl: activeBase(), key: activeKey(), model: activeModel(),
+      system: opts.system, prompt: prompt, onWait: opts.onWait
+    });
   }
 
   /* ---------- Loading decks ---------- */
@@ -1567,6 +1606,7 @@
     E.btnHelp.addEventListener('click', function () { E.helpDialog.showModal(); });
     E.btnQuickSheet.addEventListener('click', function () { openSettings('sheet'); });
     E.btnQuickAi.addEventListener('click', function () { openSettings('ai'); });
+    if (E.btnStudy) E.btnStudy.addEventListener('click', openGrammar);
     E.lnkShowScript.addEventListener('click', function (e) {
       e.preventDefault();
       E.settingsDialog.close();
@@ -1909,6 +1949,16 @@
     cacheEls();
     applyTheme();
     U.initVoices();
+    if (window.Grammar) {
+      Grammar.init({
+        screen: E.screenGrammar,
+        askTutor: askTutor,
+        isAiReady: aiReady,
+        openSettings: function () { openSettings('ai'); },
+        onProgress: updateStudyUI,
+        onExit: function () { showScreen('welcome'); }
+      });
+    }
     // Name a provider saved before the list existed, and remember its connection
     // so switching providers can bring it back later.
     migrateProvider();
@@ -1931,6 +1981,7 @@
       showScreen('welcome');
     }
     updateDataInfo();
+    updateStudyUI();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

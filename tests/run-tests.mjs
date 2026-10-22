@@ -85,10 +85,11 @@ const sandbox = {
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
-for (const f of ['js/util.js', 'js/demo.js', 'js/sources.js', 'js/ai.js', 'js/generator.js', 'js/quiz.js']) {
+for (const f of ['js/util.js', 'js/demo.js', 'js/sources.js', 'js/ai.js', 'js/generator.js', 'js/quiz.js',
+  'js/grammar-data.js', 'js/grammar.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sandbox, { filename: f });
 }
-const { Util, Sources, Gen, Quiz, Ai, DemoDeck } = sandbox;
+const { Util, Sources, Gen, Quiz, Ai, DemoDeck, GrammarData, Grammar } = sandbox;
 
 /* ---------- tiny test harness ---------- */
 let passed = 0, failed = 0;
@@ -1585,6 +1586,192 @@ ok(/function revealTranslation\(/.test(appSrc) && /revealTranslation\(btn, text,
 ok(/class="opt-main"/.test(appSrc) && /'opt-sub'/.test(appSrc), 'options carry a translation line');
 ok(/\.opt-sub \{/.test(cssSrc) && /\.opt-main \{/.test(cssSrc), 'the translation line is styled');
 ok(/if \(result\.note\) body \+=/.test(appSrc), 'an accepted-alternative note reaches the feedback');
+
+/* ---------- Grammar course ---------- */
+section('Grammar course');
+const grammarSrc = fs.readFileSync(path.join(root, 'js/grammar.js'), 'utf8');
+const grammarDataSrc = fs.readFileSync(path.join(root, 'js/grammar-data.js'), 'utf8');
+
+const grammarIds = GrammarData.chapters.map((c) => c.id);
+eq(GrammarData.chapters.length, 18, 'all 18 chapters are present');
+eq(GrammarData.parts.length, 7, 'the course map has seven parts');
+eq(grammarIds, ['map', 'basics', 'present', 'passe-compose', 'imparfait',
+  'passe-compose-vs-imparfait', 'plus-que-parfait', 'futur', 'conditionnel', 'si',
+  'subjonctif', 'imperatif', 'gerondif', 'discours-indirect', 'passif', 'passe-simple',
+  'anglais', 'revision'], 'chapter order follows the handbook');
+ok(GrammarData.chapters.every((c, i) => c.num === i + 1), 'chapter numbers are sequential');
+ok(GrammarData.chapters.every((c) => c.title && c.subtitle && c.subtitle.vi && c.subtitle.en &&
+  c.summary && c.summary.vi && c.summary.en && c.blocks.length && c.exercises.length),
+  'every chapter has a title, a bilingual summary, lesson blocks and exercises');
+eq(GrammarData.chapters.reduce((n, c) => n + c.exercises.length, 0), 123, '123 exercises in the course');
+eq(GrammarData.chapters[17].exercises.length, 27, 'the review chapter has the 27-question mock exam');
+
+const badExercises = [];
+GrammarData.chapters.forEach((chapter) => {
+  chapter.exercises.forEach((ex, index) => {
+    const where = chapter.id + ' #' + (index + 1);
+    if (!ex.explain || !ex.explain.vi || !ex.explain.en) badExercises.push(where + ' explanations');
+    if (ex.type === 'fill') {
+      const blanks = (String(ex.text).match(/\{\{\d+\}\}/g) || []).length;
+      if (!blanks || blanks !== ex.answers.length) badExercises.push(where + ' blank count');
+      if (ex.answers.some((a) => !Array.isArray(a) || !a.length || a.some((x) => !String(x).trim()))) {
+        badExercises.push(where + ' empty answer');
+      }
+    } else if (ex.type === 'choice') {
+      if (!ex.question || !ex.question.vi || !ex.question.en || !ex.options || ex.options.length < 2 ||
+        ex.options.some((option) => !String(option).trim()) ||
+        !Number.isInteger(ex.answer) || ex.answer < 0 || ex.answer >= ex.options.length) {
+        badExercises.push(where + ' choice');
+      }
+    } else if (ex.type === 'translate') {
+      if (!ex.source || !ex.source.vi || !ex.source.en || !ex.answers || !ex.answers.length ||
+        ex.answers.some((answer) => !String(answer).trim())) {
+        badExercises.push(where + ' translation');
+      }
+    } else {
+      badExercises.push(where + ' unknown type');
+    }
+  });
+});
+eq(badExercises, [], 'every exercise has valid blanks, options, answers and bilingual feedback');
+
+const allTableCells = [];
+GrammarData.chapters.forEach((chapter) => {
+  chapter.blocks.forEach((block) => {
+    if (block.type !== 'table') return;
+    allTableCells.push.apply(allTableCells, block.head);
+    block.rows.forEach((row) => { allTableCells.push.apply(allTableCells, row); });
+  });
+});
+ok(allTableCells.length > 100 && allTableCells.every((cell) => cell && typeof cell === 'object' &&
+  Object.prototype.hasOwnProperty.call(cell, 'vi') && Object.prototype.hasOwnProperty.call(cell, 'en')),
+  'every table cell carries both Vietnamese and English text');
+const firstTable = GrammarData.chapters[0].blocks.find((block) => block.type === 'table');
+eq(firstTable.head.map((cell) => cell.en), ['Tense', 'Used for', 'Example'],
+  'table headers follow the VI/EN toggle');
+eq(firstTable.rows[0].map((cell) => cell.en),
+  ['Plus-que-parfait', 'An event before another past event', 'J’avais fini.'],
+  'table descriptions are translated while French examples stay French');
+
+const badBlocks = [];
+GrammarData.chapters.forEach((chapter) => {
+  chapter.blocks.forEach((block, index) => {
+    const where = chapter.id + ' block ' + (index + 1);
+    const kinds = ['p', 'h', 'list', 'table', 'formula', 'callout', 'examples'];
+    if (kinds.indexOf(block.type) === -1) { badBlocks.push(where + ' unknown'); return; }
+    if (['p', 'h', 'formula', 'callout'].indexOf(block.type) !== -1 &&
+      (!block.vi || !block.en)) badBlocks.push(where + ' text');
+    if (block.type === 'list' && (!Array.isArray(block.vi) || !Array.isArray(block.en) ||
+      block.vi.length !== block.en.length)) badBlocks.push(where + ' list');
+    if (block.type === 'callout' && ['tip', 'warn', 'note', 'english'].indexOf(block.kind) === -1) {
+      badBlocks.push(where + ' callout kind');
+    }
+    if (block.type === 'examples' && (!Array.isArray(block.items) || !block.items.length ||
+      block.items.some((item) => !item.fr || !item.vi || !item.en))) {
+      badBlocks.push(where + ' examples');
+    }
+    if (block.type === 'table' && (!Array.isArray(block.head) || !Array.isArray(block.rows) ||
+      block.rows.some((row) => !Array.isArray(row) || row.length !== block.head.length))) {
+      badBlocks.push(where + ' table');
+    }
+  });
+});
+eq(badBlocks, [], 'lesson blocks have the shape the reader renders');
+
+Util.lsRemove('grammarProgress');
+Util.lsRemove('grammarLast');
+let gp = Grammar.progressSummary();
+eq([gp.done, gp.total, gp.pct, gp.next.id], [0, 18, 0, 'map'], 'fresh progress starts at chapter 1');
+Util.lsSet('grammarProgress', { map: { done: true }, basics: { done: true } });
+Util.lsSet('grammarLast', 'present');
+gp = Grammar.progressSummary();
+eq([gp.done, gp.total, gp.pct, gp.next.id, gp.last], [2, 18, 11, 'present', 'present'],
+  'progress summary counts completed lessons and resumes at the next one');
+Util.lsRemove('grammarProgress');
+Util.lsRemove('grammarLast');
+
+/* The tutor is prose, not JSON: it must not send response_format and must use
+   the same OpenAI-compatible transport as the rest of the app. */
+section('Grammar tutor transport');
+let tutorRequest = null;
+aiFetch = async function (url, opts) {
+  tutorRequest = { url: String(url), body: JSON.parse(opts.body || '{}') };
+  return fakeResponse(JSON.stringify({ choices: [{ message: { content: 'Tutor reply' } }] }), 200);
+};
+const tutorReply = await Ai.askTutor({
+  provider: 'openai', baseUrl: 'https://api.example.test/v1', key: 'test-key', model: 'test-model',
+  system: 'SYSTEM', prompt: 'PROMPT'
+});
+eq(tutorReply.text, 'Tutor reply', 'the tutor returns the model prose');
+eq(tutorRequest.body.messages.map((m) => m.content), ['SYSTEM', 'PROMPT'], 'system + user context are sent');
+ok(!('response_format' in tutorRequest.body), 'the tutor does not request JSON mode');
+eq(tutorRequest.body.temperature, 0.55, 'the tutor uses a calm temperature');
+eq(tutorRequest.body.max_tokens, 1600, 'the tutor has room for a useful answer');
+
+let geminiRequest = null;
+aiFetch = async function (url, opts) {
+  geminiRequest = JSON.parse(opts.body || '{}');
+  return fakeResponse(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: 'Gemini reply' }] } }]
+  }), 200);
+};
+const geminiReply = await Ai.askTutor({
+  provider: 'gemini', key: 'test-key', model: 'gemini-2.5-flash',
+  system: 'GEMINI SYSTEM', prompt: 'GEMINI PROMPT'
+});
+eq(geminiReply.text, 'Gemini reply', 'the Gemini transport returns prose too');
+eq(geminiRequest.systemInstruction.parts[0].text, 'GEMINI SYSTEM', 'Gemini receives the lesson context');
+eq(geminiRequest.contents[0].parts[0].text, 'GEMINI PROMPT', 'Gemini receives the learner question');
+eq(geminiRequest.generationConfig.responseMimeType, 'text/plain', 'Gemini asks for plain text, not JSON');
+
+let emptyTutor = null;
+try { await Ai.askTutor({ provider: 'openai', key: 'k', model: 'm', prompt: '   ' }); }
+catch (e) { emptyTutor = e; }
+ok(!!emptyTutor, 'an empty tutor question is rejected before a network call');
+
+aiFetch = async function () {
+  return fakeResponse(JSON.stringify({
+    choices: [{ message: { content: '' }, finish_reason: 'length' }]
+  }), 200);
+};
+let emptyReply = null;
+try {
+  await Ai.askTutor({
+    provider: 'openai', baseUrl: 'https://api.example.test/v1', key: 'k', model: 'm',
+    system: 'SYSTEM', prompt: 'PROMPT'
+  });
+} catch (e) { emptyReply = e; }
+ok(emptyReply && emptyReply.empty, 'an empty tutor reply is tagged as empty');
+ok(/AI tutor returned an empty answer/.test(emptyReply.friendly || ''),
+  'an empty tutor reply gives tutor advice, not quiz fallback advice');
+aiFetch = null;
+
+section('Grammar wiring');
+ok(/id="screenGrammar"/.test(htmlSrc) && /id="btnStudy"/.test(htmlSrc) && /id="studyPct"/.test(htmlSrc),
+  'the shell has a Grammar screen and a Study card');
+ok(htmlSrc.indexOf('js/grammar-data.js') !== -1 && htmlSrc.indexOf('js/grammar.js') !== -1 &&
+  htmlSrc.indexOf('js/grammar-data.js') < htmlSrc.indexOf('js/grammar.js') &&
+  htmlSrc.indexOf('js/grammar.js') < htmlSrc.indexOf('js/app.js'),
+  'grammar data and controller load before app.js');
+ok(/function openGrammar\(/.test(appSrc) && /E\.btnStudy\.addEventListener\('click', openGrammar\)/.test(appSrc),
+  'the Study card opens the course');
+ok(/grammar: E\.screenGrammar/.test(appSrc), 'showScreen knows the Grammar screen');
+ok(/Grammar\.init\(/.test(appSrc) && /askTutor: askTutor/.test(appSrc) &&
+  /onExit: function \(\) \{ showScreen\('welcome'\)/.test(appSrc),
+  'app.js gives Grammar its AI transport, progress callback and exit route');
+ok(/Ai\.askTutor\(/.test(appSrc), 'the tutor uses the shared AI transport');
+ok(/grammarProgress/.test(grammarSrc) && /grammarLast/.test(grammarSrc) && /grammarLang/.test(grammarSrc),
+  'lesson progress, resume point and explanation language are saved locally');
+ok(/\.grammar-hero \{/.test(cssSrc) && /\.lesson-layout \{/.test(cssSrc) &&
+  /body\[data-screen="grammar"\] \.sidebar/.test(cssSrc) && /\.tutor-msg/.test(cssSrc),
+  'the course map, lesson reader and tutor have responsive styles');
+ok(/Grammar\.openCourse\(\)/.test(appSrc) && /progressSummary\(\)/.test(appSrc),
+  'the app updates the Study card from the shared progress summary');
+ok(/'toggle-complete'/.test(grammarSrc), 'lessons can be marked complete');
+ok(/exerciseStatus/.test(grammarSrc) && /recordExercise/.test(grammarSrc),
+  'exercise answers are stored per chapter');
+ok(grammarDataSrc.indexOf('<script') === -1 && htmlSrc.indexOf('js/grammar-data.js') !== -1,
+  'the PDF content is app data, not a published document');
 
 /* ---------- summary ---------- */
 console.log('\n' + '─'.repeat(46));

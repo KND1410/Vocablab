@@ -6,3 +6,6 @@ _diag.html
 .DS_Store
 Thumbs.db
 *.log
+
+# Source PDF for the grammar course — kept local, never published.
+Cac_thi_tieng_Phap.pdf

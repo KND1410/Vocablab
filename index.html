@@ -39,6 +39,16 @@
       <button id="btnChangeSource" class="btn btn-subtle btn-sm btn-block" style="margin-top:.5rem">Change source…</button>
     </section>
 
+    <section class="card study-card">
+      <div class="card-head">
+        <h2>Study</h2>
+        <span id="studyPct" class="pill pill-accent">0 / 18</span>
+      </div>
+      <p class="muted small">French tenses · DELF B2</p>
+      <div class="progress study-progress" aria-hidden="true"><div id="studyBar" class="progress-fill" style="width:0%"></div></div>
+      <button id="btnStudy" class="btn btn-subtle btn-block study-btn">📖 Open grammar course</button>
+    </section>
+
     <section class="card">
       <div class="card-head">
         <h2>Topics</h2>
@@ -231,6 +241,9 @@
         </ul>
       </details>
     </section>
+
+    <!-- Grammar / French tenses course -->
+    <section id="screenGrammar" class="screen grammar-screen" hidden></section>
 
     <!-- Quiz -->
     <section id="screenQuiz" class="screen" hidden>
@@ -686,6 +699,17 @@
       is reported in Settings → AI rather than replaced by another question type. The quiz Generator setting does
       not affect paragraph practice — it always uses AI.</p>
 
+    <h3>4 · Grammar: French tenses</h3>
+    <p class="muted small">The <strong>Study</strong> card opens an 18-chapter French tenses course based on the
+      DELF B2 handbook. Each chapter has a bilingual explanation (switch <strong>VI / EN</strong> at the top),
+      conjugation tables, examples with audio, common traps, and short exercises. Correct answers are saved in
+      this browser; a chapter is marked complete when you finish all its exercises or press
+      <strong>Mark lesson complete</strong>. Progress appears on the Study card and the course map.</p>
+    <p class="muted small">The <strong>AI tutor</strong> on each lesson uses the same Settings → AI setup as the
+      rest of VocabLab: in Simple mode it works without a key; in Advanced it uses your provider. Ask for a simpler
+      explanation, extra examples, a correction, or a short quiz. The tutor keeps the lesson context, so questions
+      such as “why is this imparfait?” get an answer about the chapter you are reading.</p>
+
     <h3>Keyboard shortcuts</h3>
     <ul class="small muted">
       <li><span class="kbd">1</span>–<span class="kbd">4</span> answer multiple choice · <span class="kbd">Enter</span> check / next</li>
@@ -726,6 +750,8 @@
 <script src="js/ai.js"></script>
 <script src="js/generator.js"></script>
 <script src="js/quiz.js"></script>
+<script src="js/grammar-data.js"></script>
+<script src="js/grammar.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
