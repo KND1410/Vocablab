@@ -12,6 +12,10 @@ language.
   box (no account, no key), or bring your own key for Google Gemini, Groq,
   Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare or a local
   Ollama — with a solid built-in generator when AI is unavailable.
+- **Grammar → French Tenses**: an 18-chapter DELF B2 course with a course map,
+  bilingual Vietnamese/English explanations, conjugation tables, short exercises,
+  saved progress and a lesson-aware AI tutor. The source PDF stays local; the
+  lessons live in `js/grammar-data.js`.
 - No build step, no backend, no dependencies: a static page + your browser.
 
 ```
@@ -24,6 +28,8 @@ language/
 ├── js/ai.js            Gemini + OpenAI-compatible clients (JSON mode, retries)
 ├── js/generator.js     built-in offline question generator
 ├── js/quiz.js          selection, batching, caching, grading, mastery
+├── js/grammar-data.js  18-chapter French tenses course (bilingual data)
+├── js/grammar.js       course map, lessons, exercises, progress, AI tutor
 ├── js/app.js           UI wiring
 ├── my-sheet.txt.example  template for your own link list (copy to my-sheet.txt)
 ├── sample-sheet.csv    example of the sheet format
@@ -254,6 +260,35 @@ Notes:
 
 ## 4 · Studying
 
+### French tenses course (Grammar)
+
+Open the **Study** card in the sidebar to enter a separate 18-chapter course based
+on the DELF B2 tenses handbook:
+
+- **Course map**: seven parts, chapter cards with time estimates and exercise
+  counts, a progress bar, “Continue learning” and “Review” shortcuts.
+- **Lessons**: bilingual Vietnamese/English explanations toggled with **VI / EN**,
+  French examples with translations and audio, conjugation tables, memory tips,
+  common traps and an English comparison where useful. Chapter titles and examples
+  stay in French.
+- **Exercises**: 123 short questions — fill in the blank (including multi-blank
+  answers), multiple choice and translation — ending with a 27-question mock exam in
+  the review chapter. Accents are expected, but a missing accent is accepted with a
+  reminder. Correct answers and exercise progress are saved in this browser. All
+  exercises correct automatically completes the chapter; you can also mark a lesson
+  complete by hand.
+- **AI tutor**: every lesson has a tutor that receives the chapter context. Use the
+  presets (*Explain simply*, *More examples*, *Quiz me*, *Fix my sentence*) or ask
+  your own question. It replies in the currently selected explanation language and
+  uses the same **Settings → AI** setup as the rest of the app: Simple mode works
+  without a key, Advanced uses your provider. If AI is not configured, the tutor
+  says so and links to Settings instead of inventing an answer.
+- **Progress**: the Study card and the course map show completed chapters; your
+  place in the course and the VI/EN choice are remembered. Progress is local to this
+  browser. The source PDF is git-ignored and is not included in the deployment.
+
+### Vocabulary practice
+
 - **Question types**: Multiple choice · Fill in the blank (AI sentence with `___`,
   or spelling practice / example cloze in built-in mode) · Translate (typed).
 - **Practice modes**: **Quiz** and **Paragraph translation** are separate tabs.
@@ -382,20 +417,25 @@ link lists (sheet link + tab names, renamed-tab detection), xlsx tab auto-discov
 parsing incl. JS escapes), the tab-list fallbacks used when that download is blocked
 (remembered list, last deck), the built-in generator, answer grading (incl.
 Vietnamese diacritics, typos and comma/slash lists with bracketed clarifications), AI JSON repair, OpenAI-compatible request
-building, question planning, the cache path, the full quiz pipeline, and the
-`app.js` ↔ `index.html` element wiring.
+building, question planning, the cache path, the full quiz pipeline, the grammar
+course data (18 chapters, 123 exercises, bilingual feedback), grammar progress and
+the prose tutor transport, and the `app.js` ↔ `index.html` element wiring.
 
 The browser smoke test serves the folder, opens it in headless Chrome
 (`CHROME=/path/to/chrome` to override, or it is skipped when no browser is
 installed) and checks the things only a browser can: that the app initialises,
 the deck loads, multiple-choice options are actually clickable (nothing covering
 them), clicks and digit keys answer, typed answers are graded, the quiz reaches
-the results screen, flashcards flip — and that no JavaScript error is thrown.
+the results screen, flashcards flip, the Grammar course opens with all 18 chapters,
+a lesson exercise is graded and saved, the AI tutor renders a reply, the VI/EN
+toggle works and the course returns to vocabulary — and that no JavaScript error
+is thrown.
 
 ---
 
 ## Privacy
 
 Everything lives in your browser's `localStorage` (keys, deck cache, progress,
-question cache). The only network calls are: your Google Sheet, the AI provider
-you configure (with your key), the Google Fonts stylesheet. No analytics, no server.
+grammar progress, question cache). The only network calls are: your Google Sheet,
+the AI provider you configure (with your key), the Google Fonts stylesheet. No
+analytics, no server.

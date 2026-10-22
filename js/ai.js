@@ -602,7 +602,9 @@
 
   /** Try JSON mode first, then plain, retrying once on 429/5xx/free-slot 402. */
   async function oaiCallWithFallbacks(cfg) {
-    const passes = [{ jsonMode: true }, { jsonMode: false }];
+    // Tutor replies are prose, so skip the JSON-mode pass entirely. Sending
+    // response_format: json_object for a chat answer only wastes a request.
+    const passes = cfg.plain ? [{ jsonMode: false }] : [{ jsonMode: true }, { jsonMode: false }];
     let lastErr = null;
     let waitedForSlot = false;
     for (let pass = 0; pass < passes.length; pass++) {
@@ -1036,6 +1038,48 @@
       '“' + cfg.model + '”', FIX_SHAPE, 'correction');
   }
 
+  /**
+   * Ask the grammar tutor a free-form question. Unlike the question and
+   * paragraph generators this returns prose, so it must not request JSON mode.
+   * cfg: { provider, key, baseUrl?, model, system, prompt, signal, onWait }
+   */
+  async function askTutor(cfg) {
+    const system = String(cfg.system || '').trim();
+    const user = String(cfg.prompt || '').trim();
+    if (!user) throw new Error('Ask the tutor a question first.');
+    let res;
+    try {
+      if ((cfg.provider || 'gemini') === 'gemini') {
+        res = await callWithFallbacks({
+          key: cfg.key, model: cfg.model, system: system, user: user,
+          signal: cfg.signal, noSchema: true, plain: true
+        });
+      } else {
+        res = await oaiCallWithFallbacks({
+          baseUrl: cfg.baseUrl, key: cfg.key, model: cfg.model,
+          system: system, user: user,
+          temperature: cfg.temperature == null ? 0.55 : cfg.temperature,
+          maxTokens: cfg.maxTokens || 1600,
+          signal: cfg.signal, onWait: cfg.onWait, plain: true
+        });
+      }
+    } catch (err) {
+      // The quiz fallback mentions built-in questions; that advice is wrong here.
+      if (err && err.empty) {
+        err.friendly = 'The AI tutor returned an empty answer. Try again, or ask a shorter question.';
+      }
+      throw err;
+    }
+    const text = String((res && res.text) || '').trim();
+    if (!text) {
+      const err = new Error('The AI tutor returned an empty answer.');
+      err.empty = true;
+      err.friendly = 'The AI tutor returned an empty answer. Try again, or ask a shorter question.';
+      throw err;
+    }
+    return { text: text, usage: (res && res.usage) || null };
+  }
+
   /* ---------- Usage counter ---------- */
   function usageGet() {
     const u = Util.lsGet('usage', null);
@@ -1102,7 +1146,7 @@
       temperature: 0.85,
       topP: 0.95,
       maxOutputTokens: 8192,
-      responseMimeType: 'application/json'
+      responseMimeType: opts.plain ? 'text/plain' : 'application/json'
     };
     if (useSchema) generationConfig.responseSchema = RESPONSE_SCHEMA;
     // Flash/Pro 2.5+ models "think" before answering, which can consume the whole
@@ -1452,6 +1496,7 @@
     buildPrompt: buildPrompt,
     generateParagraph: generateParagraph,
     correctParagraph: correctParagraph,
+    askTutor: askTutor,
     buildParagraphPrompt: buildParagraphPrompt,
     buildCorrectionPrompt: buildCorrectionPrompt,
     normalizeParagraph: normalizeParagraph,
