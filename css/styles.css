@@ -97,6 +97,13 @@ code {
 .brand { display: flex; align-items: center; gap: .55rem; }
 .brand-logo { font-size: 1.3rem; }
 .brand-name { font-weight: 800; letter-spacing: -.02em; font-size: 1.05rem; }
+.brand-home {
+  border: 0; background: transparent; padding: 0;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+  border-radius: 8px;
+}
+.brand-home:hover .brand-name { color: var(--primary); }
+.brand-home:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
 .top-actions { display: flex; align-items: center; gap: .5rem; }
 
 .app-shell {

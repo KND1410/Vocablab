@@ -516,6 +516,11 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '    }',
     '    out("finished quiz: results=" + screen("Results") + " fraction=" + byId("resFraction").textContent);',
     '',
+    '    /* after finishing, the logo must return to the quest dashboard */',
+    '    byId("btnHome").click();',
+    '    await wait(80);',
+    '    out("logo home: welcome=" + screen("Welcome") + " results-hidden=" + !screen("Results"));',
+    '',
     '    /* typed answers, incl. meanings that are comma lists */',
     '    setTypes(false, false, true);',
     '    byId("selCount").value = "10";',
@@ -862,6 +867,17 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '    await wait(60);',
     '    document.querySelector(".tab-btn[data-tab=speech]").click();',
     '    await wait(40);',
+    '    var browserVoice = byId("selBrowserVoice");',
+    '    out("browser voice picker: options=" + browserVoice.options.length +',
+    '        " hint=" + JSON.stringify(byId("browserVoiceHint").textContent).slice(0, 120));',
+    '    if (browserVoice.options.length > 1) {',
+    '      browserVoice.value = browserVoice.options[1].value;',
+    '      browserVoice.dispatchEvent(new Event("change", { bubbles: true }));',
+    '    }',
+    '    byId("btnTestBrowserVoice").click();',
+    '    await wait(120);',
+    '    var voiceToasts = document.querySelectorAll("#toasts .toast");',
+    '    out("browser voice test toast: " + JSON.stringify(voiceToasts.length ? voiceToasts[voiceToasts.length - 1].textContent : ""));',
     '    byId("inpAzureKey").value = "";',
     '    byId("inpAzureKey").dispatchEvent(new Event("input", { bubbles: true }));',
     '    byId("btnScoreAiSettings").click();',
@@ -1052,6 +1068,9 @@ check(/keyboard answer: feedback=true title="Correct!" subs=[1-9]/m.test(log), '
 check(/wrong pick: feedback=true title="Not quite"[^\n]*hidden-before=true[^\n]*picked-translated=true[^\n]*all-translated=true[^\n]*body-has-answer=true/m.test(log),
   'every option shows its translation after a wrong pick', (log.match(/^wrong pick: .*/m) || [''])[0]);
 check(/finished quiz: results=true fraction=\d+\/\d+/m.test(log), 'quiz reaches the results screen');
+check(/logo home: welcome=true results-hidden=true/m.test(log),
+  'clicking the logo returns to the quest dashboard after a quiz',
+  (log.match(/^logo home: .*/m) || [''])[0]);
 check(/typed answer known=true/m.test(log), 'the probe found a typed question it can score');
 check(/typed question: badge=Translate/m.test(log), 'typed questions render an input');
 check(/typed submit: feedback=true title="Correct!"/m.test(log), 'a correct typed answer is graded correct');
@@ -1189,6 +1208,12 @@ check(/^grammar exit: welcome=true grammar-hidden=true/m.test(log),
 check(/^speech test: toast="(?:No speech voices found|Playing a French test phrase)/m.test(log),
   'the homepage speaker test reports whether the browser has voices',
   (log.match(/^speech test: .*/m) || [''])[0]);
+check(/^browser voice picker: options=\d+ hint=".{1,}/m.test(log),
+  'Settings → Speech lists the local browser voices',
+  (log.match(/^browser voice picker: .*/m) || [''])[0]);
+check(/^browser voice test toast: "(?:Playing the selected browser voice|No French browser voice found)/m.test(log),
+  'the browser voice test explains whether a French voice is available',
+  (log.match(/^browser voice test toast: .*/m) || [''])[0]);
 check(/^settings ai link: active=true$/m.test(log),
   'the Speech tab can jump to the AI settings for the Gemini key',
   (log.match(/^settings ai link: .*/m) || [''])[0]);
