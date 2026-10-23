@@ -1,0 +1,11 @@
+# Keep the grammar source PDF and local secrets out of CLI deployments.
+Cac_thi_tieng_Phap.pdf
+.env
+.env.*
+!.env.example
+my-sheet.txt
+
+# Not needed at runtime.
+tests/
+_diag.html
+*.log

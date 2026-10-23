@@ -13,6 +13,8 @@
     oaiBase: 'https://api.groq.com/openai/v1', oaiKey: '', oaiModel: '', aiConns: {},
     simpleModel: 'openai-fast', simpleModels: [],
     targetLang: 'French', targetCode: 'fr-FR', autoPlay: true,
+    azureKey: '', azureRegion: 'southeastasia', azureVoice: 'fr-FR-DeniseNeural', cloudVoice: true,
+    scoreEngine: 'auto',
     sheetMode: 'links', sheetUrl: '', sheetApiKey: '', scriptUrl: '', links: '',
     quizTypes: ['mc', 'blank', 'translate'], direction: 'mixed', count: 20, source: 'auto',
     difficulty: 'standard', requirement: '', practiceMode: 'quiz',
@@ -28,7 +30,11 @@
       (storedSettings.aiConns && Object.keys(storedSettings.aiConns).length));
     settings.aiMode = hadKey ? 'advanced' : 'simple';
   }
-  function saveSettings() { U.lsSet('settings', settings); }
+  function saveSettings() {
+    U.lsSet('settings', settings);
+    if (window.Speech) Speech.configure(settings);
+    if (E.voiceHint) updateVoiceHint();
+  }
   // Paragraph translation is its own practice mode now, not a question type.
   // Drop it from an older saved quiz setup instead of silently mixing it back in.
   if (!Array.isArray(settings.quizTypes)) settings.quizTypes = DEFAULTS.quizTypes.slice();
@@ -36,7 +42,7 @@
     settings.quizTypes = settings.quizTypes.filter(function (t) { return t !== 'paragraph'; });
     saveSettings();
   }
-  if (settings.practiceMode !== 'paragraph') settings.practiceMode = 'quiz';
+  if (['quiz', 'paragraph', 'shadowing'].indexOf(settings.practiceMode) === -1) settings.practiceMode = 'quiz';
 
   /* ---------- State ---------- */
   const state = {
@@ -45,17 +51,30 @@
     session: null,
     answered: false,
     paraBusy: false,
+    shadowing: null,
     flashcards: null,
     controller: null,
-    screen: 'welcome'
+    screen: 'welcome',
+    user: null,
+    daily: null,
+    streak: null,
+    offline: false,
+    booted: false,
+    authMode: 'signin',
+    authBusy: false,
+    syncing: false,
+    questTimer: null,
+    questClock: null,
+    questDate: '',
+    recoveryResolve: null
   };
 
   const E = {};
   function cacheEls() {
-    const ids = ['srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnReload', 'srcName', 'srcMeta',
+    const ids = ['srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnTestVoice', 'voiceHint', 'btnReload', 'srcName', 'srcMeta',
       'btnChangeSource', 'btnAllTopics', 'btnNoTopics', 'topicSearch', 'topicList', 'selectedSummary',
-      'typeMc', 'typeBlank', 'typeTranslate', 'selPractice', 'quizSetupPane', 'paraSetupPane',
-      'btnStartParagraph', 'paraStartHint',
+      'typeMc', 'typeBlank', 'typeTranslate', 'selPractice', 'quizSetupPane', 'paraSetupPane', 'shadowingSetupPane',
+      'btnStartParagraph', 'paraStartHint', 'btnStartShadowing', 'shadowStartHint', 'btnShadowSavedSetup',
       'selParaDir', 'selParaCount',
       'selDirection', 'selCount', 'selSource', 'selDifficulty', 'difficultyHint',
       'inpRequirement', 'reqCount', 'btnClearRequirement', 'setupAiBadge', 'moreOptions',
@@ -68,6 +87,14 @@
       'btnDontKnow', 'qFeedback', 'fbIcon', 'fbTitle', 'fbBody', 'fbTerm', 'fbSpeak', 'fbPron', 'fbMeaning',
       'fbExample', 'btnNext', 'qParagraph', 'paraDir', 'btnParaSpeak', 'paraText', 'paraKeywords',
       'paraInput', 'paraCount', 'btnParaSubmit', 'btnParaSkip', 'paraFeedback',
+      'screenShadowing', 'shProgressBar', 'shProgressText', 'btnShadowSaved', 'shSavedCount', 'btnShadowExit',
+      'shadowCard', 'shSentence', 'btnShadowListen', 'selShadowSpeed', 'btnShadowTranslate', 'shTranslation',
+      'shRecordStatus', 'shTimer', 'btnShadowRecord', 'btnShadowStop', 'btnShadowReplay', 'btnShadowSave',
+      'btnShadowDelete', 'shAudioMeta', 'btnShadowAssess', 'shAssessHint', 'shResult', 'shScoreBig', 'shVerdict',
+      'shRecognized', 'shAccuracy', 'shFluency', 'shCompleteness', 'shWords', 'shTips', 'btnShadowRetry',
+      'shEnginePill', 'shScoreSource',
+      'btnShadowNext', 'shadowSummary', 'shSummaryText', 'shSummaryAvg', 'shSummaryCount', 'shSummaryList',
+      'btnShadowAgain', 'btnShadowBackSetup', 'shadowSavedPanel', 'btnShadowCloseSaved', 'shSavedList',
       'screenResults', 'resRing', 'resPct', 'resFraction', 'resTitle', 'resMeta',
       'resBreakdown', 'btnRetryMistakes', 'btnNewQuiz', 'btnResultsFlashcards', 'btnBackSetup', 'resMistakes', 'resMistakeList',
       'screenFlashcards', 'fcProgress', 'btnFcShuffle', 'btnFcExit', 'fcCard', 'fcTerm', 'fcPron', 'fcSpeak',
@@ -77,10 +104,20 @@
       'modeSimple', 'modeAdvanced', 'paneSimple', 'aiAdvanced', 'selSimpleModel', 'btnTestSimple',
       'btnTestKey', 'inpModel', 'modelList', 'btnRefreshModels',
       'aiStatus', 'aiIssue', 'usageToday', 'cachedCount', 'btnClearQCache', 'inpTargetLang', 'inpTargetCode', 'chkAutoPlay',
+      'inpAzureKey', 'btnToggleAzureKey', 'inpAzureRegion', 'selAzureVoice', 'chkCloudVoice', 'btnTestAzure', 'speechStatus',
+      'selScoreEngine', 'scoreStatus', 'btnScoreAiSettings',
       'inpSheetUrl', 'inpSheetApiKey', 'btnLoadApi', 'inpScriptUrl', 'btnLoadScript', 'inpLinks', 'btnLoadLinks',
-      'btnLoadDemo', 'sheetStatus', 'lnkShowScript', 'dataInfo', 'btnClearDeck', 'btnClearMastery',
-      'btnClearAll', 'helpDialog', 'scriptCode', 'btnCopyScript', 'overlay', 'loadTitle', 'loadMsg',
-      'loadBar', 'btnCancelLoad', 'fileWarn', 'sheetWarnings'];
+      'btnLoadDemo', 'sheetStatus', 'lnkShowScript', 'accountInfo', 'dataInfo', 'btnClearDeck', 'btnClearMastery',
+      'btnClearRecordings', 'btnClearAll', 'helpDialog', 'scriptCode', 'btnCopyScript', 'overlay', 'loadTitle', 'loadMsg',
+      'loadBar', 'btnCancelLoad', 'fileWarn', 'sheetWarnings',
+      'authScreen', 'authTitle', 'authSub', 'authForm', 'authNameField', 'authName', 'authEmailField',
+      'authEmail', 'authPasswordField', 'authPassword', 'authCodeField', 'authCode',
+      'authNewPasswordField', 'authNewPassword', 'authError', 'authSubmit', 'authAlt', 'authDot',
+      'authToReset', 'authToSignin', 'authOffline', 'btnSignOut',
+      'homeDate', 'homeGreeting', 'homeName', 'btnEditName', 'nameEditor', 'inpName', 'btnSaveName', 'btnCancelName',
+      'streakChip', 'streakCount', 'streakWarn', 'questCard', 'questSub', 'questCount', 'questList',
+      'questAllDone', 'questStreakLine', 'questOffline', 'recoveryDialog', 'recoveryCode',
+      'btnCopyRecovery', 'btnRecoveryDone', 'recoveryHint'];
     ids.forEach(function (id) { E[id] = U.$('#' + id); });
   }
 
@@ -96,6 +133,86 @@
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     U.lsSet('theme', isDark ? 'light' : 'dark');
     applyTheme(isDark ? 'light' : 'dark');
+  }
+
+  function speechReady() {
+    return !!(window.Speech && Speech.isConfigured());
+  }
+
+  /** Gemini can score a recording from its audio; no Azure speech minutes used. */
+  function geminiScoreReady() {
+    return !!Ai.normalizeKey(settings.geminiKey);
+  }
+
+  /**
+   * Which engine scores a recording. “auto” prefers Gemini when a key exists
+   * (it spends no Azure speech-to-text hours), then Azure, and reports “none”
+   * when neither is set up.
+   */
+  function scoreEngine() {
+    const want = settings.scoreEngine || 'auto';
+    if (want === 'gemini') return geminiScoreReady() ? 'gemini' : 'none';
+    if (want === 'azure') return speechReady() ? 'azure' : 'none';
+    if (geminiScoreReady()) return 'gemini';
+    return speechReady() ? 'azure' : 'none';
+  }
+  function scoreReady() {
+    return scoreEngine() !== 'none';
+  }
+  function scoreSetupHint() {
+    return 'Add a free Gemini key in Settings → AI, or an Azure Speech key in Settings → Speech.';
+  }
+
+  function updateVoiceHint() {
+    if (!E.voiceHint) return;
+    E.voiceHint.textContent = Speech.enabled()
+      ? 'Azure neural voice · ' + (settings.azureVoice || 'fr-FR-DeniseNeural')
+      : "Uses your browser's system voices";
+  }
+
+  /** Homepage diagnostic: try Azure first, then explain the browser-voice fallback. */
+  function testVoice() {
+    const phrase = 'Bonjour ! Ceci est un test de la voix française.';
+    if (Speech.enabled()) {
+      E.btnTestVoice.disabled = true;
+      U.toast('Testing the Azure voice…', 'ok', 4000);
+      Speech.speak(phrase, 'fr-FR', 0.95, {
+        noFallback: true,
+        onStart: function () {
+          E.btnTestVoice.disabled = false;
+          U.toast('Azure voice is working — ' + (settings.azureVoice || 'French neural voice') + '.', 'ok', 6000);
+        },
+        onError: function (err) {
+          E.btnTestVoice.disabled = false;
+          U.toast((err && err.message) || 'Azure voice failed. Opening Settings → Speech.', 'bad', 12000);
+          openSettings('speech');
+        }
+      });
+      return;
+    }
+    if (speechReady()) {
+      U.toast('Cloud voice is turned off. Enable it in Settings → Speech, or use the browser voice below.', 'warn', 8000);
+    }
+    if (typeof window.speechSynthesis === 'undefined' ||
+      typeof window.SpeechSynthesisUtterance === 'undefined') {
+      U.toast('This browser does not support speech synthesis. On Linux, Firefox is the reliable option. ' +
+        'For a voice that works everywhere, add Azure Speech in Settings → Speech.', 'bad', 12000);
+      return;
+    }
+    const voices = window.speechSynthesis.getVoices() || [];
+    if (!voices.length) {
+      U.toast('No speech voices found. On Linux, Chrome cannot use speech-dispatcher; Firefox can. ' +
+        'Restart the browser after starting speech-dispatcher. Azure Speech avoids this entirely.', 'bad', 12000);
+      return;
+    }
+    const french = voices.filter(function (v) { return /^fr/i.test(v.lang || ''); });
+    if (!U.speak(phrase, 'fr-FR')) {
+      U.toast('The browser could not start speech. Check its audio output and volume.', 'warn', 9000);
+      return;
+    }
+    U.toast('Playing a French test phrase — ' + voices.length + ' voice' +
+      (voices.length === 1 ? '' : 's') + ' available' +
+      (french.length ? '.' : '; no French voice, so the default voice is used.'), 'ok', 6000);
   }
 
   /* ---------- Overlay ---------- */
@@ -118,10 +235,630 @@
     document.body.dataset.screen = name;
     const map = {
       welcome: E.screenWelcome, grammar: E.screenGrammar,
-      quiz: E.screenQuiz, results: E.screenResults, flashcards: E.screenFlashcards
+      quiz: E.screenQuiz, shadowing: E.screenShadowing, results: E.screenResults, flashcards: E.screenFlashcards
     };
     Object.keys(map).forEach(function (k) { map[k].hidden = k !== name; });
+    if (name === 'welcome') renderHome();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /* ---------- Account, greeting and daily quests ---------- */
+  function localDate() { return Quests.dateKey(new Date()); }
+
+  function formatHomeDate() {
+    try {
+      return new Date().toLocaleDateString('en-GB', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+      });
+    } catch (e) { return localDate(); }
+  }
+
+  function greeting() {
+    const h = new Date().getHours();
+    return h < 12 ? 'Good morning' : (h < 18 ? 'Good afternoon' : 'Good evening');
+  }
+
+  function showAuthMessage(message) {
+    if (!E.authError) return;
+    E.authError.textContent = message || '';
+    E.authError.hidden = !message;
+  }
+
+  function showAuthOffline() {
+    if (!E.authOffline) return;
+    E.authOffline.hidden = false;
+    E.authOffline.textContent = 'The account server is not reachable. Use the deployed site, or run "vercel dev" for the API.';
+  }
+
+  function authSubmitLabel() {
+    return state.authMode === 'signup' ? 'Create account'
+      : state.authMode === 'reset' ? 'Set new password' : 'Sign in';
+  }
+
+  function setAuthMode(mode) {
+    state.authMode = mode === 'signup' || mode === 'reset' ? mode : 'signin';
+    const signup = state.authMode === 'signup';
+    const reset = state.authMode === 'reset';
+    E.authNameField.hidden = !signup;
+    E.authPasswordField.hidden = reset;
+    E.authCodeField.hidden = !reset;
+    E.authNewPasswordField.hidden = !reset;
+    E.authPassword.autocomplete = signup ? 'new-password' : 'current-password';
+    E.authTitle.textContent = signup ? 'Create your account' : (reset ? 'Reset your password' : 'Welcome back');
+    E.authSub.textContent = signup
+      ? 'One account keeps your name, daily quests and streak together.'
+      : reset
+        ? 'Use your email and the recovery code you saved when you signed up.'
+        : 'Sign in to keep your daily streak going.';
+    E.authSubmit.textContent = authSubmitLabel();
+    E.authAlt.hidden = reset;
+    E.authAlt.textContent = signup ? 'Already have an account? Sign in' : 'Create an account';
+    E.authDot.hidden = signup || reset;
+    E.authToReset.hidden = signup || reset;
+    E.authToSignin.hidden = !reset;
+    E.authPassword.value = '';
+    E.authNewPassword.value = '';
+    E.authCode.value = '';
+    showAuthMessage('');
+  }
+
+  function setAuthBusy(busy) {
+    state.authBusy = !!busy;
+    E.authSubmit.disabled = !!busy;
+    E.authSubmit.textContent = busy ? 'Please wait…' : authSubmitLabel();
+  }
+
+  function showAuth() {
+    document.body.classList.add('auth-locked');
+    document.body.dataset.screen = 'auth';
+    setAuthMode('signin');
+    if (E.authScreen) E.authScreen.hidden = false;
+    setTimeout(function () {
+      if (E.authEmail && !E.authScreen.hidden) E.authEmail.focus();
+    }, 60);
+  }
+
+  function showRecovery(code) {
+    E.recoveryCode.textContent = code;
+    E.recoveryHint.textContent = 'Passwords cannot be recovered without this code. It will not be shown again.';
+    if (E.recoveryDialog.showModal) {
+      if (!E.recoveryDialog.open) E.recoveryDialog.showModal();
+    } else {
+      E.recoveryDialog.setAttribute('open', '');
+    }
+    return new Promise(function (resolve) { state.recoveryResolve = resolve; });
+  }
+
+  function closeRecovery() {
+    if (E.recoveryDialog.open && E.recoveryDialog.close) E.recoveryDialog.close();
+    else E.recoveryDialog.removeAttribute('open');
+    const resolve = state.recoveryResolve;
+    state.recoveryResolve = null;
+    if (resolve) resolve();
+  }
+
+  async function copyRecovery() {
+    const code = E.recoveryCode.textContent;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(code);
+      } else {
+        const range = document.createRange();
+        range.selectNodeContents(E.recoveryCode);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        document.execCommand('copy');
+      }
+      U.toast('Recovery code copied.', 'ok');
+    } catch (e) {
+      U.toast('Select the code and copy it manually.', 'warn');
+    }
+  }
+
+  async function submitAuth(event) {
+    if (event) event.preventDefault();
+    if (state.authBusy) return;
+    const email = E.authEmail.value.trim();
+    const password = state.authMode === 'reset' ? E.authNewPassword.value : E.authPassword.value;
+    const name = E.authName.value.trim();
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      showAuthMessage('Enter a valid email address.');
+      E.authEmail.focus();
+      return;
+    }
+    if (state.authMode === 'signup' && !name) {
+      showAuthMessage('Your name is required.');
+      E.authName.focus();
+      return;
+    }
+    if (state.authMode !== 'reset' && !password) {
+      showAuthMessage('Enter your password.');
+      E.authPassword.focus();
+      return;
+    }
+    if (state.authMode === 'reset' && !E.authCode.value.trim()) {
+      showAuthMessage('Enter the recovery code you saved at signup.');
+      E.authCode.focus();
+      return;
+    }
+    if (password.length < 8) {
+      showAuthMessage('Use at least 8 characters for the password.');
+      (state.authMode === 'reset' ? E.authNewPassword : E.authPassword).focus();
+      return;
+    }
+
+    setAuthBusy(true);
+    showAuthMessage('');
+    try {
+      let data;
+      if (state.authMode === 'signup') data = await Account.signup(name, email, password);
+      else if (state.authMode === 'reset') data = await Account.resetPassword(email, E.authCode.value, password);
+      else data = await Account.login(email, password);
+
+      if (data && data.recoveryCode) await showRecovery(data.recoveryCode);
+      E.authOffline.hidden = true;
+      await enterApp(data.user);
+      if (state.authMode === 'signup') U.toast('Welcome to VocabLab!', 'ok');
+    } catch (err) {
+      if (err && (err.status === 0 || err.status === 404)) showAuthOffline();
+      showAuthMessage(Account.authMessage(err));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function initAuth() {
+    const cached = Account.cachedUser();
+    if (cached) {
+      // Local-first: a returning session opens instantly, then refreshes.
+      state.user = cached.user;
+      state.streak = cached.streak || Quests.defaultStreak();
+      const home = Account.cachedHome(cached.user.id, localDate());
+      if (home && home.daily) {
+        state.daily = home.daily;
+        state.streak = home.streak || state.streak;
+      }
+      document.body.classList.remove('auth-locked');
+      await enterApp(cached.user, { skipLoad: true });
+      refreshHome();
+      return;
+    }
+    showAuth();
+    try {
+      const user = await Account.me();
+      document.body.classList.remove('auth-locked');
+      await enterApp(user);
+    } catch (err) {
+      if (err && (err.status === 0 || err.status === 404 || err.status >= 500)) showAuthOffline();
+    }
+  }
+
+  async function enterApp(user, opts) {
+    opts = opts || {};
+    state.user = user;
+    document.body.classList.remove('auth-locked');
+    if (E.btnSignOut) E.btnSignOut.hidden = false;
+    if (!opts.skipLoad) {
+      try {
+        await loadHomeData();
+      } catch (err) {
+        if (err && err.status === 401) { handleSignedOut('Your session expired. Sign in again.'); return; }
+        state.offline = true;
+      }
+    } else if (!state.daily || state.daily.date !== localDate()) {
+      const cached = Account.cachedHome(user.id, localDate());
+      state.daily = cached && cached.daily ? cached.daily : Quests.newDaily(user.id, localDate());
+      if (!state.streak) state.streak = Quests.streakView(Quests.defaultStreak(), localDate(), false);
+      Account.saveHome({ user: user, daily: state.daily, streak: state.streak });
+    }
+    if (!state.booted) {
+      state.booted = true;
+      bootApp();
+    }
+    renderHome();
+    showScreen('welcome');
+    flushQuestQueue();
+    if (!state.questClock) {
+      state.questClock = setInterval(function () { maybeNewDay(); }, 60000);
+    }
+  }
+
+  function mergeStreakState(local, server, date, completed) {
+    const a = Quests.normalizeStreak(local);
+    const b = Quests.normalizeStreak(server);
+    const useLocal = a.lastCompletedDate > b.lastCompletedDate ||
+      (a.lastCompletedDate === b.lastCompletedDate && a.current >= b.current);
+    return Quests.streakView(useLocal ? a : b, date, completed);
+  }
+
+  async function loadHomeData() {
+    const date = localDate();
+    try {
+      const data = await Account.loadHome(date);
+      const localDaily = state.daily && state.daily.date === date ? state.daily : null;
+      state.user = data.user;
+      state.daily = localDaily ? Quests.mergeDaily(localDaily, data.daily) : data.daily;
+      state.streak = mergeStreakState(state.streak, data.streak, date, !!state.daily.completedAt);
+      state.offline = false;
+      Account.saveHome({ user: state.user, daily: state.daily, streak: state.streak });
+      renderHome();
+      return data;
+    } catch (err) {
+      if (err && err.status === 401) throw err;
+      state.offline = true;
+      const cached = state.user ? Account.cachedHome(state.user.id, date) : null;
+      if (!state.daily || state.daily.date !== date) {
+        state.daily = cached && cached.daily ? cached.daily : Quests.newDaily(state.user.id, date);
+      }
+      if (!state.streak) {
+        state.streak = cached && cached.streak
+          ? cached.streak
+          : Quests.streakView(Quests.defaultStreak(), date, false);
+      }
+      if (state.user && state.daily) {
+        Account.saveHome({ user: state.user, daily: state.daily, streak: state.streak });
+      }
+      updateQuestOffline();
+      renderHome();
+      return null;
+    }
+  }
+
+  async function refreshHome() {
+    if (!state.user) return;
+    try { await loadHomeData(); }
+    catch (err) {
+      if (err && err.status === 401) { handleSignedOut('Your session expired. Sign in again.'); return; }
+    }
+    flushQuestQueue();
+  }
+
+  function renderHome(flags) {
+    if (!state.user || !E.homeDate) return;
+    const date = localDate();
+    E.homeDate.textContent = formatHomeDate();
+    E.homeGreeting.textContent = greeting() + ',';
+    E.homeName.textContent = state.user.name || 'there';
+    if (E.accountInfo) {
+      E.accountInfo.textContent = 'Signed in as ' + (state.user.name || 'there') +
+        (state.user.email ? ' · ' + state.user.email : '');
+    }
+    const daily = state.daily && state.daily.date === date ? state.daily : null;
+    const completed = !!(daily && daily.completedAt);
+    const view = Quests.streakView(state.streak || Quests.defaultStreak(), date, completed);
+
+    E.streakCount.textContent = String(view.current);
+    E.streakWarn.hidden = !view.atRisk;
+    E.streakChip.classList.toggle('is-at-risk', !!view.atRisk);
+    E.streakChip.title = view.atRisk
+      ? 'You missed a day — finish today\'s quests to keep your ' + view.current + '-day streak.'
+      : (view.best > 0 ? 'Best streak: ' + view.best + ' days' : 'Finish every daily quest to start a streak.');
+
+    if (!daily) {
+      E.questList.innerHTML = '';
+      const loading = document.createElement('p');
+      loading.className = 'muted small';
+      loading.textContent = 'Loading today\'s quests…';
+      E.questList.appendChild(loading);
+      E.questCount.textContent = '–';
+      E.questAllDone.hidden = true;
+      updateQuestOffline();
+      return;
+    }
+
+    const done = daily.quests.filter(function (q) { return q.done; }).length;
+    E.questCount.textContent = done + ' / ' + daily.quests.length;
+    E.questList.innerHTML = '';
+    daily.quests.forEach(function (q) { E.questList.appendChild(renderQuestRow(q)); });
+
+    const allDone = Quests.isAllDone(daily);
+    E.questAllDone.hidden = !allDone;
+    if (allDone) {
+      const n = view.current;
+      E.questStreakLine.textContent = flags && flags.justCompleted
+        ? 'Streak +1 — you are on ' + n + ' day' + (n === 1 ? '' : 's') + '. Come back tomorrow.'
+        : 'Today\'s streak is locked in — ' + n + ' day' + (n === 1 ? '' : 's') + '. Come back tomorrow.';
+    }
+    updateQuestOffline();
+  }
+
+  function renderQuestRow(q) {
+    const def = Quests.def(q.id) || { icon: '⭐', title: q.id, desc: '', mode: '' };
+    const row = document.createElement('article');
+    row.className = 'quest' + (q.done ? ' is-done' : '');
+    row.dataset.quest = q.id;
+
+    const icon = document.createElement('span');
+    icon.className = 'quest-ico';
+    icon.textContent = def.icon;
+
+    const main = document.createElement('div');
+    main.className = 'quest-main';
+    const titleRow = document.createElement('div');
+    titleRow.className = 'quest-title-row';
+    const title = document.createElement('strong');
+    title.textContent = def.title;
+    const count = document.createElement('span');
+    count.className = 'quest-count';
+    count.textContent = q.progress + ' / ' + q.target;
+    titleRow.appendChild(title);
+    titleRow.appendChild(count);
+
+    const desc = document.createElement('p');
+    desc.className = 'quest-desc muted';
+    desc.textContent = def.desc;
+
+    const hp = document.createElement('div');
+    hp.className = 'hp';
+    hp.setAttribute('role', 'progressbar');
+    hp.setAttribute('aria-valuemin', '0');
+    hp.setAttribute('aria-valuemax', String(q.target));
+    hp.setAttribute('aria-valuenow', String(q.progress));
+    hp.setAttribute('aria-label', def.title + ' progress');
+    const fill = document.createElement('div');
+    fill.className = 'hp-fill';
+    fill.style.width = Math.round((Math.min(q.progress, q.target) / q.target) * 100) + '%';
+    hp.appendChild(fill);
+
+    main.appendChild(titleRow);
+    main.appendChild(desc);
+    main.appendChild(hp);
+
+    const start = document.createElement('button');
+    start.type = 'button';
+    start.className = 'btn btn-primary btn-sm quest-start' + (q.done ? ' is-done' : '');
+    start.textContent = q.done ? '✓ Done' : (q.progress > 0 ? 'Continue' : 'Start');
+    start.disabled = !!q.done;
+    if (!q.done) {
+      start.addEventListener('click', function () { startQuest(q.id); });
+    } else {
+      start.setAttribute('aria-label', def.title + ' complete');
+    }
+
+    row.appendChild(icon);
+    row.appendChild(main);
+    row.appendChild(start);
+    return row;
+  }
+
+  function setPracticeCount(n) {
+    E.selCount.value = String(n);
+    settings.count = n;
+    saveSettings();
+  }
+
+  function setPracticeTypes(types) {
+    E.typeMc.checked = types.indexOf('mc') !== -1;
+    E.typeBlank.checked = types.indexOf('blank') !== -1;
+    E.typeTranslate.checked = types.indexOf('translate') !== -1;
+    settings.quizTypes = types.slice();
+    saveSettings();
+    updateControls();
+  }
+
+  function startQuest(id) {
+    const def = Quests.def(id);
+    if (!def) return;
+    if (def.mode === 'grammar') { openGrammar(true); return; }
+    if (!state.deck) {
+      U.toast('Load a vocabulary deck first — the demo deck works instantly.', 'warn');
+      openSettings('sheet');
+      return;
+    }
+    if (def.mode === 'paragraph') {
+      setPracticeMode('paragraph');
+      E.selParaCount.value = '1';
+      settings.paragraphCount = 1;
+      saveSettings();
+      startParagraphPractice();
+      return;
+    }
+    if (def.mode === 'shadowing') {
+      setPracticeMode('shadowing');
+      startShadowingPractice();
+      return;
+    }
+    if (def.mode === 'flashcards') {
+      setPracticeCount(20);
+      startFlashcards();
+      return;
+    }
+    setPracticeMode('quiz');
+    if (id === 'mc30') {
+      setPracticeTypes(['mc']);
+      setPracticeCount(30);
+    } else if (id === 'mixed20') {
+      setPracticeTypes(['mc', 'blank', 'translate']);
+      setPracticeCount(20);
+    } else {
+      if (!settings.quizTypes.length) setPracticeTypes(['mc']);
+      setPracticeCount(20);
+    }
+    startQuiz();
+  }
+
+  function questEvent(id, amount) {
+    if (!state.user || !state.daily || state.daily.date !== localDate()) return;
+    const quest = Quests.findQuest(state.daily, id);
+    if (!quest || quest.done) return;
+    const before = quest.progress;
+    Quests.setProgress(state.daily, id, before + (amount || 1));
+    if (quest.progress === before) return;
+
+    let justCompleted = false;
+    if (Quests.isAllDone(state.daily) && !state.daily.completedAt) {
+      state.daily.completedAt = new Date().toISOString();
+      state.streak = Quests.nextStreak(state.streak, state.daily.date);
+      justCompleted = true;
+      U.toast('All daily quests done — streak +1! 🔥', 'ok', 6500);
+    }
+    Account.updateCachedDaily(state.daily);
+    Account.updateCachedStreak(state.user.id, state.streak);
+    renderHome({ justCompleted: justCompleted });
+    queueQuestSync(state.daily.date, id, quest.progress);
+  }
+
+  function queueQuestSync(date, questId, progress) {
+    if (!state.user) return;
+    Account.queueProgress(state.user.id, date, questId, progress);
+    updateQuestOffline();
+    if (state.questTimer) clearTimeout(state.questTimer);
+    state.questTimer = setTimeout(function () {
+      state.questTimer = null;
+      flushQuestQueue();
+    }, 700);
+  }
+
+  async function flushQuestQueue() {
+    if (!state.user || state.syncing) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      state.offline = true;
+      updateQuestOffline();
+      return;
+    }
+    state.syncing = true;
+    try {
+      const res = await Account.flush(state.user.id);
+      if (res.unauthorized) { handleSignedOut('Your session expired. Sign in again.'); return; }
+      state.offline = !!res.offline;
+      if (res.results.length) {
+        res.results.forEach(function (r) {
+          if (r.daily && state.daily && r.daily.date === state.daily.date) {
+            const beforeCompleted = state.daily.completedAt;
+            state.daily = Quests.mergeDaily(state.daily, r.daily);
+            if (!beforeCompleted && r.daily.completedAt) state.daily.completedAt = r.daily.completedAt;
+            Account.updateCachedDaily(state.daily);
+          }
+          if (r.streak) {
+            const local = Quests.normalizeStreak(state.streak);
+            const remote = Quests.normalizeStreak(r.streak);
+            if (remote.lastCompletedDate > local.lastCompletedDate ||
+                (remote.lastCompletedDate === local.lastCompletedDate && remote.current !== local.current)) {
+              state.streak = r.streak;
+            }
+          }
+        });
+        if (state.streak) Account.updateCachedStreak(state.user.id, state.streak);
+        renderHome();
+      }
+    } catch (err) {
+      state.offline = true;
+    } finally {
+      state.syncing = false;
+      updateQuestOffline();
+    }
+  }
+
+  function updateQuestOffline() {
+    if (!E.questOffline) return;
+    const pending = state.user ? Account.queueCount(state.user.id) : 0;
+    const show = state.offline || pending > 0;
+    E.questOffline.hidden = !show;
+    if (!show) return;
+    E.questOffline.textContent = pending > 0
+      ? (state.offline ? 'Offline — ' : '') + pending + ' progress update' +
+        (pending === 1 ? '' : 's') + ' waiting to sync.'
+      : 'Offline — progress is saved here and will sync when you are back.';
+  }
+
+  function handleSignedOut(message) {
+    state.user = null;
+    state.daily = null;
+    state.streak = null;
+    state.offline = false;
+    Account.forget();
+    if (E.btnSignOut) E.btnSignOut.hidden = true;
+    showAuth();
+    if (message) showAuthMessage(message);
+  }
+
+  async function signOut() {
+    try {
+      await Account.logout();
+      if (typeof window !== 'undefined') window.location.reload();
+    } catch (err) {
+      U.toast('Could not sign out safely — check your connection and try again.', 'warn', 8000);
+    }
+  }
+
+  function openNameEditor() {
+    if (!state.user) return;
+    E.inpName.value = state.user.name || '';
+    E.nameEditor.hidden = false;
+    E.btnEditName.hidden = true;
+    E.inpName.focus();
+    E.inpName.select();
+  }
+
+  function closeNameEditor() {
+    E.nameEditor.hidden = true;
+    E.btnEditName.hidden = false;
+  }
+
+  async function saveName() {
+    const name = E.inpName.value.trim();
+    if (!name) { U.toast('Enter your name first.', 'warn'); E.inpName.focus(); return; }
+    E.btnSaveName.disabled = true;
+    try {
+      state.user = await Account.updateName(name);
+      closeNameEditor();
+      renderHome();
+      U.toast('Name updated.', 'ok');
+    } catch (err) {
+      U.toast(Account.authMessage(err), 'bad');
+    } finally {
+      E.btnSaveName.disabled = false;
+    }
+  }
+
+  function maybeNewDay() {
+    if (!state.user) return;
+    renderHome(); // refreshes the date and the morning/afternoon greeting
+    if (!state.daily || state.daily.date !== localDate()) loadHomeData();
+    else flushQuestQueue();
+  }
+
+  function bindAuthEvents() {
+    E.authForm.addEventListener('submit', submitAuth);
+    E.authAlt.addEventListener('click', function () {
+      setAuthMode(state.authMode === 'signin' ? 'signup' : 'signin');
+    });
+    E.authToReset.addEventListener('click', function () { setAuthMode('reset'); });
+    E.authToSignin.addEventListener('click', function () { setAuthMode('signin'); });
+    E.btnRecoveryDone.addEventListener('click', closeRecovery);
+    E.btnCopyRecovery.addEventListener('click', copyRecovery);
+    if (E.recoveryDialog) {
+      E.recoveryDialog.addEventListener('cancel', function (e) {
+        e.preventDefault(); // the code is shown once: force the explicit button
+      });
+    }
+    E.btnSignOut.addEventListener('click', signOut);
+    E.btnEditName.addEventListener('click', openNameEditor);
+    E.btnSaveName.addEventListener('click', saveName);
+    E.btnCancelName.addEventListener('click', closeNameEditor);
+    E.inpName.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); saveName(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeNameEditor(); }
+    });
+    window.addEventListener('online', function () {
+      state.offline = false;
+      flushQuestQueue();
+      refreshHome();
+    });
+    window.addEventListener('offline', function () {
+      state.offline = true;
+      updateQuestOffline();
+    });
+    window.addEventListener('vocablab:quests-dropped', function (e) {
+      const n = e && e.detail && e.detail.dropped ? e.detail.dropped.length : 0;
+      if (n) U.toast('Some offline quest progress was too old to sync and was skipped.', 'warn', 8000);
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) maybeNewDay();
+    });
+    window.addEventListener('focus', maybeNewDay);
   }
 
   /* ---------- Deck & topics ---------- */
@@ -273,9 +1010,9 @@
     if (E.btnClearRequirement) E.btnClearRequirement.hidden = !E.inpRequirement.value;
   }
 
-  /** Quiz and paragraph translation are separate practices, never mixed. */
+  /** Quiz, paragraph translation and shadowing are separate practices, never mixed. */
   function setPracticeMode(mode) {
-    settings.practiceMode = mode === 'paragraph' ? 'paragraph' : 'quiz';
+    settings.practiceMode = ['paragraph', 'shadowing'].indexOf(mode) !== -1 ? mode : 'quiz';
     if (E.selPractice) E.selPractice.value = settings.practiceMode;
     syncSegments();
     saveSettings();
@@ -285,11 +1022,12 @@
   function updateControls() {
     const hasDeck = !!state.deck && state.deck.topics.length > 0;
     const hasTopics = state.selected.length > 0;
-    const mode = settings.practiceMode === 'paragraph' ? 'paragraph' : 'quiz';
+    const mode = ['paragraph', 'shadowing'].indexOf(settings.practiceMode) !== -1 ? settings.practiceMode : 'quiz';
     const aiOk = aiReady();
     const hasTypes = E.typeMc.checked || E.typeBlank.checked || E.typeTranslate.checked;
     if (E.quizSetupPane) E.quizSetupPane.hidden = mode !== 'quiz';
     if (E.paraSetupPane) E.paraSetupPane.hidden = mode !== 'paragraph';
+    if (E.shadowingSetupPane) E.shadowingSetupPane.hidden = mode !== 'shadowing';
     E.btnStart.disabled = !(hasDeck && hasTopics && hasTypes);
     E.btnFlashcards.disabled = !(hasDeck && hasTopics);
     if (E.btnStartParagraph) E.btnStartParagraph.disabled = !(hasDeck && hasTopics && aiOk);
@@ -297,6 +1035,19 @@
       E.paraStartHint.hidden = aiOk;
       if (!aiOk) {
         E.paraStartHint.textContent = 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.';
+      }
+    }
+    if (E.btnStartShadowing) E.btnStartShadowing.disabled = !(hasDeck && hasTopics && aiOk);
+    if (E.shadowStartHint) {
+      const missingAi = !aiOk;
+      const missingScore = !scoreReady();
+      E.shadowStartHint.hidden = !missingAi && !missingScore;
+      if (missingAi) {
+        E.shadowStartHint.textContent = 'Shadowing needs AI to write the paragraph — open Settings → AI and use the free model (no key), or paste your own key.';
+      } else if (missingScore) {
+        E.shadowStartHint.textContent = 'You can record and replay now, but scoring needs a key. ' + scoreSetupHint();
+      } else {
+        E.shadowStartHint.textContent = '';
       }
     }
     const builtin = E.selSource.value === 'builtin';
@@ -307,7 +1058,8 @@
     if (E.btnClearRequirement) E.btnClearRequirement.disabled = reqDisabled;
     U.$$('#reqChips .req-chip[data-fill]').forEach(function (b) { b.disabled = reqDisabled; });
     if (E.setupAiBadge) {
-      E.setupAiBadge.hidden = mode === 'paragraph' ? !aiOk : (builtin || !aiOk);
+      const alwaysAi = mode === 'paragraph' || mode === 'shadowing';
+      E.setupAiBadge.hidden = alwaysAi ? !aiOk : (builtin || !aiOk);
     }
   }
 
@@ -322,12 +1074,13 @@
     }
   }
 
-  function openGrammar() {
+  function openGrammar(startLesson) {
     if (!window.Grammar) {
       U.toast('The grammar course could not be loaded.', 'bad');
       return;
     }
-    Grammar.openCourse();
+    if (startLesson === true && Grammar.openNextLesson) Grammar.openNextLesson();
+    else Grammar.openCourse();
     showScreen('grammar');
   }
 
@@ -341,7 +1094,8 @@
     }
     return Ai.askTutor({
       provider: activeProvider(), baseUrl: activeBase(), key: activeKey(), model: activeModel(),
-      system: opts.system, prompt: prompt, onWait: opts.onWait
+      system: opts.system, prompt: prompt, onWait: opts.onWait,
+      maxTokens: opts.maxTokens, temperature: opts.temperature
     });
   }
 
@@ -496,9 +1250,11 @@
   function normalizeStoredKeys() {
     const oai = Ai.normalizeKey(settings.oaiKey);
     const gem = Ai.normalizeKey(settings.geminiKey);
-    if (oai !== (settings.oaiKey || '') || gem !== (settings.geminiKey || '')) {
+    const azure = Ai.normalizeKey(settings.azureKey);
+    if (oai !== (settings.oaiKey || '') || gem !== (settings.geminiKey || '') || azure !== (settings.azureKey || '')) {
       settings.oaiKey = oai;
       settings.geminiKey = gem;
+      settings.azureKey = azure;
       saveSettings();
     }
   }
@@ -802,6 +1558,9 @@
     if (correct) { s.score += 1; s.streak += 1; s.bestStreak = Math.max(s.bestStreak, s.streak); }
     else s.streak = 0;
     Quiz.recordAnswer(q, correct);
+    if (q.type === 'mc') questEvent('mc30', 1);
+    questEvent('mixed20', 1);
+    if (correct) questEvent('correct10', 1);
 
     E.qScore.textContent = s.score + ' ✓';
     if (s.streak >= 2) { E.qStreak.hidden = false; E.qStreak.querySelector('span').textContent = String(s.streak); }
@@ -913,6 +1672,11 @@
     E.btnParaSubmit.textContent = 'Check with AI';
     E.btnParaSubmit.disabled = false;
     E.btnParaSkip.disabled = false;
+    q.paraAttempts = [];
+    q.paraChecks = 0;
+    q.paraComplete = false;
+    q.paraLastCheck = null;
+    q.paraFinalized = false;
     E.paraInput.focus();
   }
 
@@ -923,15 +1687,38 @@
     return el;
   }
 
+  /** “All good” is stricter than the old 70/100 pass mark: no notes, no missing words. */
+  function paragraphIsGood(fb) {
+    if (!fb) return false;
+    const notes = fb.notes || [];
+    const missing = (fb.used || []).filter(function (u) { return !u.used; });
+    return Number(fb.score) >= 90 && notes.length === 0 && missing.length === 0;
+  }
+
   async function submitParagraph() {
     const q = currentQuestion();
     if (!q || q.type !== 'paragraph' || state.answered || state.paraBusy) return;
+    if ((q.paraChecks || 0) >= 3 && !q.paraComplete) {
+      U.toast('That was the third AI check. Apply the fixes if you like, then press “Finish anyway”.', 'warn', 9000);
+      return;
+    }
     const text = E.paraInput.value.trim();
     if (!text) { U.toast('Write your translation first.', 'warn'); E.paraInput.focus(); return; }
     if (!aiReady()) {
       const msg = 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.';
       U.toast(msg, 'warn');
       showAiIssue(msg);
+      return;
+    }
+    // Clicking “Check again” without touching the text should not spend another
+    // AI request. The previous result still applies.
+    if (q.paraLastCheck && q.paraLastCheck.text === text) {
+      if (paragraphIsGood(q.paraLastCheck.fb)) {
+        finalizeParagraph(q, text, q.paraLastCheck.fb);
+      } else {
+        U.toast('Change something first — the AI already checked this exact text.', 'warn', 7000);
+        E.paraInput.focus();
+      }
       return;
     }
     state.paraBusy = true;
@@ -972,20 +1759,49 @@
   /** A paragraph is one essay, not one word: it scores, but writes no word mastery. */
   function finishParagraph(q, text, fb) {
     if (state.answered) return;
+    const s = state.session;
+    q.paraChecks = (q.paraChecks || 0) + 1;
+    q.paraAttempts = q.paraAttempts || [];
+    q.paraAttempts.push({ text: text, score: Number(fb.score) || 0, verdict: fb.verdict, at: Date.now() });
+    q.paraLastCheck = { text: text, fb: fb };
+    const good = paragraphIsGood(fb);
+    q.paraComplete = good;
+
+    E.paraInput.disabled = false;
+    E.btnParaSkip.disabled = false;
+    E.btnParaSubmit.disabled = !good && q.paraChecks >= 3;
+    E.btnParaSubmit.textContent = good ? 'Complete'
+      : (q.paraChecks >= 3 ? '3 checks used' : 'Check again');
+    renderParaFeedback(text, fb, good);
+    if (good) finalizeParagraph(q, text, fb);
+    else {
+      E.paraInput.focus();
+      U.toast('Not complete yet — apply the fixes or edit the text, then check again. ' +
+        (q.paraChecks >= 3 ? 'You can also finish anyway.' : ''), 'warn', 8000);
+    }
+  }
+
+  function finalizeParagraph(q, text, fb) {
+    if (q.paraFinalized || state.answered) return;
+    q.paraFinalized = true;
     state.answered = true;
     const s = state.session;
-    const correct = fb.score >= 70;
+    const correct = Number(fb.score) >= 70;
     s.answers.push({
-      question: q, response: text, verdict: fb.verdict, correct: correct, score: fb.score, at: Date.now()
+      question: q, response: text, verdict: fb.verdict, correct: correct, score: fb.score,
+      attempts: q.paraAttempts || [], at: Date.now()
     });
     if (correct) { s.score += 1; s.streak += 1; s.bestStreak = Math.max(s.bestStreak, s.streak); }
     else s.streak = 0;
+    questEvent('paragraph1', 1);
 
     E.qScore.textContent = s.score + ' ✓';
     if (s.streak >= 2) { E.qStreak.hidden = false; E.qStreak.querySelector('span').textContent = String(s.streak); }
     E.progressBar.style.width = Math.round(((s.index + 1) / s.questions.length) * 100) + '%';
     E.btnParaSubmit.disabled = true;
-    E.btnParaSubmit.textContent = 'Checked';
+    E.btnParaSubmit.textContent = 'Complete';
+    E.paraInput.disabled = true;
+    E.btnParaSkip.disabled = true;
     renderParaFeedback(text, fb, correct);
     updateStatsUI();
   }
@@ -1060,15 +1876,63 @@
       box.appendChild(block);
     }
 
+    const q = currentQuestion();
+    const attempts = (q && q.paraAttempts) || [];
+    if (attempts.length > 1) {
+      const history = paraEl('div', 'pf-block pf-attempts');
+      history.appendChild(paraEl('h4', 'pf-h', 'Your attempts'));
+      const ul = paraEl('ul', 'pf-history');
+      attempts.forEach(function (a, i) {
+        const li = paraEl('li', '');
+        li.appendChild(paraEl('span', 'pf-attempt-n', 'Attempt ' + (i + 1)));
+        li.appendChild(paraEl('span', 'pf-attempt-score', String(a.score) + '/100'));
+        ul.appendChild(li);
+      });
+      history.appendChild(ul);
+      box.appendChild(history);
+    }
+
     const actions = paraEl('div', 'pf-actions');
+    const good = state.answered || paragraphIsGood(fb);
     const last = state.session && state.session.index >= state.session.questions.length - 1;
-    const next = paraEl('button', 'btn btn-primary',
-      last ? 'See results' : (state.session && state.session.paragraphOnly ? 'Next paragraph' : 'Next question'));
-    next.type = 'button';
-    next.addEventListener('click', nextQuestion);
-    actions.appendChild(next);
+    if (good) {
+      const next = paraEl('button', 'btn btn-primary',
+        last ? 'See results' : (state.session && state.session.paragraphOnly ? 'Next paragraph' : 'Next question'));
+      next.type = 'button';
+      next.addEventListener('click', nextQuestion);
+      actions.appendChild(next);
+      next.focus();
+    } else if ((q && q.paraChecks) >= 3) {
+      actions.appendChild(paraEl('p', 'muted small',
+        'Third check used. Apply the fixes above in your own words if you like, then finish this paragraph.'));
+      const finish = paraEl('button', 'btn btn-primary', 'Finish anyway');
+      finish.type = 'button';
+      finish.addEventListener('click', function () {
+        const textNow = E.paraInput.value.trim() || text;
+        finalizeParagraph(q, textNow, fb);
+      });
+      actions.appendChild(finish);
+      finish.focus();
+    } else {
+      if (fb.corrected && fb.corrected !== text) {
+        const apply = paraEl('button', 'btn btn-primary', 'Apply fixes and edit');
+        apply.type = 'button';
+        apply.addEventListener('click', function () {
+          if (E.paraInput.disabled) return;
+          E.paraInput.value = fb.corrected;
+          E.paraInput.dispatchEvent(new Event('input', { bubbles: true }));
+          E.paraInput.focus();
+          U.toast('Fixes applied. Edit anything you like, then check again.', 'ok', 5000);
+        });
+        actions.appendChild(apply);
+      }
+      const again = paraEl('button', 'btn btn-subtle', 'Check again');
+      again.type = 'button';
+      again.addEventListener('click', submitParagraph);
+      actions.appendChild(again);
+      again.focus();
+    }
     box.appendChild(actions);
-    next.focus();
   }
 
   function textBlock(title, body, cls) {
@@ -1076,6 +1940,703 @@
     block.appendChild(paraEl('h4', 'pf-h', title));
     block.appendChild(paraEl('p', 'pf-text', body));
     return block;
+  }
+
+  /* ---------- Shadowing ---------- */
+  const SHADOW_MAX_MS = 45000;
+  let shadowPlayback = null;
+
+  function stopShadowPlayback() {
+    if (!shadowPlayback) return;
+    const p = shadowPlayback;
+    shadowPlayback = null;
+    try { p.el.pause(); } catch (e) { /* ignore */ }
+    p.el.onended = null;
+    p.el.onerror = null;
+    try { URL.revokeObjectURL(p.url); } catch (e) { /* ignore */ }
+  }
+
+  function playShadowBlob(blob, label) {
+    stopShadowPlayback();
+    let url;
+    try { url = URL.createObjectURL(blob); } catch (e) { U.toast(label, 'bad'); return; }
+    const el = new Audio(url);
+    shadowPlayback = { el: el, url: url };
+    el.onended = stopShadowPlayback;
+    el.onerror = function () {
+      stopShadowPlayback();
+      U.toast(label, 'bad');
+    };
+    el.play().catch(function () {
+      if (shadowPlayback && shadowPlayback.el === el) stopShadowPlayback();
+      U.toast(label, 'warn');
+    });
+  }
+
+  function shadowSeconds(ms) {
+    const total = Math.max(0, Math.round(ms / 1000));
+    return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
+  }
+
+  function shadowStatus(text, kind) {
+    E.shRecordStatus.textContent = text || '';
+    const tone = kind === 'bad' ? ' bad-text' : kind === 'warn' ? ' warn-text' : '';
+    E.shRecordStatus.className = 'muted small' + tone;
+  }
+
+  function shadowTranslationToggle(show) {
+    const hidden = !show;
+    E.shTranslation.hidden = hidden;
+    E.btnShadowTranslate.textContent = hidden ? '👁 Show translation' : '🙈 Hide translation';
+  }
+
+  function shadowCurrent() {
+    return state.shadowing && state.shadowing.current;
+  }
+
+  function stopShadowTracks(target) {
+    const s = target || state.shadowing;
+    if (!s) return;
+    if (s.stream) {
+      s.stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) { /* ignore */ } });
+      s.stream = null;
+    }
+    if (s.timer) { clearInterval(s.timer); s.timer = null; }
+  }
+
+  function discardShadowRecording() {
+    const s = state.shadowing;
+    if (!s) return;
+    stopShadowPlayback();
+    const current = s.current;
+    if (current && current.url) {
+      try { URL.revokeObjectURL(current.url); } catch (e) { /* ignore */ }
+    }
+    s.current = null;
+    s.recorder = null;
+    E.btnShadowReplay.hidden = true;
+    E.btnShadowSave.hidden = true;
+    E.btnShadowDelete.hidden = true;
+    E.shAudioMeta.hidden = true;
+    E.btnShadowAssess.disabled = true;
+    E.btnShadowRecord.hidden = false;
+    E.btnShadowRecord.disabled = false;
+    E.btnShadowStop.hidden = true;
+    E.shTimer.textContent = '0:00';
+  }
+
+  function resetShadowResult() {
+    E.shResult.hidden = true;
+    E.shWords.innerHTML = '';
+    E.shTips.innerHTML = '';
+    E.shScoreBig.textContent = '0';
+    if (E.shScoreBig.parentElement) E.shScoreBig.parentElement.className = 'sh-score';
+    E.shVerdict.textContent = '';
+    E.shRecognized.textContent = '';
+    E.shAccuracy.textContent = '–';
+    E.shFluency.textContent = '–';
+    E.shCompleteness.textContent = '–';
+  }
+
+  async function startShadowingPractice() {
+    if (!state.deck) { U.toast('Load a vocabulary deck first.', 'warn'); return; }
+    setPracticeMode('shadowing');
+    const setup = readSetup();
+    if (!aiReady()) {
+      const msg = 'Shadowing needs AI to write the paragraph — open Settings → AI and use the free model (no key), or paste your own key.';
+      U.toast(msg, 'warn');
+      showAiIssue(msg);
+      return;
+    }
+    const available = selectedWords();
+    if (!available.length) { U.toast('Select at least one topic.', 'warn'); return; }
+    let paraWords = available;
+    if (paraWords.length < 6) {
+      const all = allWords();
+      if (all.length >= 6) paraWords = all;
+    }
+    const items = Quiz.planParagraphs(paraWords, 1, 'fr2vi');
+    if (!items.length) {
+      U.toast('Add at least 6 words to the selected topic to write a shadowing paragraph.', 'warn');
+      return;
+    }
+    const pool = paraWords.length >= 4 ? paraWords : allWords();
+    state.controller = new AbortController();
+    showOverlay('Writing a shadowing paragraph…',
+      aiMode() === 'simple' ? 'Asking the free AI for a short French text…' : 'Asking the AI for a short French text…');
+    try {
+      const result = await Quiz.buildPool({
+        items: items,
+        pool: pool,
+        source: 'ai',
+        aiProvider: activeProvider(),
+        aiBaseUrl: activeBase(),
+        aiKey: activeKey(),
+        aiKeyless: aiKeyless(),
+        aiModel: activeModel(),
+        difficulty: setup.difficulty,
+        requirement: setup.requirement,
+        targetLang: settings.targetLang,
+        meaningLang: 'Vietnamese',
+        onProgress: overlayProgress,
+        signal: state.controller.signal
+      });
+      if (!result.questions.length) {
+        const why = result.aiError;
+        throw Object.assign(new Error('No paragraph'), {
+          friendly: why
+            ? 'Shadowing could not be generated — ' + (why.friendly || 'the AI reply was unusable.')
+            : 'Could not generate a shadowing paragraph from these words.'
+        });
+      }
+      const q = result.questions[0];
+      const sentences = Speech.splitSentences(q.prompt);
+      if (!sentences.length) throw new Error('The AI paragraph had no usable sentences.');
+      if (state.shadowing) exitShadowing(true);
+      state.shadowing = {
+        paragraph: q.prompt,
+        reference: q.reference || '',
+        sentences: sentences,
+        index: 0,
+        results: [],
+        startedAt: Date.now(),
+        current: null,
+        recorder: null,
+        stream: null,
+        chunks: [],
+        timer: null,
+        recordingStarted: 0,
+        assessing: false,
+        requestingMic: false
+      };
+      if (result.aiError) {
+        const err = result.aiError;
+        const detail = err.friendly || err.message || 'Some paragraph text could not be generated.';
+        showAiIssue(err.detail || detail);
+        U.toast(detail, 'warn', 12000);
+      } else {
+        showAiIssue('');
+      }
+      updateUsageUI();
+      showScreen('shadowing');
+      renderShadowSentence();
+    } catch (e) {
+      if (e && e.name === 'AbortError') U.toast('Generation cancelled.', 'warn');
+      else {
+        const msg = e.friendly || e.message || 'Could not write a shadowing paragraph.';
+        showAiIssue(e.detail || msg);
+        U.toast(msg, 'bad', 12000);
+      }
+    } finally {
+      state.controller = null;
+      hideOverlay();
+    }
+  }
+
+  /** Keep the scoring hint, engine pill and button in step with the settings. */
+  function syncShadowScoreUI() {
+    const s = state.shadowing;
+    const engine = scoreEngine();
+    if (E.shEnginePill) {
+      E.shEnginePill.textContent = engine === 'azure' ? 'Azure score' : engine === 'gemini' ? 'Gemini estimate' : 'Recording only';
+      E.shEnginePill.className = 'pill ' + (engine === 'azure' ? 'pill-accent' : 'pill-muted');
+    }
+    if (E.shAssessHint) {
+      E.shAssessHint.textContent = engine === 'azure'
+        ? 'Azure returns real word-level scores for this sentence and uses your Azure speech-to-text allowance.'
+        : engine === 'gemini'
+          ? 'Gemini listens to the recording and estimates your pronunciation. This does not use Azure speech hours.'
+          : 'Scoring needs a key. ' + scoreSetupHint() + ' You can still record and replay.';
+      E.shAssessHint.classList.toggle('warn-text', engine === 'none');
+    }
+    if (E.btnShadowAssess && !(s && s.assessing)) {
+      E.btnShadowAssess.disabled = !(shadowCurrent() && engine !== 'none');
+    }
+  }
+
+  function renderShadowSentence() {
+    const s = state.shadowing;
+    if (!s) return;
+    discardShadowRecording();
+    resetShadowResult();
+    E.shadowSummary.hidden = true;
+    E.shadowCard.hidden = false;
+    E.shadowSavedPanel.hidden = true;
+    const text = s.sentences[s.index];
+    E.shSentence.textContent = text;
+    E.shTranslation.textContent = s.reference || 'No translation was returned for this paragraph.';
+    shadowTranslationToggle(false);
+    E.shProgressText.textContent = 'Sentence ' + (s.index + 1) + ' of ' + s.sentences.length;
+    E.shProgressBar.style.width = Math.round((s.index / s.sentences.length) * 100) + '%';
+    E.btnShadowListen.disabled = false;
+    E.btnShadowAssess.textContent = 'Check pronunciation';
+    E.btnShadowNext.textContent = s.index === s.sentences.length - 1 ? 'Finish shadowing' : 'Next sentence';
+    shadowStatus('Ready to record. Listen first, then record the same sentence.');
+    syncShadowScoreUI();
+    updateShadowSavedCount();
+  }
+
+  async function startShadowRecording() {
+    const s = state.shadowing;
+    if (!s || s.recording || s.assessing || s.requestingMic) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
+      U.toast('This browser cannot record audio. A current Chrome, Firefox, Edge or Safari can.', 'bad', 12000);
+      return;
+    }
+    discardShadowRecording();
+    resetShadowResult();
+    s.chunks = [];
+    s.requestingMic = true;
+    E.btnShadowRecord.disabled = true;
+    shadowStatus('Requesting the microphone…');
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+    } catch (e) {
+      s.requestingMic = false;
+      if (state.shadowing !== s) return;
+      E.btnShadowRecord.disabled = false;
+      shadowStatus('Microphone permission was denied.', 'bad');
+      U.toast('Microphone permission was denied. Allow it in the browser, then press Record again.', 'bad', 12000);
+      return;
+    }
+    if (state.shadowing !== s) {
+      stream.getTracks().forEach(function (t) { try { t.stop(); } catch (ignore) { /* ignore */ } });
+      s.requestingMic = false;
+      return;
+    }
+    s.requestingMic = false;
+    const mime = Speech.pickMime();
+    let recorder;
+    try {
+      recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    } catch (e) {
+      stream.getTracks().forEach(function (t) { try { t.stop(); } catch (ignore) { /* ignore */ } });
+      E.btnShadowRecord.disabled = false;
+      shadowStatus('This browser could not start the recorder.', 'bad');
+      U.toast('This browser could not start the recorder. Try Chrome, Firefox or Edge.', 'bad', 10000);
+      return;
+    }
+    s.stream = stream;
+    s.recorder = recorder;
+    s.recording = true;
+    s.recordingStarted = Date.now();
+    recorder.ondataavailable = function (e) {
+      if (state.shadowing === s && e.data && e.data.size) s.chunks.push(e.data);
+    };
+    recorder.onstop = function () {
+      stopShadowTracks(s);
+      finishShadowRecording(s);
+    };
+    recorder.onerror = function (e) {
+      if (state.shadowing !== s) return;
+      shadowStatus('Recording failed.', 'bad');
+      U.toast('Recording failed: ' + ((e && e.error && e.error.message) || 'unknown error'), 'bad', 10000);
+      stopShadowTracks(s);
+      s.recording = false;
+      E.btnShadowRecord.hidden = false;
+      E.btnShadowRecord.disabled = false;
+      E.btnShadowStop.hidden = true;
+    };
+    E.btnShadowRecord.hidden = true;
+    E.btnShadowStop.hidden = false;
+    E.btnShadowListen.disabled = true;
+    shadowStatus('Recording… speak the sentence');
+    s.timer = setInterval(function () {
+      const elapsed = Date.now() - s.recordingStarted;
+      E.shTimer.textContent = shadowSeconds(elapsed);
+      if (elapsed >= SHADOW_MAX_MS && s.recorder && s.recorder.state === 'recording') {
+        U.toast('Recording stopped at the 45-second limit.', 'warn', 6000);
+        stopShadowRecording();
+      }
+    }, 200);
+    try { recorder.start(250); }
+    catch (e) {
+      stopShadowTracks(s);
+      s.recorder = null;
+      s.recording = false;
+      E.btnShadowRecord.hidden = false;
+      E.btnShadowRecord.disabled = false;
+      E.btnShadowStop.hidden = true;
+      E.btnShadowListen.disabled = false;
+      shadowStatus('Could not start recording.', 'bad');
+    }
+  }
+
+  function stopShadowRecording() {
+    const s = state.shadowing;
+    if (!s || !s.recorder) return;
+    if (s.recorder.state === 'recording') {
+      try { s.recorder.stop(); } catch (e) { /* ignore */ }
+    }
+    stopShadowTracks();
+    s.recording = false;
+    E.btnShadowStop.hidden = true;
+    E.btnShadowRecord.hidden = false;
+    E.btnShadowRecord.disabled = true;
+    shadowStatus('Preparing your recording…');
+  }
+
+  function finishShadowRecording(expected) {
+    const s = state.shadowing;
+    if (!s || (expected && s !== expected)) return;
+    s.recording = false;
+    E.btnShadowListen.disabled = false;
+    const mime = (s.recorder && s.recorder.mimeType) || 'audio/webm';
+    const blob = new Blob(s.chunks, { type: mime });
+    s.chunks = [];
+    s.recorder = null;
+    if (!blob.size) {
+      E.btnShadowRecord.hidden = false;
+      E.btnShadowRecord.disabled = false;
+      shadowStatus('Nothing was recorded. Try again.', 'warn');
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    s.current = { blob: blob, url: url, mime: mime, saved: false, id: null, score: null, assessed: null };
+    E.btnShadowRecord.hidden = false;
+    E.btnShadowRecord.disabled = false;
+    E.btnShadowStop.hidden = true;
+    E.btnShadowReplay.hidden = false;
+    E.btnShadowSave.hidden = false;
+    E.btnShadowSave.disabled = false;
+    E.btnShadowSave.textContent = '💾 Save';
+    E.btnShadowDelete.hidden = false;
+    E.btnShadowAssess.disabled = !scoreReady();
+    E.btnShadowAssess.textContent = 'Check pronunciation';
+    E.shAudioMeta.hidden = false;
+    E.shAudioMeta.textContent = 'Not saved — this recording is deleted when you leave, move on, or record again.';
+    shadowStatus('Recorded. Replay it, save it, or check your pronunciation.');
+  }
+
+  function replayShadowRecording() {
+    const current = shadowCurrent();
+    if (!current) return;
+    Speech.stop();
+    playShadowBlob(current.blob, 'The browser could not play this recording.');
+  }
+
+  async function saveShadowRecording(quiet) {
+    const s = state.shadowing;
+    const current = shadowCurrent();
+    if (!s || !current) return;
+    try {
+      current.id = current.id || U.uid();
+      current.createdAt = current.createdAt || Date.now();
+      await Speech.saveRecording({
+        id: current.id,
+        blob: current.blob,
+        mime: current.mime,
+        reference: s.sentences[s.index],
+        translation: s.reference,
+        lang: settings.targetCode,
+        score: current.score,
+        recognized: current.assessed ? current.assessed.recognized : '',
+        createdAt: current.createdAt
+      });
+      if (current.deleted) {
+        try { await Speech.deleteRecording(current.id); } catch (e) { /* ignore */ }
+        return;
+      }
+      current.saved = true;
+      E.shAudioMeta.textContent = 'Saved on this device. This recording stays until you delete it.';
+      E.btnShadowSave.textContent = '💾 Saved';
+      E.btnShadowSave.disabled = true;
+      updateShadowSavedCount();
+      if (!quiet) U.toast('Recording saved on this device.', 'ok');
+    } catch (e) {
+      U.toast(e.message || 'Could not save the recording.', 'bad', 10000);
+    }
+  }
+
+  async function deleteShadowRecording() {
+    const s = state.shadowing;
+    const current = shadowCurrent();
+    if (!s || !current) return;
+    if (s.assessing) { U.toast('Wait for the score before deleting this recording.', 'warn'); return; }
+    current.deleted = true;
+    if (current.saved && current.id) {
+      try { await Speech.deleteRecording(current.id); }
+      catch (e) {
+        U.toast('The recording was removed here but could not be deleted from browser storage.', 'bad', 10000);
+      }
+    }
+    discardShadowRecording();
+    shadowStatus('Recording deleted. Ready to record again.');
+    updateShadowSavedCount();
+  }
+
+  function shadowLocalTips(res) {
+    const words = (res.words || []).filter(function (w) {
+      return (w.accuracy != null && w.accuracy < 75) || /Mispronunciation|Omission/i.test(w.errorType || '');
+    }).map(function (w) { return w.word; }).filter(Boolean);
+    const bits = [];
+    if (words.length) bits.push('Focus on: ' + words.slice(0, 4).join(', ') + '.');
+    if (res.completeness < 85) bits.push('Say the whole sentence without skipping words.');
+    else if (res.fluency < 75) bits.push('Read in a steady rhythm and avoid long pauses.');
+    else if (res.accuracy < 80) bits.push('Slow down on the highlighted words and repeat them.');
+    else bits.push('Good clarity — try it once more at a natural speed.');
+    return bits.join(' ');
+  }
+
+  /** Convert the recording and let Gemini listen to it. No Azure minutes used. */
+  async function geminiAssessBlob(blob, reference) {
+    let wav;
+    try { wav = await Speech.blobToWav(blob); }
+    catch (e) { throw new Error('Could not prepare the recording for scoring: ' + (e.message || e)); }
+    const audio = await Speech.blobToBase64(wav);
+    return Ai.assessSpeech({
+      key: settings.geminiKey,
+      model: settings.geminiModel || 'gemini-flash-latest',
+      audio: audio,
+      mimeType: 'audio/wav',
+      reference: reference,
+      lang: settings.targetCode
+    });
+  }
+
+  async function assessShadowRecording() {
+    const s = state.shadowing;
+    const current = shadowCurrent();
+    if (!s || !current || s.assessing) return;
+    const engine = scoreEngine();
+    if (engine === 'none') {
+      U.toast('Scoring needs a free Gemini key in Settings → AI, or an Azure Speech key in Settings → Speech.', 'warn', 10000);
+      openSettings('ai');
+      return;
+    }
+    const assessedIndex = s.index;
+    stopShadowPlayback();
+    s.assessing = true;
+    E.btnShadowAssess.disabled = true;
+    E.btnShadowAssess.textContent = engine === 'azure' ? 'Checking with Azure…' : 'Asking Gemini…';
+    shadowStatus(engine === 'azure'
+      ? 'Sending the recording to Azure for scoring…'
+      : 'Sending the recording to Gemini for an AI estimate…');
+    let res;
+    try {
+      res = engine === 'azure'
+        ? await Speech.assess(current.blob, s.sentences[assessedIndex], settings.targetCode)
+        : await geminiAssessBlob(current.blob, s.sentences[assessedIndex]);
+    } catch (e) {
+      s.assessing = false;
+      if (state.shadowing !== s) return;
+      const msg = (e && (e.friendly || e.message)) || 'The recording could not be scored.';
+      E.btnShadowAssess.disabled = false;
+      E.btnShadowAssess.textContent = 'Try scoring again';
+      shadowStatus(msg, 'bad');
+      U.toast(msg.split('\n')[0], 'bad', 12000);
+      return;
+    }
+    if (state.shadowing !== s) return;
+    if (s.index !== assessedIndex || s.current !== current) {
+      s.assessing = false;
+      return;
+    }
+    const source = engine === 'azure' ? 'azure' : 'gemini';
+    current.assessed = res;
+    current.score = res.score;
+    s.results[s.index] = {
+      score: res.score, accuracy: res.accuracy, fluency: res.fluency,
+      completeness: res.completeness, source: source, at: Date.now()
+    };
+    E.shScoreBig.textContent = String(res.score);
+    if (E.shScoreBig.parentElement) {
+      E.shScoreBig.parentElement.className = 'sh-score' +
+        (res.score < 55 ? ' bad' : res.score < 75 ? ' warn' : '');
+    }
+    if (E.shScoreSource) {
+      E.shScoreSource.textContent = source === 'azure' ? 'Azure score' : 'AI estimate — not a real test';
+      E.shScoreSource.className = 'pill ' + (source === 'azure' ? 'pill-ok' : 'pill-muted');
+      E.shScoreSource.title = source === 'azure'
+        ? 'Word-level pronunciation assessment from Azure Speech.'
+        : 'Gemini listened to the recording and estimated these scores. They are guidance, not a certified test.';
+    }
+    E.shVerdict.textContent = res.score >= 90 ? 'Excellent — very clear.'
+      : res.score >= 75 ? 'Good — a few sounds to polish.'
+        : res.score >= 55 ? 'Getting there — slow down and repeat the weak words.'
+          : 'Keep practising — listen once more, then try again.';
+    E.shRecognized.textContent = 'Heard: “' + res.recognized + '”';
+    E.shAccuracy.textContent = String(res.accuracy);
+    E.shFluency.textContent = String(res.fluency);
+    E.shCompleteness.textContent = String(res.completeness);
+    E.shWords.innerHTML = '';
+    (res.words || []).forEach(function (w) {
+      const chip = document.createElement('span');
+      const bad = (w.accuracy != null && w.accuracy < 75) || /Mispronunciation|Omission/i.test(w.errorType || '');
+      chip.className = 'sh-word' + (bad ? ' bad' : ' ok');
+      chip.textContent = w.word + (w.accuracy == null ? '' : ' · ' + w.accuracy);
+      chip.title = w.errorType || (w.accuracy != null ? 'Accuracy ' + w.accuracy : '');
+      E.shWords.appendChild(chip);
+    });
+    E.shTips.textContent = res.tips || shadowLocalTips(res);
+    E.shResult.hidden = false;
+    s.assessing = false;
+    E.btnShadowAssess.disabled = false;
+    E.btnShadowAssess.textContent = 'Check pronunciation';
+    shadowStatus('Scored by ' + (source === 'azure' ? 'Azure' : 'Gemini (AI estimate)') + '. Replay, record again, or continue.');
+    E.btnShadowNext.focus();
+    if (current.saved) saveShadowRecording(true);
+    // Gemini already returned its own advice, so only Azure needs the extra
+    // coaching call. Either way, the local tips above are the fallback.
+    if (source === 'azure') {
+      try {
+        const worst = (res.words || []).filter(function (w) { return w.accuracy != null && w.accuracy < 85; })
+          .slice(0, 5).map(function (w) { return w.word + ' (' + w.accuracy + ')'; }).join(', ');
+        const ai = await askTutor(
+          'The learner shadowed this French sentence:\n“' + s.sentences[s.index] + '”\n\n' +
+          'Azure Pronunciation Assessment returned:\n' +
+          'Overall ' + res.score + '/100, accuracy ' + res.accuracy + ', fluency ' + res.fluency +
+          ', completeness ' + res.completeness + '.\n' +
+          'Heard as: “' + res.recognized + '”\n' +
+          'Words needing work: ' + (worst || 'none clearly below 85') + '.\n\n' +
+          'Give 2 short, concrete pieces of pronunciation advice in English. Mention at most three words. ' +
+          'Do not rescore and do not use markdown.',
+          { system: 'You are VocabLab’s concise French pronunciation coach. You explain Azure Speech scores and give actionable practice tips. Be encouraging and specific.', maxTokens: 220 }
+        );
+        if (ai && ai.text && state.shadowing === s && s.index === assessedIndex && s.current === current) {
+          E.shTips.textContent = ai.text.trim();
+        }
+      } catch (e) { /* local tips already shown */ }
+    }
+  }
+
+  function shadowNextSentence() {
+    const s = state.shadowing;
+    if (!s) return;
+    if (s.current) questEvent('shadow3', 1);
+    if (s.index >= s.sentences.length - 1) {
+      showShadowSummary();
+      return;
+    }
+    discardShadowRecording();
+    s.index += 1;
+    renderShadowSentence();
+  }
+
+  function showShadowSummary() {
+    const s = state.shadowing;
+    if (!s) return;
+    discardShadowRecording();
+    E.shadowCard.hidden = true;
+    E.shadowSavedPanel.hidden = true;
+    E.shadowSummary.hidden = false;
+    const scored = s.results.filter(function (r) { return r && r.score != null; });
+    const avg = scored.length
+      ? Math.round(scored.reduce(function (sum, r) { return sum + r.score; }, 0) / scored.length) : null;
+    E.shSummaryAvg.textContent = avg == null ? '–' : avg + '/100';
+    E.shSummaryCount.textContent = String(scored.length);
+    E.shSummaryText.textContent = scored.length
+      ? 'You scored ' + scored.length + ' sentence' + (scored.length === 1 ? '' : 's') + '. Saved recordings stay in this browser — open “Saved” to play them. Unsaved recordings are deleted when you record again or leave.'
+      : 'No sentences were scored this time. ' + scoreSetupHint() + ' Scoring is optional — you can still record and replay.';
+    E.shSummaryList.innerHTML = '';
+    s.sentences.forEach(function (sentence, i) {
+      const r = s.results[i];
+      const li = document.createElement('li');
+      const text = document.createElement('span');
+      text.className = 'saved-text';
+      text.textContent = sentence;
+      const score = document.createElement('span');
+      score.className = 'pill ' + (r && r.score >= 80 ? 'pill-ok' : 'pill-muted');
+      score.textContent = r && r.score != null ? r.score + '/100' : 'not scored';
+      li.appendChild(text);
+      li.appendChild(score);
+      E.shSummaryList.appendChild(li);
+    });
+    updateShadowSavedCount();
+  }
+
+  async function updateShadowSavedCount() {
+    if (!E.shSavedCount) return;
+    try { E.shSavedCount.textContent = String(await Speech.countRecordings()); }
+    catch (e) { E.shSavedCount.textContent = '0'; }
+  }
+
+  async function openShadowSaved() {
+    if (!E.shadowSavedPanel.hidden) return;
+    if (state.shadowing && (state.shadowing.recording || state.shadowing.assessing || state.shadowing.requestingMic)) {
+      U.toast('Finish the recording or scoring first.', 'warn');
+      return;
+    }
+    if (state.screen !== 'shadowing') showScreen('shadowing');
+    if (state.shadowing) {
+      state.shadowing.savedReturn = !E.shadowSummary.hidden ? 'summary' : 'card';
+    }
+    stopShadowPlayback();
+    E.shadowSavedPanel.hidden = false;
+    E.shadowCard.hidden = true;
+    E.shadowSummary.hidden = true;
+    E.shSavedList.innerHTML = '<li class="muted small">Loading…</li>';
+    try {
+      const list = await Speech.listRecordings();
+      E.shSavedList.innerHTML = '';
+      if (!list.length) {
+        E.shSavedList.innerHTML = '<li class="muted small">No saved recordings yet. Press Save after a recording.</li>';
+        return;
+      }
+      list.forEach(function (r) {
+        const li = document.createElement('li');
+        li.className = 'saved-item';
+        const info = document.createElement('div');
+        info.className = 'saved-info';
+        const text = document.createElement('span');
+        text.className = 'saved-text';
+        text.textContent = r.reference || 'Recording';
+        const meta = document.createElement('span');
+        meta.className = 'muted tiny';
+        meta.textContent = new Date(r.createdAt || Date.now()).toLocaleString() +
+          (r.score != null ? ' · ' + r.score + '/100' : '') +
+          (r.size ? ' · ' + Math.max(1, Math.round(r.size / 1024)) + ' KB' : '');
+        info.appendChild(text);
+        info.appendChild(meta);
+        const play = document.createElement('button');
+        play.type = 'button';
+        play.className = 'btn btn-ghost btn-sm';
+        play.textContent = '▶ Play';
+        play.addEventListener('click', async function () {
+          try {
+            const full = await Speech.getRecording(r.id);
+            if (!full || !full.blob) return;
+            Speech.stop();
+            playShadowBlob(full.blob, 'Could not play this saved recording.');
+          } catch (e) { U.toast('Could not play this saved recording.', 'bad'); }
+        });
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'btn btn-ghost btn-sm';
+        del.textContent = 'Delete';
+        del.addEventListener('click', async function () {
+          try {
+            await Speech.deleteRecording(r.id);
+            li.remove();
+            updateShadowSavedCount();
+            if (!E.shSavedList.querySelector('.saved-item')) {
+              E.shSavedList.innerHTML = '<li class="muted small">No saved recordings yet. Press Save after a recording.</li>';
+            }
+            U.toast('Recording deleted.', 'ok');
+          } catch (e) { U.toast('Could not delete the recording.', 'bad'); }
+        });
+        li.appendChild(info);
+        li.appendChild(play);
+        li.appendChild(del);
+        E.shSavedList.appendChild(li);
+      });
+    } catch (e) {
+      E.shSavedList.innerHTML = '<li class="muted small">Saved recordings are unavailable in this browser.</li>';
+    }
+  }
+
+  function exitShadowing(silent) {
+    const s = state.shadowing;
+    if (s && s.recorder && s.recorder.state !== 'inactive') {
+      try { s.recorder.stop(); } catch (e) { /* ignore */ }
+    }
+    stopShadowTracks();
+    if (s) discardShadowRecording();
+    state.shadowing = null;
+    if (!silent) showScreen('welcome');
   }
 
   /* ---------- Results ---------- */
@@ -1203,6 +2764,7 @@
     if (!fc) return;
     const word = fc.list[fc.index];
     Quiz.recordAnswer({ word: word }, correct);
+    questEvent('cards20', 1);
     updateStatsUI();
     if (correct) {
       fc.index += 1;
@@ -1232,7 +2794,8 @@
     E.typeMc.checked = settings.quizTypes.indexOf('mc') !== -1;
     E.typeBlank.checked = settings.quizTypes.indexOf('blank') !== -1;
     E.typeTranslate.checked = settings.quizTypes.indexOf('translate') !== -1;
-    E.selPractice.value = settings.practiceMode === 'paragraph' ? 'paragraph' : 'quiz';
+    E.selPractice.value = ['paragraph', 'shadowing'].indexOf(settings.practiceMode) !== -1
+      ? settings.practiceMode : 'quiz';
     E.selDirection.value = settings.direction;
     E.selParaDir.value = settings.paragraphDirection || 'both';
     E.selParaCount.value = String(settings.paragraphCount || 1);
@@ -1247,9 +2810,35 @@
     U.$$('input[name="sheetMode"]').forEach(function (r) { r.checked = r.value === mode; });
     syncModePanes(mode);
     syncAiUI();
+    syncSpeechUI();
     updateUsageUI();
     updateDataInfo();
     updateControls();
+  }
+
+  function syncSpeechUI() {
+    if (!E.inpAzureKey) return;
+    E.inpAzureKey.value = settings.azureKey || '';
+    E.inpAzureRegion.value = settings.azureRegion || 'southeastasia';
+    E.selAzureVoice.value = settings.azureVoice || 'fr-FR-DeniseNeural';
+    E.chkCloudVoice.checked = settings.cloudVoice !== false;
+    E.speechStatus.textContent = speechReady()
+      ? 'Azure is configured. Use “Test Azure voice” to verify the key and region.'
+      : 'No Azure key yet — speaker icons use your browser voices.';
+    if (E.selScoreEngine) E.selScoreEngine.value = settings.scoreEngine || 'auto';
+    if (E.scoreStatus) {
+      const engine = scoreEngine();
+      const gemini = geminiScoreReady();
+      E.scoreStatus.textContent = engine === 'gemini'
+        ? (gemini
+          ? 'Scoring uses Gemini (‘' + (settings.geminiModel || 'gemini-flash-latest') + '’). Azure speech hours are not used.'
+          : 'Gemini scoring is selected, but there is no Gemini key yet. Add one in Settings → AI.')
+        : engine === 'azure'
+          ? (speechReady()
+            ? 'Scoring uses Azure Pronunciation Assessment. Each check spends a few seconds of your 5 free audio hours.'
+            : 'Azure scoring is selected, but there is no Azure key yet. Add one above, or switch to Gemini.')
+          : 'Recording works now. Add a free Gemini key (Settings → AI) or an Azure key above to get scores.';
+    }
   }
 
   function syncAiUI() {
@@ -1585,12 +3174,26 @@
     const stats = Quiz.getStats();
     parts.push('Answered: ' + stats.answers + (stats.accuracy == null ? '' : ' · accuracy ' + stats.accuracy + '%'));
     parts.push('Cached AI questions: ' + Quiz.cacheCount());
-    parts.push('Browser storage used: ' + (U.lsBytes() / 1024).toFixed(1) + ' KB');
-    E.dataInfo.innerHTML = parts.map(U.esc).join('<br>');
+    parts.push('Browser storage used: ' + (U.lsBytes() / 1024).toFixed(1) + ' KB (localStorage)');
+    E.dataInfo.innerHTML = parts.map(U.esc).join('<br>') +
+      '<br>Saved shadowing recordings: <span id="dataRecordingCount">…</span>';
+    if (window.Speech) {
+      Speech.countRecordings().then(function (n) {
+        const el = U.$('#dataRecordingCount');
+        if (el) el.textContent = String(n);
+      }).catch(function () {
+        const el = U.$('#dataRecordingCount');
+        if (el) el.textContent = 'unavailable';
+      });
+    }
   }
 
   function openSettings(tab) {
     syncSettingsUI();
+    if (E.inpAzureKey) {
+      E.inpAzureKey.type = 'password';
+      E.btnToggleAzureKey.textContent = 'Show';
+    }
     if (tab) {
       U.$$('.tab-btn', E.settingsDialog).forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-tab') === tab); });
       U.$$('.tab-pane', E.settingsDialog).forEach(function (p) { p.classList.toggle('active', p.getAttribute('data-pane') === tab); });
@@ -1601,6 +3204,7 @@
   /* ---------- Events ---------- */
   function bindEvents() {
     E.btnTheme.addEventListener('click', toggleTheme);
+    E.btnTestVoice.addEventListener('click', testVoice);
     E.btnSettings.addEventListener('click', function () { openSettings('ai'); });
     E.btnChangeSource.addEventListener('click', function () { openSettings('sheet'); });
     E.btnHelp.addEventListener('click', function () { E.helpDialog.showModal(); });
@@ -1693,6 +3297,7 @@
     }
     E.btnStart.addEventListener('click', function () { startQuiz(); });
     E.btnStartParagraph.addEventListener('click', startParagraphPractice);
+    E.btnStartShadowing.addEventListener('click', startShadowingPractice);
     E.btnFlashcards.addEventListener('click', startFlashcards);
     E.btnSubmit.addEventListener('click', function () { submitTyped(false); });
     E.btnDontKnow.addEventListener('click', function () { submitTyped(true); });
@@ -1710,6 +3315,38 @@
       const q = currentQuestion();
       if (!q || q.type !== 'paragraph') return;
       U.speak(q.prompt, q.direction === 'fr2vi' ? settings.targetCode : 'vi-VN');
+    });
+    E.btnShadowListen.addEventListener('click', function () {
+      const s = state.shadowing;
+      if (!s) return;
+      stopShadowPlayback();
+      U.speak(s.sentences[s.index], settings.targetCode, parseFloat(E.selShadowSpeed.value) || 0.95);
+    });
+    E.btnShadowTranslate.addEventListener('click', function () {
+      shadowTranslationToggle(E.shTranslation.hidden);
+    });
+    E.btnShadowRecord.addEventListener('click', startShadowRecording);
+    E.btnShadowStop.addEventListener('click', stopShadowRecording);
+    E.btnShadowReplay.addEventListener('click', replayShadowRecording);
+    E.btnShadowSave.addEventListener('click', function () { saveShadowRecording(false); });
+    E.btnShadowDelete.addEventListener('click', deleteShadowRecording);
+    E.btnShadowAssess.addEventListener('click', assessShadowRecording);
+    E.btnShadowRetry.addEventListener('click', startShadowRecording);
+    E.btnShadowNext.addEventListener('click', shadowNextSentence);
+    E.btnShadowExit.addEventListener('click', function () { exitShadowing(false); });
+    E.btnShadowAgain.addEventListener('click', function () { exitShadowing(true); startShadowingPractice(); });
+    E.btnShadowBackSetup.addEventListener('click', function () { exitShadowing(false); });
+    E.btnShadowSaved.addEventListener('click', openShadowSaved);
+    E.btnShadowSavedSetup.addEventListener('click', openShadowSaved);
+    E.btnShadowCloseSaved.addEventListener('click', function () {
+      stopShadowPlayback();
+      E.shadowSavedPanel.hidden = true;
+      if (state.shadowing) {
+        if (state.shadowing.savedReturn === 'summary') E.shadowSummary.hidden = false;
+        else E.shadowCard.hidden = false;
+      } else {
+        showScreen('welcome');
+      }
     });
     E.btnExitQuiz.addEventListener('click', function () {
       if (state.session && state.session.answers.length) showResults();
@@ -1765,6 +3402,8 @@
       settings.geminiKey = Ai.normalizeKey(E.inpGeminiKey.value);
       saveSettings();
       warnKeyShape();
+      if (E.scoreStatus) syncSpeechUI();
+      updateControls();
     }
     E.inpGeminiKey.addEventListener('input', keepGeminiKey);
     E.inpGeminiKey.addEventListener('change', keepGeminiKey);
@@ -1820,6 +3459,85 @@
     E.inpTargetLang.addEventListener('change', function () { settings.targetLang = E.inpTargetLang.value.trim() || 'English'; saveSettings(); });
     E.inpTargetCode.addEventListener('change', function () { settings.targetCode = E.inpTargetCode.value.trim() || 'en-US'; saveSettings(); });
     E.chkAutoPlay.addEventListener('change', function () { settings.autoPlay = E.chkAutoPlay.checked; saveSettings(); });
+
+    // Settings — Speech tab
+    E.inpAzureKey.addEventListener('input', function () {
+      settings.azureKey = Ai.normalizeKey(E.inpAzureKey.value);
+      saveSettings();
+      syncSpeechUI();
+      updateControls();
+    });
+    E.inpAzureKey.addEventListener('change', function () {
+      settings.azureKey = Ai.normalizeKey(E.inpAzureKey.value);
+      saveSettings();
+      syncSpeechUI();
+      updateControls();
+    });
+    E.btnToggleAzureKey.addEventListener('click', function () {
+      const show = E.inpAzureKey.type === 'password';
+      E.inpAzureKey.type = show ? 'text' : 'password';
+      E.btnToggleAzureKey.textContent = show ? 'Hide' : 'Show';
+    });
+    E.inpAzureRegion.addEventListener('change', function () {
+      settings.azureRegion = E.inpAzureRegion.value.trim() || 'southeastasia';
+      saveSettings(); syncSpeechUI(); updateControls();
+    });
+    E.selAzureVoice.addEventListener('change', function () {
+      settings.azureVoice = E.selAzureVoice.value || 'fr-FR-DeniseNeural';
+      saveSettings(); updateVoiceHint();
+    });
+    E.chkCloudVoice.addEventListener('change', function () {
+      settings.cloudVoice = E.chkCloudVoice.checked;
+      saveSettings(); updateVoiceHint(); updateControls();
+    });
+    if (E.selScoreEngine) {
+      E.selScoreEngine.addEventListener('change', function () {
+        settings.scoreEngine = E.selScoreEngine.value || 'auto';
+        saveSettings();
+        syncSpeechUI();
+        updateControls();
+        // Update the hint on the shadowing screen without dropping a recording.
+        if (state.shadowing && !E.screenShadowing.hidden) syncShadowScoreUI();
+      });
+    }
+    if (E.btnScoreAiSettings) {
+      E.btnScoreAiSettings.addEventListener('click', function () {
+        // The button lives inside the open dialog, so switch tabs instead of
+        // calling openSettings() (showModal on an open dialog throws).
+        const aiTab = U.$('.tab-btn[data-tab="ai"]', E.settingsDialog);
+        if (aiTab) aiTab.click();
+      });
+    }
+    E.btnTestAzure.addEventListener('click', function () {
+      if (!Speech.isConfigured()) {
+        U.toast('Paste an Azure Speech key and region first.', 'warn');
+        return;
+      }
+      const old = settings.cloudVoice;
+      settings.cloudVoice = true;
+      Speech.configure(settings);
+      E.btnTestAzure.disabled = true;
+      E.speechStatus.textContent = 'Contacting Azure…';
+      Speech.speak('Bonjour ! La voix Azure fonctionne.', 'fr-FR', 0.95, {
+        noFallback: true,
+        onStart: function () {
+          E.btnTestAzure.disabled = false;
+          settings.cloudVoice = old;
+          Speech.configure(settings);
+          E.chkCloudVoice.checked = old;
+          E.speechStatus.textContent = 'Azure voice is working.';
+          U.toast('Azure voice is working.', 'ok');
+        },
+        onError: function (err) {
+          E.btnTestAzure.disabled = false;
+          settings.cloudVoice = old;
+          Speech.configure(settings);
+          E.chkCloudVoice.checked = old;
+          E.speechStatus.textContent = (err && err.message) || 'Azure voice failed.';
+          U.toast((err && err.message) || 'Azure voice failed.', 'bad', 12000);
+        }
+      });
+    });
     E.btnClearQCache.addEventListener('click', function () {
       Quiz.clearCache(); updateUsageUI(); updateDataInfo();
       U.toast('Question cache cleared.', 'ok');
@@ -1880,8 +3598,18 @@
       updateStatsUI(); updateDataInfo();
       U.toast('Progress reset.', 'ok');
     });
-    E.btnClearAll.addEventListener('click', function () {
-      if (!window.confirm('Delete the API keys, cached deck, progress and question cache from this browser?')) return;
+    E.btnClearRecordings.addEventListener('click', async function () {
+      if (!window.confirm('Delete every saved shadowing recording from this browser?')) return;
+      try {
+        await Speech.clearRecordings();
+        updateShadowSavedCount();
+        updateDataInfo();
+        U.toast('Saved recordings deleted.', 'ok');
+      } catch (e) { U.toast(e.message || 'Could not delete the saved recordings.', 'bad'); }
+    });
+    E.btnClearAll.addEventListener('click', async function () {
+      if (!window.confirm('Delete the API keys, cached deck, progress, question cache and saved recordings from this browser?')) return;
+      try { await Speech.clearRecordings(); } catch (e) { /* ignore */ }
       U.lsKeys().forEach(function (k) {
         try { localStorage.removeItem(k); } catch (e) { /* ignore */ }
       });
@@ -1895,9 +3623,16 @@
         U.$$('.tab-btn', E.settingsDialog).forEach(function (b) { b.classList.toggle('active', b === btn); });
         U.$$('.tab-pane', E.settingsDialog).forEach(function (p) { p.classList.toggle('active', p.getAttribute('data-pane') === tab); });
         if (tab === 'data') updateDataInfo();
+        if (tab === 'speech') syncSpeechUI();
       });
     });
-    E.settingsDialog.addEventListener('close', function () { updateDataInfo(); updateUsageUI(); updateControls(); });
+    E.settingsDialog.addEventListener('close', function () {
+      updateDataInfo(); updateUsageUI(); updateControls(); updateVoiceHint();
+      if (state.shadowing) {
+        updateShadowSavedCount();
+        syncShadowScoreUI();
+      }
+    });
 
     // Overlay cancel
     E.btnCancelLoad.addEventListener('click', function () {
@@ -1948,6 +3683,8 @@
   function init() {
     cacheEls();
     applyTheme();
+    if (window.Speech) Speech.configure(settings);
+    updateVoiceHint();
     U.initVoices();
     if (window.Grammar) {
       Grammar.init({
@@ -1956,6 +3693,7 @@
         isAiReady: aiReady,
         openSettings: function () { openSettings('ai'); },
         onProgress: updateStudyUI,
+        onChapterDone: function () { questEvent('grammar1', 1); },
         onExit: function () { showScreen('welcome'); }
       });
     }
@@ -1966,7 +3704,15 @@
     rememberConn();
     syncSettingsUI();
     bindEvents();
+    bindAuthEvents();
     if (E.fileWarn) E.fileWarn.hidden = window.location.protocol !== 'file:';
+    updateDataInfo();
+    updateStudyUI();
+    initAuth();
+  }
+
+  /** The signed-in app. Runs once, after authentication succeeds. */
+  function bootApp() {
     if (state.deck) {
       const validIds = state.deck.topics.map(function (t) { return t.id; });
       state.selected = validIds.slice();
@@ -1975,13 +3721,12 @@
       updateStatsUI();
       updateControls();
       renderSheetWarnings((state.deck.source && state.deck.source.warnings) || []);
-      showScreen('welcome');
     } else {
       updateControls();
-      showScreen('welcome');
     }
     updateDataInfo();
     updateStudyUI();
+    showScreen('welcome');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

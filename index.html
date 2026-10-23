@@ -11,7 +11,51 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 </head>
-<body>
+<body class="auth-locked">
+
+<!-- ======================= AUTH ======================= -->
+<section id="authScreen" class="auth-screen">
+  <div class="auth-panel">
+    <div class="auth-brand"><span class="auth-logo">📚</span><span>VocabLab</span></div>
+    <h1 id="authTitle">Welcome back</h1>
+    <p id="authSub" class="muted auth-sub">Sign in to keep your daily streak going.</p>
+
+    <form id="authForm" class="auth-form" novalidate>
+      <div class="field" id="authNameField" hidden>
+        <label class="field-label" for="authName">Your name</label>
+        <input id="authName" class="input" type="text" maxlength="60" autocomplete="name" placeholder="Khoi">
+      </div>
+      <div class="field" id="authEmailField">
+        <label class="field-label" for="authEmail">Email</label>
+        <input id="authEmail" class="input" type="email" autocomplete="email" placeholder="you@example.com">
+      </div>
+      <div class="field" id="authPasswordField">
+        <label class="field-label" for="authPassword">Password</label>
+        <input id="authPassword" class="input" type="password" autocomplete="current-password" placeholder="At least 8 characters">
+      </div>
+      <div class="field" id="authCodeField" hidden>
+        <label class="field-label" for="authCode">Recovery code</label>
+        <input id="authCode" class="input" type="text" autocomplete="one-time-code" placeholder="XXXXX-XXXXX" spellcheck="false">
+      </div>
+      <div class="field" id="authNewPasswordField" hidden>
+        <label class="field-label" for="authNewPassword">New password</label>
+        <input id="authNewPassword" class="input" type="password" autocomplete="new-password" placeholder="At least 8 characters">
+      </div>
+      <p id="authError" class="notice notice-issue auth-error" hidden></p>
+      <button id="authSubmit" class="btn btn-primary btn-block auth-submit" type="submit">Sign in</button>
+    </form>
+
+    <div class="auth-links">
+      <button id="authAlt" class="link-btn" type="button">Create an account</button>
+      <span id="authDot" class="auth-dot">·</span>
+      <button id="authToReset" class="link-btn" type="button">Forgot password?</button>
+      <button id="authToSignin" class="link-btn" type="button" hidden>← Back to sign in</button>
+    </div>
+    <p id="authOffline" class="auth-offline" hidden></p>
+    <p class="auth-foot muted tiny">Your name, email, quests and streak live in your own database.
+      Saved recordings stay in this browser.</p>
+  </div>
+</section>
 
 <header class="topbar">
   <div class="brand">
@@ -23,6 +67,7 @@
     <button id="btnHelp" class="icon-btn" title="Help &amp; setup guide" aria-label="Help">?</button>
     <button id="btnTheme" class="icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme">🌙</button>
     <button id="btnSettings" class="icon-btn" title="Settings" aria-label="Settings">⚙️</button>
+    <button id="btnSignOut" class="account-pill" type="button" title="Sign out">Sign out</button>
   </div>
 </header>
 
@@ -71,10 +116,12 @@
       <div class="seg practice-tabs" id="segPractice" data-select="selPractice" role="group" aria-label="Practice mode">
         <button type="button" class="seg-btn is-on" data-value="quiz" aria-pressed="true">Quiz</button>
         <button type="button" class="seg-btn" data-value="paragraph" aria-pressed="false">Paragraph</button>
+        <button type="button" class="seg-btn" data-value="shadowing" aria-pressed="false">Shadowing</button>
       </div>
       <select id="selPractice" hidden>
         <option value="quiz" selected>Quiz</option>
         <option value="paragraph">Paragraph</option>
+        <option value="shadowing">Shadowing</option>
       </select>
 
       <div class="field">
@@ -184,6 +231,14 @@
         <p id="paraStartHint" class="muted small" hidden></p>
         <button id="btnStartParagraph" class="btn btn-primary btn-block" disabled>Start paragraph</button>
       </div>
+
+      <div id="shadowingSetupPane" hidden>
+        <p class="muted small para-intro">AI writes a short paragraph from your words. Practise shadowing it one
+          sentence at a time: listen, record, replay, then check your pronunciation.</p>
+        <p id="shadowStartHint" class="muted small" hidden></p>
+        <button id="btnStartShadowing" class="btn btn-primary btn-block" disabled>Start shadowing</button>
+        <button id="btnShadowSavedSetup" class="btn btn-subtle btn-block" type="button">💾 Saved recordings</button>
+      </div>
     </section>
 
     <section class="card stats-card">
@@ -198,11 +253,46 @@
 
     <!-- Welcome -->
     <section id="screenWelcome" class="screen">
-      <div class="hero">
-        <h1>Learn vocabulary <span class="grad">from your own Google Sheet</span></h1>
-        <p class="muted">Every tab of your sheet becomes a topic. VocabLab turns your words into multiple choice,
-          fill-in-the-blank and translation quizzes — with AI-written questions out of the box (a free model that
-          needs no key), or your own provider if you prefer.</p>
+      <div class="home-head">
+        <div class="home-greet">
+          <p id="homeDate" class="home-date">Today</p>
+          <h1 class="home-hello"><span id="homeGreeting">Good morning,</span> <span id="homeName">there</span><button id="btnEditName" class="icon-btn icon-btn-sm" type="button" title="Edit your name" aria-label="Edit your name">✏️</button></h1>
+          <p class="muted home-sub">Small steps every day — that's how the streak grows.</p>
+          <div id="nameEditor" class="name-editor" hidden>
+            <input id="inpName" class="input input-sm" type="text" maxlength="60" aria-label="Your name">
+            <button id="btnSaveName" class="btn btn-primary btn-sm" type="button">Save</button>
+            <button id="btnCancelName" class="btn btn-ghost btn-sm" type="button">Cancel</button>
+          </div>
+        </div>
+        <div id="streakChip" class="streak-chip" title="Days with all daily quests done">
+          <span class="streak-flame" aria-hidden="true">🔥</span>
+          <span class="streak-main"><strong id="streakCount">0</strong><span class="streak-label">day streak</span></span>
+          <span id="streakWarn" class="streak-warn" hidden title="You missed a day. Finish today's quests to keep the streak.">!</span>
+        </div>
+      </div>
+
+      <section class="card quest-card" id="questCard">
+        <div class="quest-head">
+          <div>
+            <h2>Today's quests</h2>
+            <p id="questSub" class="muted small">Finish all three to earn today's streak.</p>
+          </div>
+          <span id="questCount" class="pill pill-accent">0 / 3</span>
+        </div>
+        <div id="questList" class="quest-list"></div>
+        <div id="questAllDone" class="quest-alldone" hidden>
+          <span class="quest-cheer">🎉</span>
+          <div>
+            <strong>All quests done!</strong>
+            <p id="questStreakLine" class="muted small">Your streak is safe for today.</p>
+          </div>
+        </div>
+        <p id="questOffline" class="muted tiny" hidden>Offline — progress is saved here and will sync when you're back.</p>
+      </section>
+
+      <div class="home-tools">
+        <button id="btnTestVoice" class="btn btn-ghost btn-sm" type="button" title="Play a short French test phrase">🔊 Test speaker</button>
+        <span id="voiceHint" class="muted tiny">Uses your browser's system voices</span>
       </div>
 
       <div class="quick-cards">
@@ -331,6 +421,103 @@
       </div>
     </section>
 
+    <!-- Shadowing -->
+    <section id="screenShadowing" class="screen shadow-screen" hidden>
+      <div class="quiz-top">
+        <div class="progress"><div id="shProgressBar" class="progress-fill" style="width:0%"></div></div>
+        <div class="quiz-top-row">
+          <span id="shProgressText" class="muted small">Sentence 1 of 1</span>
+          <span class="quiz-chips">
+            <button id="btnShadowSaved" class="btn btn-ghost btn-xs" type="button">💾 Saved <span id="shSavedCount">0</span></button>
+            <button id="btnShadowExit" class="btn btn-ghost btn-xs" title="End shadowing">✕ End</button>
+          </span>
+        </div>
+      </div>
+
+      <div id="shadowCard" class="card shadow-card">
+        <div class="qmeta">
+          <span class="pill pill-accent">Shadowing</span>
+          <span id="shEnginePill" class="pill pill-muted">Pronunciation</span>
+        </div>
+        <p id="shSentence" class="sh-sentence" lang="fr"></p>
+        <div class="sh-tools">
+          <button id="btnShadowListen" class="btn btn-subtle btn-sm" type="button">🔊 Listen</button>
+          <label class="sh-speed">Speed
+            <select id="selShadowSpeed" class="input input-sm">
+              <option value="0.8">Slow</option>
+              <option value="0.95" selected>Normal</option>
+              <option value="1.1">Fast</option>
+            </select>
+          </label>
+          <button id="btnShadowTranslate" class="btn btn-ghost btn-sm" type="button">👁 Show translation</button>
+        </div>
+        <div id="shTranslation" class="sh-translation" hidden></div>
+
+        <div class="sh-record">
+          <div class="sh-record-head">
+            <span id="shRecordStatus" class="muted small">Ready to record</span>
+            <span id="shTimer" class="sh-timer">0:00</span>
+          </div>
+          <div class="sh-record-actions">
+            <button id="btnShadowRecord" class="btn btn-primary" type="button">🎙 Record</button>
+            <button id="btnShadowStop" class="btn btn-subtle" type="button" hidden>⏹ Stop</button>
+            <button id="btnShadowReplay" class="btn btn-ghost" type="button" hidden>▶ Replay</button>
+            <button id="btnShadowSave" class="btn btn-subtle" type="button" hidden>💾 Save</button>
+            <button id="btnShadowDelete" class="btn btn-ghost" type="button" hidden>Delete</button>
+          </div>
+          <p id="shAudioMeta" class="muted tiny" hidden></p>
+        </div>
+
+        <button id="btnShadowAssess" class="btn btn-primary btn-block" type="button" disabled>Check pronunciation</button>
+        <p id="shAssessHint" class="muted small center"></p>
+
+        <div id="shResult" class="sh-result" hidden>
+          <div class="sh-result-head">
+            <div class="sh-score"><strong id="shScoreBig">0</strong><small>/100</small></div>
+            <div>
+              <p id="shVerdict" class="pf-title"></p>
+              <p class="sh-source-line"><span id="shScoreSource" class="pill pill-muted">AI estimate</span></p>
+              <p id="shRecognized" class="muted small"></p>
+            </div>
+          </div>
+          <div class="sh-metrics">
+            <div><span>Accuracy</span><strong id="shAccuracy">–</strong></div>
+            <div><span>Fluency</span><strong id="shFluency">–</strong></div>
+            <div><span>Completeness</span><strong id="shCompleteness">–</strong></div>
+          </div>
+          <div id="shWords" class="sh-words"></div>
+          <div id="shTips" class="sh-tips"></div>
+          <div class="btn-row">
+            <button id="btnShadowRetry" class="btn btn-subtle" type="button">🎙 Record again</button>
+            <button id="btnShadowNext" class="btn btn-primary" type="button">Next sentence</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="shadowSummary" class="card shadow-summary" hidden>
+        <h2>Shadowing complete</h2>
+        <p id="shSummaryText" class="muted"></p>
+        <div class="sh-summary-stats">
+          <div><span>Average</span><strong id="shSummaryAvg">–</strong></div>
+          <div><span>Scored sentences</span><strong id="shSummaryCount">0</strong></div>
+        </div>
+        <ul id="shSummaryList" class="mistake-list"></ul>
+        <div class="btn-row">
+          <button id="btnShadowAgain" class="btn btn-primary" type="button">New shadowing</button>
+          <button id="btnShadowBackSetup" class="btn btn-ghost" type="button">← Setup</button>
+        </div>
+      </div>
+
+      <div id="shadowSavedPanel" class="card" hidden>
+        <div class="card-head">
+          <h2>Saved recordings</h2>
+          <button id="btnShadowCloseSaved" class="icon-btn" type="button" aria-label="Close">✕</button>
+        </div>
+        <p class="muted small">These recordings are stored in this browser only. Play or delete them here.</p>
+        <ul id="shSavedList" class="saved-list"></ul>
+      </div>
+    </section>
+
     <!-- Results -->
     <section id="screenResults" class="screen" hidden>
       <div class="card results-card">
@@ -398,6 +585,23 @@
   </main>
 </div>
 
+<!-- ======================= RECOVERY CODE DIALOG ======================= -->
+<dialog id="recoveryDialog" class="dialog recovery-dialog">
+  <div class="dialog-head">
+    <h2>Save your recovery code</h2>
+  </div>
+  <div class="recovery-body">
+    <p class="muted small">This is the only time the code is shown. Write it down or copy it somewhere safe.
+      You need it, together with your email, to set a new password.</p>
+    <div id="recoveryCode" class="recovery-code">XXXXX-XXXXX</div>
+    <div class="btn-row">
+      <button id="btnCopyRecovery" class="btn btn-subtle" type="button">📋 Copy code</button>
+      <button id="btnRecoveryDone" class="btn btn-primary" type="button">I saved it</button>
+    </div>
+    <p id="recoveryHint" class="muted tiny">Passwords cannot be recovered without this code.</p>
+  </div>
+</dialog>
+
 <!-- ======================= SETTINGS DIALOG ======================= -->
 <dialog id="settingsDialog" class="dialog">
   <form method="dialog" class="dialog-head">
@@ -406,6 +610,7 @@
   </form>
   <div class="tabs" role="tablist">
     <button class="tab-btn active" data-tab="ai" role="tab">✨ AI</button>
+    <button class="tab-btn" data-tab="speech" role="tab">🎙 Speech</button>
     <button class="tab-btn" data-tab="sheet" role="tab">📊 Google Sheet</button>
     <button class="tab-btn" data-tab="data" role="tab">🗄 Data</button>
   </div>
@@ -502,6 +707,63 @@
     <label class="switch-row"><input id="chkAutoPlay" type="checkbox" checked> Auto-play pronunciation when a word is revealed</label>
   </div>
 
+  <!-- Speech tab -->
+  <div class="tab-pane" data-pane="speech">
+    <p class="muted small"><strong>Azure Speech</strong> gives you a natural French voice in every browser.
+      Create a free Azure Speech resource, then paste its key and region here. The free tier includes 500K
+      characters of voice and 5 audio hours of speech-to-text per month. Text is sent to Azure for the cloud
+      voice; VocabLab itself never uploads or stores your audio.</p>
+    <div class="field">
+      <label class="field-label" for="inpAzureKey">Azure Speech key</label>
+      <div class="input-row">
+        <input id="inpAzureKey" class="input" type="password" placeholder="Paste the key from your Azure Speech resource" autocomplete="off" spellcheck="false">
+        <button id="btnToggleAzureKey" class="btn btn-subtle btn-sm" type="button">Show</button>
+      </div>
+      <p class="muted small">Stored only in this browser. Get it at
+        <a href="https://portal.azure.com/#create/Microsoft.CognitiveServicesSpeechServices" target="_blank" rel="noopener">Azure Portal → Speech</a>
+        (free F0 tier).</p>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label" for="inpAzureRegion">Region</label>
+        <input id="inpAzureRegion" class="input" type="text" placeholder="southeastasia" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label class="field-label" for="selAzureVoice">French voice</label>
+        <select id="selAzureVoice" class="input">
+          <option value="fr-FR-DeniseNeural">Denise — France, female</option>
+          <option value="fr-FR-HenriNeural">Henri — France, male</option>
+          <option value="fr-FR-EloiseNeural">Eloise — France, young</option>
+          <option value="fr-FR-VivienneMultilingualNeural">Vivienne — multilingual</option>
+        </select>
+      </div>
+    </div>
+    <label class="switch-row"><input id="chkCloudVoice" type="checkbox" checked> Use the Azure voice for every speaker icon</label>
+    <div class="input-row">
+      <button id="btnTestAzure" class="btn btn-subtle" type="button">Test Azure voice</button>
+      <span id="speechStatus" class="muted small"></span>
+    </div>
+    <p class="muted small" id="speechLimitNote">Azure scoring uses accuracy, fluency, completeness and
+      word-level errors, and spends your 5 free speech-to-text hours. Azure does not provide a separate French
+      prosody score.</p>
+
+    <hr class="sep">
+    <h3>Pronunciation scoring</h3>
+    <div class="field">
+      <label class="field-label" for="selScoreEngine">Who checks your recording</label>
+      <select id="selScoreEngine" class="input">
+        <option value="auto">Automatic — Gemini when a key exists, otherwise Azure</option>
+        <option value="gemini">Gemini — free AI estimate, no Azure speech hours</option>
+        <option value="azure">Azure — real word-level scores, uses the 5 free hours</option>
+      </select>
+      <p class="muted small" id="scoreStatus"></p>
+      <p class="muted small">Gemini scoring sends the short WAV clip to Google and returns an estimate; free-tier
+        audio may be used to improve Google’s products. Azure returns real pronunciation scores but consumes
+        speech-to-text minutes. The recording is never stored by VocabLab either way.</p>
+      <button id="btnScoreAiSettings" class="btn btn-ghost btn-sm" type="button">Open AI settings for the Gemini key</button>
+    </div>
+  </div>
+
   <!-- Sheet tab -->
   <div class="tab-pane" data-pane="sheet">
     <div id="fileWarn" class="notice" hidden>
@@ -590,14 +852,20 @@
 
   <!-- Data tab -->
   <div class="tab-pane" data-pane="data">
+    <p id="accountInfo" class="muted small"></p>
     <p id="dataInfo" class="muted small"></p>
     <div class="btn-col">
       <button id="btnClearDeck" class="btn btn-subtle" type="button">Forget cached vocabulary</button>
       <button id="btnClearMastery" class="btn btn-subtle" type="button">Reset progress &amp; stats</button>
-      <button id="btnClearAll" class="btn btn-danger-ghost" type="button">Clear everything (keys, deck, progress)</button>
+      <button id="btnClearRecordings" class="btn btn-subtle" type="button">Delete saved recordings</button>
+      <button id="btnClearAll" class="btn btn-danger-ghost" type="button">Clear everything (keys, deck, progress, recordings)</button>
     </div>
-    <p class="muted small">All data lives in this browser's localStorage. Nothing is sent anywhere except your own
-      Google Sheet and the AI provider you configure, using your key.</p>
+    <p class="muted small">Your account (name, email, password hash, daily quests and streak) is stored in the MongoDB
+      Atlas database you configured; sign out from the top bar. Keys, settings, per-word progress, grammar progress and
+      the cached deck live in this browser's localStorage. Saved recordings use IndexedDB because audio is too large
+      for localStorage. <strong>Clear everything</strong> wipes only this browser — it does not delete your account,
+      quests or streak. The other network calls are your Google Sheet, the AI provider you configure, Gemini or Azure
+      Speech for scoring, and Azure Speech for the cloud voice.</p>
   </div>
 </dialog>
 
@@ -608,6 +876,23 @@
     <button class="icon-btn" value="close" aria-label="Close">✕</button>
   </form>
   <div class="help-body">
+    <h3>Account &amp; daily quests</h3>
+    <p class="muted small">VocabLab opens on a sign-in screen. Create an account with a name, email and a password of at
+      least 8 characters. Your name, daily quests and streak sync to the MongoDB Atlas database configured for this
+      deployment; the deck, word progress, grammar progress, settings and recordings stay in this browser. You can still
+      use the app offline after signing in: quest progress is cached and sent when the connection returns.</p>
+    <p class="muted small"><strong>Recovery code:</strong> at signup you get a one-time code. It is shown once, so save
+      it. To reset a forgotten password, choose <em>Forgot password?</em> and enter your email, that code and a new
+      password. The code is rotated after a successful reset. There is no email reset link and no other recovery path.</p>
+    <p class="muted small"><strong>Three quests a day</strong> — one quiz (multiple choice or mixed), one production
+      (paragraph or shadowing) and one review (flashcards or grammar). The set is picked deterministically for your
+      account and today's local date, so a reload never rerolls it, and it refreshes at your local midnight (or when
+      you return to the tab). <strong>Start</strong> opens that exact practice. Bars fill as you answer, record or
+      finish a lesson, and progress accumulates across sessions.</p>
+    <p class="muted small"><strong>Streak:</strong> finish all three quests to add a day. Missing one day keeps the
+      streak with a <strong>!</strong> warning; finish today and it continues. Missing a second day resets it to 0
+      (your best streak is kept).</p>
+
     <h3>1 · Sheet layout</h3>
     <p class="muted small">One tab per topic. First row = headers (optional). VocabLab auto-detects these columns
       (English or Vietnamese names):</p>
@@ -658,8 +943,8 @@
       <strong>Simple</strong> (the default) uses a free model that needs <em>no account and no key</em>: pick a
       model and start a quiz. It is a shared public service limited to one request every 30 seconds, so VocabLab
       batches up to 20 words per request and waits for the next free slot when it has to (a paragraph costs one
-      request to write and one to correct). For heavy use, <strong>Advanced</strong> with your own key has no such
-      queue.
+      request to write and one per correction check, up to the retry limit). For heavy use, <strong>Advanced</strong>
+      with your own key has no such queue.
       <strong>Advanced</strong> is for your own provider and key — the menu is the whole list, not a choice between
       “Gemini” and “other”. <strong>Google Gemini</strong> is the first one (paste a free
       <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Gemini API key</a>), and all the rest
@@ -694,10 +979,37 @@
       only a guide to the meaning, never the answer you had to produce. The score still reflects the source's
       ideas and the required words: leaving out an idea or a required word costs points even when the grammar
       is fine. The feedback shows your text, the fixed
-      version, one short note per actual change, and which sheet words you used. This exercise is AI-only: if AI
-      is not set up, <strong>Start paragraph</strong> is disabled and says why, and a failed generation
-      is reported in Settings → AI rather than replaced by another question type. The quiz Generator setting does
-      not affect paragraph practice — it always uses AI.</p>
+      version, one short note per actual change, and which sheet words you used. When the AI finds something, the
+      paragraph stays editable: press <strong>Apply fixes and edit</strong>, change anything you like, then
+      <strong>Check again</strong>. Each paragraph gets at most three AI checks. The attempt is only scored when
+      the AI says it is all good; after the third check, <strong>Finish anyway</strong> is offered (using the last
+      score), and the feedback shows each attempt's score. This exercise is
+      AI-only: if AI is not set up, <strong>Start paragraph</strong> is disabled and says why, and a failed
+      generation is reported in Settings → AI rather than replaced by another question type. The quiz Generator
+      setting does not affect paragraph practice — it always uses AI.</p>
+
+    <h3>3c · Shadowing with pronunciation feedback</h3>
+    <p class="muted small">Shadowing is its own practice mode. Open <strong>Shadowing</strong>, press
+      <strong>Start shadowing</strong>, and the AI writes a short French paragraph from your sheet words. Listen to
+      one sentence, then press <strong>Record</strong> and say it yourself. Replay it as often as you like; the
+      translation stays hidden until you press <strong>Show translation</strong>. Press
+      <strong>Check pronunciation</strong> and the scoring engine you chose in Settings → Speech listens to that one
+      recording. You get an overall score plus accuracy, fluency and completeness, word-level highlights, and two
+      short practice tips. Record again after listening, then move to the next sentence. The summary shows your
+      average and each sentence's score.</p>
+    <p class="muted small"><strong>Gemini scoring</strong> (the default when a Gemini key exists) sends a short WAV
+      clip to Google's free tier and asks the model to transcribe and judge it. It is an <em>AI estimate</em>, not a
+      certified test, and it uses no Azure speech hours. <strong>Azure scoring</strong> returns real word-level
+      pronunciation assessment but consumes your 5 free speech-to-text hours. Switch engines with
+      <strong>Settings → Speech → Pronunciation scoring</strong>.</p>
+    <p class="muted small">Recording works in every current browser without a key. <strong>Azure Speech</strong>
+      adds the natural cloud voice: create a free Speech resource in Azure, then paste its key and region in
+      Settings → Speech (free F0 includes 5 audio hours and 500K characters a month; a card may be required by
+      Azure). The key stays in this browser. A recording is kept in memory only until you press
+      <strong>Save</strong>; saved recordings go to this browser's IndexedDB and are never uploaded to this app's
+      server or database. Leaving shadowing, moving to the next sentence, finishing, starting another recording, or
+      closing the tab deletes anything unsaved. Gemini or Azure receives the audio only when you press Check pronunciation
+      (Azure also receives text for the cloud voice).</p>
 
     <h3>4 · Grammar: French tenses</h3>
     <p class="muted small">The <strong>Study</strong> card opens an 18-chapter French tenses course based on the
@@ -728,6 +1040,24 @@
         cover the rest meanwhile. In Simple, the free shared service can be busy — retry, or switch to Advanced.</li>
       <li><strong>Network errors</strong> — if you opened the file directly (<code>file://</code>), try serving the folder
         (<code>python3 -m http.server</code>) or hosting it. Some browsers restrict cross-site requests from local files.</li>
+      <li><strong>Speaker icons are silent</strong> — use the <strong>Test speaker</strong> button on the home screen;
+        it reports how many browser voices are available. On Linux, Chrome does not use speech-dispatcher; use
+        Firefox and restart it after starting speech-dispatcher. If you configured Azure, the same button tests the
+        neural voice and opens Settings → Speech with the exact error if the key, region or network is wrong.</li>
+      <li><strong>Azure says the key or region is wrong</strong> — the key and region must belong to the same Azure
+        Speech resource. Copy the region from the resource's Keys and Endpoint page (for example
+        <code>southeastasia</code>), not the resource group location. A new free F0 resource can take a minute to
+        become active.</li>
+      <li><strong>Pronunciation scoring is disabled</strong> — recording still works without a scoring key, but
+        scores need a free Gemini key in Settings → AI or an Azure key in Settings → Speech. If the button says you
+        have no microphone, allow microphone permission for this site; browsers also require <code>https://</code>
+        or <code>localhost</code> for recording.</li>
+      <li><strong>Gemini scoring fails</strong> — check the Gemini key in Settings → AI (“Test key &amp; load
+        models”). Free-tier audio limits reset within a minute; a 403 can also mean audio input is not available
+        for that key's region, in which case switch Pronunciation scoring to Azure.</li>
+      <li><strong>Shadowing is greyed out</strong> — <strong>Start shadowing</strong> needs AI to write the paragraph
+        (Simple mode is enough). A scoring key is only needed after you record: Gemini in Settings → AI, or Azure in
+        Settings → Speech.</li>
     </ul>
   </div>
 </dialog>
@@ -750,6 +1080,9 @@
 <script src="js/ai.js"></script>
 <script src="js/generator.js"></script>
 <script src="js/quiz.js"></script>
+<script src="js/speech.js"></script>
+<script src="js/quests.js"></script>
+<script src="js/account.js"></script>
 <script src="js/grammar-data.js"></script>
 <script src="js/grammar.js"></script>
 <script src="js/app.js"></script>

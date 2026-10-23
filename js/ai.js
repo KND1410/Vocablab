@@ -716,9 +716,10 @@
 
   function langName(code, fallback) {
     const s = String(code || '').toLowerCase();
-    if (s === 'vi' || s === 'vietnamese') return 'Vietnamese';
-    if (s === 'fr' || s === 'french') return 'French';
-    if (s === 'en' || s === 'english') return 'English';
+    // Accept both a language name and a BCP-47 code (“fr” / “fr-FR”).
+    if (s.indexOf('vi') === 0) return 'Vietnamese';
+    if (s.indexOf('fr') === 0) return 'French';
+    if (s.indexOf('en') === 0) return 'English';
     return code || fallback;
   }
 
@@ -1078,6 +1079,259 @@
       throw err;
     }
     return { text: text, usage: (res && res.usage) || null };
+  }
+
+  /* ---------- Pronunciation scoring from audio ---------- */
+  /* Gemini Flash accepts short audio clips, so a learner's recording can be
+     judged without spending Azure's speech-to-text allowance. The model hears
+     the clip and estimates a score — not phoneme-level like Azure — so the UI
+     labels the result as an AI estimate. Free-tier audio is sent to Google. */
+
+  const SPEECH_SHAPE = '{"transcript":"...","score":0,"accuracy":0,"fluency":0,' +
+    '"completeness":0,"words":[{"word":"...","accuracy":0,' +
+    '"errorType":"None|Mispronunciation|Omission|Insertion"}],"tips":"..."}';
+
+  const SPEECH_SCHEMA = {
+    type: 'object',
+    properties: {
+      transcript: { type: 'string' },
+      score: { type: 'integer' },
+      accuracy: { type: 'integer' },
+      fluency: { type: 'integer' },
+      completeness: { type: 'integer' },
+      words: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            word: { type: 'string' },
+            accuracy: { type: 'integer' },
+            errorType: { type: 'string', enum: ['None', 'Mispronunciation', 'Omission', 'Insertion'] }
+          },
+          required: ['word', 'accuracy', 'errorType']
+        }
+      },
+      tips: { type: 'string' }
+    },
+    required: ['transcript', 'score', 'accuracy', 'fluency', 'completeness', 'words', 'tips'],
+    propertyOrdering: ['transcript', 'score', 'accuracy', 'fluency', 'completeness', 'words', 'tips']
+  };
+
+  function buildSpeechPrompt(cfg) {
+    const reference = String(cfg.reference || '').trim();
+    const lang = langName(cfg.lang, 'French');
+    const system = 'You are a strict but encouraging ' + lang + ' pronunciation examiner. ' +
+      'You judge only the audio you were given and never assume the learner said the reference correctly.';
+    const user =
+      'The attached clip is one learner reading this ' + lang + ' sentence:\n' +
+      '“' + reference + '”\n\n' +
+      '1. Transcribe exactly what you hear — do not correct it towards the sentence.\n' +
+      '2. Judge how clearly the learner pronounced it.\n' +
+      'Calibration: 90+ only for a clear, natural reading with almost no accent; 75–89 clear but ' +
+      'noticeably accented; 60–74 understandable with effort; below 60 hard to follow. Do not inflate scores.\n' +
+      'Accuracy covers individual sounds and word stress; fluency covers rhythm, pauses and hesitation; ' +
+      'completeness compares how many reference words were actually said.\n' +
+      '3. List every reference word in order with a 0–100 accuracy and an errorType of ' +
+      '"None", "Mispronunciation", "Omission" or "Insertion". Mark omitted words "Omission".\n' +
+      '4. Give at most two short, concrete practice tips in English, no markdown.\n' +
+      'Reply with JSON only: ' + SPEECH_SHAPE;
+    return { system: system, user: user };
+  }
+
+  function speechScore(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const n = Math.round(Number(value));
+    if (!isFinite(n)) return null;
+    return Math.max(0, Math.min(100, n));
+  }
+
+  /** Turn one model reply into the shape the shadowing UI already renders. */
+  function normalizeSpeechResult(raw, reference) {
+    raw = raw || {};
+    const transcript = String(raw.transcript || '').replace(/\s+/g, ' ').trim();
+    if (!transcript) {
+      const err = new Error('No speech was heard in the recording');
+      err.empty = true;
+      err.friendly = 'Gemini could not hear any speech in that recording. Record a little closer to the ' +
+        'microphone, for the whole sentence, and try again.';
+      throw err;
+    }
+    const words = (Array.isArray(raw.words) ? raw.words : []).map(function (w) {
+      if (!w) return null;
+      return {
+        word: String(w.word || '').trim(),
+        accuracy: speechScore(w.accuracy),
+        errorType: String(w.errorType || '').trim() || 'None'
+      };
+    }).filter(function (w) { return w && w.word; }).slice(0, 80);
+
+    const accuracy = speechScore(raw.accuracy);
+    const fluency = speechScore(raw.fluency);
+    const completeness = speechScore(raw.completeness);
+    const overall = speechScore(raw.score);
+    const known = [accuracy, fluency, completeness].filter(function (v) { return v != null; });
+    const fallback = known.length
+      ? Math.round(known.reduce(function (sum, v) { return sum + v; }, 0) / known.length)
+      : (overall == null ? 0 : overall);
+    const score = overall == null ? fallback : overall;
+    return {
+      source: 'gemini',
+      score: score,
+      accuracy: accuracy == null ? score : accuracy,
+      fluency: fluency == null ? score : fluency,
+      completeness: completeness == null ? score : completeness,
+      recognized: transcript,
+      words: words,
+      tips: String(raw.tips || '').trim(),
+      reference: String(reference || '')
+    };
+  }
+
+  async function speechHttpError(res) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = (body && body.error && body.error.message) || '';
+    } catch (e) { /* ignore */ }
+    const err = new Error('Gemini pronunciation check failed (' + res.status + ')' + (detail ? ' — ' + detail : ''));
+    err.status = res.status;
+    if (res.status === 400 && /API key not valid/i.test(detail)) {
+      err.friendly = 'That Gemini API key is not valid. Create/copy one at aistudio.google.com/apikey.';
+    } else if (res.status === 401 || res.status === 403) {
+      err.friendly = 'Gemini denied the pronunciation check (403). The key may be restricted, or audio input ' +
+        'may not be available for this key’s region.';
+    } else if (res.status === 404) {
+      err.friendly = 'The Gemini model used for scoring was not found. Pick another model in Settings → AI.';
+    } else if (res.status === 429) {
+      err.friendly = 'Gemini’s free-tier limit is reached (429). Wait a minute and try again, or switch ' +
+        'Pronunciation scoring to Azure in Settings → Speech.';
+    } else if (res.status === 413) {
+      err.friendly = 'That recording is too large for Gemini. Keep sentences short (under a minute) and try again.';
+    } else if (res.status === 400) {
+      err.friendly = 'Gemini rejected the audio request. Use a model that accepts audio (for example ' +
+        'gemini-flash-latest) in Settings → AI, then try again.';
+    } else if (res.status >= 500) {
+      err.friendly = 'Gemini had a server error (' + res.status + '). Try again shortly.';
+    } else {
+      err.friendly = err.message;
+    }
+    return err;
+  }
+
+  async function geminiSpeechCall(cfg) {
+    const url = BASE + '/' + normalizeModelPath(cfg.model || 'gemini-flash-latest') + ':generateContent';
+    const generationConfig = {
+      temperature: 0.15,
+      maxOutputTokens: 1024,
+      responseMimeType: 'application/json'
+    };
+    if (cfg.firstPass) {
+      generationConfig.responseSchema = SPEECH_SCHEMA;
+      // Flash models think before answering unless told not to; a scoring
+      // reply is short, so skipping that keeps latency and tokens down.
+      generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 60000) : null;
+    if (ctrl && cfg.signal) {
+      if (cfg.signal.aborted) ctrl.abort();
+      else cfg.signal.addEventListener('abort', function () { ctrl.abort(); });
+    }
+    let res;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': normalizeKey(cfg.key) },
+        body: JSON.stringify({
+          systemInstruction: cfg.built.system ? { parts: [{ text: cfg.built.system }] } : undefined,
+          contents: [{
+            role: 'user',
+            parts: [
+              { inlineData: { mimeType: cfg.mimeType || 'audio/wav', data: cfg.audio } },
+              { text: cfg.built.user }
+            ]
+          }],
+          generationConfig: generationConfig,
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }
+          ]
+        }),
+        signal: ctrl ? ctrl.signal : undefined
+      });
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        const err = new Error('The Gemini pronunciation check timed out.');
+        err.friendly = 'The Gemini pronunciation check took too long. Check the network and try again.';
+        throw err;
+      }
+      const err = new Error('Network error while contacting Gemini');
+      err.friendly = 'Could not reach Gemini for the pronunciation check. Check the internet connection, or ' +
+        'switch Pronunciation scoring to Azure in Settings → Speech.';
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (!res.ok) throw await speechHttpError(res);
+
+    const data = await res.json();
+    usageBump(1);
+    const cand = (data.candidates || [])[0];
+    const parts = (cand && cand.content && cand.content.parts) || [];
+    const text = parts.map(function (p) { return p && p.text ? p.text : ''; }).join('');
+    if (!text) {
+      const reason = (data.promptFeedback && data.promptFeedback.blockReason) || (cand && cand.finishReason) || 'unknown';
+      const err = new Error('Gemini returned no pronunciation result (' + reason + ')');
+      err.empty = true;
+      err.friendly = 'Gemini returned no result (' + reason + '). Try again with a shorter, clearer recording.';
+      throw err;
+    }
+    return { text: text };
+  }
+
+  /**
+   * Score one recording with Gemini's audio input.
+   * cfg: { key, model, audio (base64), mimeType, reference, lang, signal }
+   * Returns the same shape as Azure's assessment, plus source and tips.
+   */
+  async function assessSpeech(cfg) {
+    cfg = cfg || {};
+    if (!cfg.audio) throw new Error('Record a sentence before asking for a score.');
+    if (!normalizeKey(cfg.key)) {
+      const err = new Error('Gemini key missing');
+      err.friendly = 'Add a free Gemini key in Settings → AI to score recordings with AI. ' +
+        'You can also switch Pronunciation scoring to Azure in Settings → Speech.';
+      throw err;
+    }
+    const built = buildSpeechPrompt(cfg);
+    let lastErr = null;
+    for (let pass = 0; pass < 2; pass++) {
+      try {
+        const res = await geminiSpeechCall({
+          key: cfg.key, model: cfg.model, audio: cfg.audio, mimeType: cfg.mimeType,
+          lang: cfg.lang, built: built, signal: cfg.signal, firstPass: pass === 0
+        });
+        let raw = null;
+        try { raw = parseJsonLoose(res.text); } catch (e) { /* handled below */ }
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+          const err = new Error('Gemini answered but not in the scoring format.');
+          err.friendly = 'Gemini answered, but not in the shape VocabLab needs for a score. ' +
+            'Pick another Gemini model in Settings → AI and try again.';
+          throw err;
+        }
+        return normalizeSpeechResult(raw, cfg.reference);
+      } catch (e) {
+        if (e && e.name === 'AbortError') throw e;
+        lastErr = e;
+        // A 400 usually means this model rejects the response schema or the
+        // no-thinking flag; retry once with a plain JSON request.
+        if (e && e.status === 400 && pass === 0) continue;
+        throw e;
+      }
+    }
+    throw lastErr || new Error('Gemini could not score the recording.');
   }
 
   /* ---------- Usage counter ---------- */
@@ -1497,6 +1751,9 @@
     generateParagraph: generateParagraph,
     correctParagraph: correctParagraph,
     askTutor: askTutor,
+    assessSpeech: assessSpeech,
+    buildSpeechPrompt: buildSpeechPrompt,
+    normalizeSpeechResult: normalizeSpeechResult,
     buildParagraphPrompt: buildParagraphPrompt,
     buildCorrectionPrompt: buildCorrectionPrompt,
     normalizeParagraph: normalizeParagraph,

@@ -8,8 +8,10 @@ import vm from 'node:vm';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const require = createRequire(import.meta.url);
 
 /* ---------- sandbox ---------- */
 const store = new Map();
@@ -19,8 +21,7 @@ Object.defineProperties(storage, {
   setItem: { value: (k, v) => { store.set(k, String(v)); Object.defineProperty(storage, k, { value: String(v), enumerable: true, configurable: true, writable: true }); } },
   removeItem: { value: (k) => { store.delete(k); delete storage[k]; } }
 });
-/* ---------- fake fetch for link-loading tests ---------- */
-function fakeResponse(body, status = 200, headers) {
+/* ---------- fake fetch for link-loading tests ---------- */function fakeResponse(body, status = 200, headers) {
   const text = typeof body === 'string' ? body : '';
   const bytes = body instanceof Uint8Array ? body : null;
   const head = headers || {};
@@ -78,6 +79,18 @@ const sandbox = {
   document: fakeDocument,
   TextDecoder,
   TextEncoder,
+  Blob,
+  FileReader: class FakeFileReader {
+    readAsDataURL(blob) {
+      blob.arrayBuffer().then((buf) => {
+        this.result = 'data:' + (blob.type || '') + ';base64,' + Buffer.from(buf).toString('base64');
+        if (this.onload) this.onload();
+      }, (err) => {
+        this.error = err;
+        if (this.onerror) this.onerror(err);
+      });
+    }
+  },
   DecompressionStream,
   Math, Date, JSON, Object, Array, String, Number, Boolean, RegExp, Set, Map, Promise, Error,
   URL // browsers always have it; ai.js uses it to name the failing host
@@ -86,10 +99,10 @@ sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
 for (const f of ['js/util.js', 'js/demo.js', 'js/sources.js', 'js/ai.js', 'js/generator.js', 'js/quiz.js',
-  'js/grammar-data.js', 'js/grammar.js']) {
+  'js/speech.js', 'js/quests.js', 'js/grammar-data.js', 'js/grammar.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sandbox, { filename: f });
 }
-const { Util, Sources, Gen, Quiz, Ai, DemoDeck, GrammarData, Grammar } = sandbox;
+const { Util, Sources, Gen, Quiz, Ai, DemoDeck, Speech, Quests, GrammarData, Grammar } = sandbox;
 
 /* ---------- tiny test harness ---------- */
 let passed = 0, failed = 0;
@@ -129,6 +142,150 @@ ok(!Util.tooSimilarMeaning('có tác động đến', 'gây hậu quả xấu (�
 ok(!Util.tooSimilarMeaning('nhà ga', 'nhà hàng'), 'one shared word is not similarity');
 ok(!Util.tooSimilarMeaning('le taux de chômage', "le taux d'intérêt"), 'French glue words ignored');
 ok(!Util.tooSimilarMeaning('', 'nhà ga'), 'missing meaning never clashes');
+
+/* ---------- speech helpers ---------- */
+section('Speech helpers');
+eq(Speech.splitSentences('Bonjour. Comment ça va ? Très bien !'), ['Bonjour.', 'Comment ça va ?', 'Très bien !'],
+  'splitSentences keeps French punctuation');
+eq(Speech.splitSentences('  Une seule phrase sans point  '), ['Une seule phrase sans point'],
+  'splitSentences keeps a final sentence without punctuation');
+Speech.configure({ azureKey: 'abc', azureRegion: 'francecentral', azureVoice: 'fr-FR-HenriNeural', cloudVoice: true });
+ok(Speech.isConfigured(), 'Azure is configured when key + region are present');
+eq(Speech.voiceFor('fr-FR'), 'fr-FR-HenriNeural', 'the chosen French voice is used for French');
+eq(Speech.voiceFor('vi-VN'), 'vi-VN-HoaiMyNeural', 'Vietnamese gets a Vietnamese voice');
+eq(Speech.voiceFor('en-US'), 'en-US-JennyNeural', 'English gets an English voice');
+eq(Speech.voiceFor('de-DE'), '', 'other target languages let Azure choose a native default');
+Speech.configure({ azureKey: 'abc', azureRegion: 'francecentral', cloudVoice: false });
+ok(!Speech.enabled(), 'the cloud voice can be turned off without deleting the key');
+Speech.configure({});
+ok(!Speech.isConfigured() && !Speech.enabled(), 'a missing key disables cloud speech');
+const wav = Speech.encodeWav(new Float32Array([0, -1, 1, 0.5]), 16000);
+eq(wav.type, 'audio/wav', 'encodeWav returns a WAV blob');
+eq(wav.size, 52, 'encodeWav writes a 44-byte header + 16-bit samples');
+const wavHead = new Uint8Array(await wav.arrayBuffer()).slice(0, 4);
+eq(Array.from(wavHead), [82, 73, 70, 70], 'the WAV starts with RIFF');
+
+/* ---------- Gemini pronunciation scoring ---------- */
+section('Gemini pronunciation scoring');
+const speechPrompt = Ai.buildSpeechPrompt({
+  reference: 'Les habitants constatent que la pollution augmente.', lang: 'fr-FR'
+});
+ok(/Les habitants constatent/.test(speechPrompt.user), 'the scoring prompt includes the reference sentence');
+ok(/pronunciation examiner/i.test(speechPrompt.system), 'the scoring system prompt sets the examiner role');
+ok(/French pronunciation examiner/.test(speechPrompt.system), 'a BCP-47 target code is named as a language');
+ok(/Transcribe exactly what you hear/.test(speechPrompt.user), 'the model is told to transcribe, not correct');
+ok(/do not inflate scores|Do not inflate scores/.test(speechPrompt.user), 'the prompt asks for calibrated scores');
+
+const gem = Ai.normalizeSpeechResult({
+  transcript: 'Les habitants constatent que la pollution augmente.',
+  score: 91.6,
+  accuracy: '88',
+  fluency: 130,
+  completeness: 95,
+  words: [
+    { word: 'habitants', accuracy: 61.4, errorType: 'Mispronunciation' },
+    { word: 'pollution', accuracy: 94, errorType: 'None' },
+    { word: '', accuracy: 40 }
+  ],
+  tips: 'Practise the French “an” sound.'
+}, 'Les habitants constatent que la pollution augmente.');
+eq(gem.score, 92, 'a Gemini score is rounded');
+eq(gem.accuracy, 88, 'string scores become numbers');
+eq(gem.fluency, 100, 'scores above 100 are clamped');
+eq(gem.completeness, 95, 'completeness survives normalization');
+eq(gem.words.length, 2, 'empty word entries are dropped');
+eq(gem.words[0], { word: 'habitants', accuracy: 61, errorType: 'Mispronunciation' },
+  'word-level details keep their accuracy and error type');
+eq(gem.source, 'gemini', 'Gemini results are labelled as such');
+eq(gem.recognized, 'Les habitants constatent que la pollution augmente.', 'the transcript is kept as “heard”');
+eq(gem.tips, 'Practise the French “an” sound.', 'Gemini tips are passed through');
+
+const gemFallback = Ai.normalizeSpeechResult(
+  { transcript: 'Bonjour', accuracy: 80, fluency: 70, completeness: 90, words: [] }, 'Bonjour');
+eq(gemFallback.score, 80, 'a missing overall score is averaged from the three metrics');
+const gemEmptyWords = Ai.normalizeSpeechResult({ transcript: 'Bonjour', score: 75 }, 'Bonjour');
+eq(gemEmptyWords.accuracy, 75, 'missing metrics fall back to the overall score');
+ok(gemEmptyWords.words.length === 0, 'a missing word list is harmless');
+
+let emptyTranscriptErr = null;
+try { Ai.normalizeSpeechResult({ transcript: '   ' }, 'Bonjour'); }
+catch (e) { emptyTranscriptErr = e; }
+ok(emptyTranscriptErr && /could not hear any speech/i.test(emptyTranscriptErr.friendly),
+  'an empty transcript gets a “record closer” message');
+
+let missingKeyErr = null;
+try { await Ai.assessSpeech({ audio: 'AAAA', reference: 'Bonjour' }); }
+catch (e) { missingKeyErr = e; }
+ok(missingKeyErr && /Gemini key in Settings → AI/.test(missingKeyErr.friendly),
+  'scoring without a Gemini key explains where to add one');
+
+const speechRequests = [];
+aiFetch = async function (url, opts) {
+  speechRequests.push({ url: String(url), body: JSON.parse(opts.body) });
+  return fakeResponse(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: JSON.stringify({
+      transcript: 'Les habitants constatent…',
+      score: 84, accuracy: 86, fluency: 78, completeness: 90,
+      words: [{ word: 'habitants', accuracy: 64, errorType: 'Mispronunciation' }],
+      tips: 'Slow down on “habitants”.'
+    }) }] } }]
+  }));
+};
+const gemResult = await Ai.assessSpeech({
+  key: 'AIza-test-key', model: 'gemini-flash-latest', audio: 'UklGRg==', mimeType: 'audio/wav',
+  reference: 'Les habitants constatent que la pollution augmente.', lang: 'fr-FR'
+});
+eq(gemResult.score, 84, 'assessSpeech returns the model score');
+eq(gemResult.source, 'gemini', 'assessSpeech marks the source');
+eq(speechRequests.length, 1, 'one Gemini request scores a recording');
+ok(/gemini-flash-latest:generateContent$/.test(speechRequests[0].url), 'the configured Gemini model is called');
+eq(speechRequests[0].body.contents[0].parts[0].inlineData.mimeType, 'audio/wav',
+  'the recording is sent as inline WAV audio');
+eq(speechRequests[0].body.contents[0].parts[0].inlineData.data, 'UklGRg==', 'the base64 audio reaches Gemini');
+eq(speechRequests[0].body.generationConfig.responseMimeType, 'application/json',
+  'scoring asks for JSON');
+ok(!!speechRequests[0].body.generationConfig.responseSchema,
+  'the scoring schema is attached on the first pass');
+eq(speechRequests[0].body.generationConfig.thinkingConfig.thinkingBudget, 0,
+  'scoring skips Gemini thinking when supported');
+
+// A model that rejects the schema/thinking flag: the next pass drops both.
+speechRequests.length = 0;
+aiFetch = async function (url, opts) {
+  const body = JSON.parse(opts.body);
+  speechRequests.push(body);
+  if (speechRequests.length === 1) {
+    return fakeResponse(JSON.stringify({ error: { message: 'Invalid JSON payload' } }), 400);
+  }
+  return fakeResponse(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: '{"transcript":"Bonjour","score":70,"accuracy":70,"fluency":70,"completeness":70,"words":[],"tips":"Encore."}' }] } }]
+  }));
+};
+const retried = await Ai.assessSpeech({
+  key: 'AIza-test-key', model: 'gemini-flash-latest', audio: 'AAAA', reference: 'Bonjour', lang: 'fr-FR'
+});
+eq(retried.score, 70, 'a rejected schema is retried without it');
+eq(speechRequests.length, 2, 'the retry makes exactly one extra request');
+ok(!speechRequests[1].generationConfig.responseSchema, 'the retry leaves the schema out');
+ok(!speechRequests[1].generationConfig.thinkingConfig, 'the retry leaves the thinking flag out');
+
+// Free-tier quota errors should point at the Azure alternative instead of a quiz.
+aiFetch = async function () {
+  return fakeResponse(JSON.stringify({ error: { message: 'Quota exceeded' } }), 429);
+};
+let gemQuotaErr = null;
+try {
+  await Ai.assessSpeech({ key: 'AIza-test-key', audio: 'AAAA', reference: 'Bonjour' });
+} catch (e) { gemQuotaErr = e; }
+ok(gemQuotaErr && /free-tier limit is reached/.test(gemQuotaErr.friendly),
+  'a Gemini 429 explains the free-tier limit');
+ok(gemQuotaErr && /switch Pronunciation scoring to Azure/.test(gemQuotaErr.friendly),
+  'a Gemini 429 offers the Azure engine');
+aiFetch = null;
+
+/* blobToBase64 is what feeds Gemini; check it strips the data: prefix. */
+const b64 = await Speech.blobToBase64(new Blob(['hi'], { type: 'audio/wav' }));
+eq(Buffer.from(b64, 'base64').toString(), 'hi', 'blobToBase64 returns raw base64 without a data prefix');
 
 /* ---------- sources: delimited parsing ---------- */
 section('Sources — CSV/TSV parsing');
@@ -1464,6 +1621,7 @@ eq(Quiz.AI_BATCH_FREE, 20, 'the keyless free service gets bigger batches (fewer 
 
 section('App wiring');
 const appSrc = fs.readFileSync(path.join(root, 'js/app.js'), 'utf8');
+const accountSrc = fs.readFileSync(path.join(root, 'js/account.js'), 'utf8');
 const htmlSrc = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const cssSrc = fs.readFileSync(path.join(root, 'css/styles.css'), 'utf8');
 
@@ -1474,6 +1632,8 @@ const missingInHtml = declared.filter((id) => htmlSrc.indexOf('id="' + id + '"')
 const notDeclared = usedIds.filter((id) => declared.indexOf(id) === -1);
 eq(missingInHtml, [], 'every cached element id exists in index.html');
 eq(notDeclared, [], 'every E.* element is declared in cacheEls()');
+ok(/id="btnTestVoice"/.test(htmlSrc) && /E\.btnTestVoice\.addEventListener\('click', testVoice\)/.test(appSrc) &&
+  /No speech voices found/.test(appSrc), 'the homepage has a speaker test with a no-voice explanation');
 
 // The session owns the question index — a stale `state.index` read made every
 // answer throw ("Cannot read properties of undefined") and look un-clickable.
@@ -1517,6 +1677,36 @@ ok(/id="paraStartHint"/.test(htmlSrc) && /Paragraph translation needs AI/.test(a
 ok(!/id="typeParagraph"/.test(htmlSrc) && !/types\.indexOf\('paragraph'\)/.test(appSrc) &&
   /paragraphOnly: true/.test(appSrc),
   'paragraph translation is a separate practice, not a quiz question type');
+ok(/function paragraphIsGood/.test(appSrc) && /function finalizeParagraph/.test(appSrc) &&
+  /paraAttempts/.test(appSrc) && /Apply fixes and edit/.test(appSrc) &&
+  /Check again/.test(appSrc) && /Finish anyway/.test(appSrc),
+  'paragraph correction supports apply-fix, retry and a final decision');
+ok(/q\.paraLastCheck && q\.paraLastCheck\.text === text/.test(appSrc),
+  'an unchanged paragraph is not sent to the AI twice');
+
+// Shadowing: AI text, Azure voice/assessment, recording, replay and local save.
+ok(/id="segPractice"/.test(htmlSrc) && /data-value="shadowing"/.test(htmlSrc) &&
+  /id="btnStartShadowing"/.test(htmlSrc) && /id="shadowingSetupPane"/.test(htmlSrc),
+  'shadowing has its own practice tab and setup pane');
+ok(/id="screenShadowing"/.test(htmlSrc) && /id="btnShadowRecord"/.test(htmlSrc) &&
+  /id="btnShadowAssess"/.test(htmlSrc) && /id="btnShadowSave"/.test(htmlSrc),
+  'the shadowing screen has record, assess and save controls');
+ok(/function startShadowingPractice/.test(appSrc) && /Speech\.splitSentences/.test(appSrc) &&
+  /Quiz\.buildPool\(\{/.test(appSrc),
+  'shadowing generates its paragraph with the existing AI paragraph builder');
+ok(/MediaRecorder/.test(appSrc) && /getUserMedia/.test(appSrc) && /Speech\.assess/.test(appSrc),
+  'shadowing records with MediaRecorder and scores with Azure');
+ok(/Speech\.saveRecording/.test(appSrc) && /Speech\.listRecordings/.test(appSrc) &&
+  /IndexedDB/.test(fs.readFileSync(path.join(root, 'js/speech.js'), 'utf8')),
+  'saved recordings use local IndexedDB, not a database');
+ok(/if \(fb\.corrected && fb\.corrected !== text\)/.test(appSrc),
+  'the retry panel offers the AI correction');
+ok(/id="inpAzureKey"/.test(htmlSrc) && /id="inpAzureRegion"/.test(htmlSrc) &&
+  /id="selAzureVoice"/.test(htmlSrc) && /id="chkCloudVoice"/.test(htmlSrc) &&
+  /id="btnTestAzure"/.test(htmlSrc),
+  'Settings → Speech exposes the Azure key, region, voice and cloud toggle');
+ok(/Speech\.configure\(settings\)/.test(appSrc) && /Speech\.enabled\(\)/.test(appSrc),
+  'speaker icons use the Azure voice when it is enabled');
 
 // Quiz setup: difficulty and an optional focus note, as pill controls.
 ok(/id="segDifficulty"/.test(htmlSrc) && /id="selDifficulty"/.test(htmlSrc) &&
@@ -1535,7 +1725,7 @@ const paraStartSrc = appSrc.slice(appSrc.indexOf('async function startParagraphP
 ok(/difficulty: setup\.difficulty/.test(paraStartSrc) && /requirement: setup\.requirement/.test(paraStartSrc),
   'startParagraphPractice sends difficulty and focus to the paragraph AI');
 ok(/id="segPractice"[^>]*data-select="selPractice"/.test(htmlSrc) &&
-  /settings\.practiceMode = mode === 'paragraph' \? 'paragraph' : 'quiz'/.test(appSrc),
+  /settings\.practiceMode = \['paragraph', 'shadowing'\]\.indexOf\(mode\)/.test(appSrc),
   'the practice tabs persist the chosen mode');
 ok(/difficulty: difficulty, requirement: requirement/.test(fs.readFileSync(path.join(root, 'js/quiz.js'), 'utf8')),
   'the quiz builder forwards both to AI question and paragraph calls');
@@ -1772,6 +1962,483 @@ ok(/exerciseStatus/.test(grammarSrc) && /recordExercise/.test(grammarSrc),
   'exercise answers are stored per chapter');
 ok(grammarDataSrc.indexOf('<script') === -1 && htmlSrc.indexOf('js/grammar-data.js') !== -1,
   'the PDF content is app data, not a published document');
+
+section('Daily quests');
+const qa = Quests.newDaily('user-a', '2026-10-23');
+const qb = Quests.newDaily('user-a', '2026-10-23');
+eq(qa, qb, 'the daily set is deterministic for the same user + date');
+eq(qa.quests.length, 3, 'three quests a day');
+eq(qa.quests.map(function (q) { return Quests.def(q.id).group; }), ['quiz', 'production', 'review'],
+  'one quiz, one production and one review every day');
+ok(qa.quests.every(function (q) { return q.progress === 0 && !q.done; }), 'new quests start at zero');
+ok(JSON.stringify(Quests.newDaily('user-b', '2026-10-23').quests) !== JSON.stringify(qa.quests),
+  'a different profile gets a different daily set');
+eq(Quests.newDaily('user-a', '2026-10-24').date, '2026-10-24', 'a new date starts a new daily set');
+const seenQuests = new Set();
+for (let i = 0; i < 200; i++) {
+  Quests.newDaily('user-a', Quests.addDays('2026-01-01', i)).quests.forEach(function (q) { seenQuests.add(q.id); });
+}
+eq(seenQuests.size, 7, 'all seven quest types appear across 200 days');
+
+const dp = Quests.newDaily('user-a', '2026-10-23');
+const firstQuest = dp.quests[0];
+Quests.setProgress(dp, firstQuest.id, 2);
+eq(firstQuest.progress, 2, 'progress is stored');
+Quests.setProgress(dp, firstQuest.id, 1);
+eq(firstQuest.progress, 2, 'progress never goes backwards');
+Quests.setProgress(dp, firstQuest.id, firstQuest.target + 99);
+eq(firstQuest.progress, firstQuest.target, 'progress is clamped to the target');
+ok(firstQuest.done, 'a quest is done at its target');
+ok(!Quests.isAllDone(dp), 'the day is not complete until every quest is done');
+dp.quests.forEach(function (q) { Quests.setProgress(dp, q.id, q.target); });
+ok(Quests.isAllDone(dp), 'all three done completes the day');
+eq(Quests.addProgress(dp, 'not-a-quest', 1), null, 'an unknown quest is ignored');
+
+const merged = Quests.mergeDaily(
+  { date: '2026-10-23', quests: [{ id: 'mc30', target: 30, progress: 10, done: false }], completedAt: null },
+  { date: '2026-10-23', quests: [{ id: 'mc30', target: 30, progress: 20, done: false }], completedAt: null }
+);
+eq(merged.quests[0].progress, 20, 'syncing keeps the larger progress');
+eq(merged.quests[0].target, 30, 'syncing keeps the target');
+const serverWins = Quests.mergeDaily(
+  { date: '2026-10-23', quests: [{ id: 'shadow3', target: 3, progress: 1, done: false }], completedAt: null },
+  { date: '2026-10-23', quests: [{ id: 'mc30', target: 30, progress: 4, done: false }], completedAt: null }
+);
+eq(serverWins.quests.length, 1, 'the server quest list wins over a stale offline pick');
+eq(serverWins.quests[0].id, 'mc30', 'the stale offline quest is dropped');
+eq(Quests.mergeDaily({ date: '2026-10-22', quests: [] }, { date: '2026-10-23', quests: [] }).date, '2026-10-23',
+  'the newest day wins when merging');
+
+eq(Quests.nextStreak({ current: 3, best: 5, lastCompletedDate: '2026-10-22' }, '2026-10-23'),
+  { current: 4, best: 5, lastCompletedDate: '2026-10-23' }, 'a perfect day extends the streak');
+eq(Quests.nextStreak({ current: 3, best: 5, lastCompletedDate: '2026-10-21' }, '2026-10-23'),
+  { current: 4, best: 5, lastCompletedDate: '2026-10-23' }, 'one missed day is a grace day');
+eq(Quests.nextStreak({ current: 3, best: 5, lastCompletedDate: '2026-10-20' }, '2026-10-23'),
+  { current: 1, best: 5, lastCompletedDate: '2026-10-23' }, 'two missed days reset the streak');
+eq(Quests.nextStreak({ current: 3, best: 5, lastCompletedDate: '2026-10-23' }, '2026-10-23').current, 3,
+  'completing the same day twice does not double-count');
+eq(Quests.nextStreak({ current: 3, best: 5, lastCompletedDate: '2026-10-23' }, '2026-10-22').current, 3,
+  'a date in the past cannot farm the streak');
+eq(Quests.nextStreak({ current: 2, best: 2, lastCompletedDate: '2026-10-22' }, '2026-10-23').best, 3,
+  'the best streak follows the current one');
+
+const risk = Quests.streakView({ current: 3, best: 5, lastCompletedDate: '2026-10-21' }, '2026-10-23', false);
+eq(risk.current, 3, 'the streak is still shown after one missed day');
+eq(risk.atRisk, true, 'one missed day flags the flame with “!”');
+eq(Quests.streakView({ current: 3, best: 5, lastCompletedDate: '2026-10-21' }, '2026-10-23', true).atRisk, false,
+  'finishing today clears the warning');
+eq(Quests.streakView({ current: 3, best: 5, lastCompletedDate: '2026-10-20' }, '2026-10-23', false).current, 0,
+  'two missed days show a reset streak');
+eq(Quests.streakView({ current: 3, best: 5, lastCompletedDate: '2026-10-22' }, '2026-10-23', false).atRisk, false,
+  'yesterday completed is a normal day');
+
+ok(Quests.isDateKey('2026-10-23'), 'a real date key is valid');
+ok(!Quests.isDateKey('2026-02-30'), 'an impossible date is rejected');
+ok(Quests.isDateKey('2028-02-29'), 'a leap day is valid');
+ok(!Quests.isDateKey('23/10/2026'), 'a non-ISO date is rejected');
+eq(Quests.addDays('2026-12-31', 1), '2027-01-01', 'addDays crosses the year');
+eq(Quests.daysBetween('2026-10-23', '2026-10-26'), 3, 'daysBetween counts calendar days');
+eq(Quests.daysBetween('2026-10-26', '2026-10-23'), -3, 'daysBetween is signed');
+eq(Quests.targetText('mc30'), '30 questions', 'quest targets have human labels');
+eq(Quests.targetText('grammar1'), '1 lesson', 'a lesson target reads as one lesson');
+
+section('Accounts & security');
+const Crypto = require('../lib/crypto.js');
+const H = require('../lib/http.js');
+const Auth = require('../lib/auth.js');
+const Daily = require('../lib/daily.js');
+const passwordHash = await Crypto.hashPassword('correct horse battery');
+ok(passwordHash.indexOf('scrypt$') === 0, 'passwords are stored as scrypt hashes');
+ok(await Crypto.verifyPassword('correct horse battery', passwordHash), 'the right password verifies');
+ok(!(await Crypto.verifyPassword('wrong password', passwordHash)), 'a wrong password fails');
+ok(!(await Crypto.verifyPassword('anything', 'garbage')), 'a malformed hash fails closed');
+const recovery = Crypto.recoveryCode();
+ok(/^[A-HJ-KM-NP-TV-Z2-9]{5}-[A-HJ-KM-NP-TV-Z2-9]{5}$/.test(recovery),
+  'recovery codes are 10 unambiguous characters');
+eq(Crypto.normalizeRecovery(' abcde-fghjk '), 'ABCDEFGHJK', 'recovery input ignores case and dashes');
+ok(Crypto.randomToken(32) !== Crypto.randomToken(32), 'session tokens are random');
+eq(Crypto.sha256('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+  'session tokens are stored by SHA-256');
+
+eq(H.parseCookies({ headers: { cookie: 'a=1; vl_session=hello%20world' } }),
+  { a: '1', vl_session: 'hello world' }, 'cookies are parsed and decoded');
+ok(/HttpOnly/.test(H.cookie('vl_session', 'x', { maxAge: 60, secure: true })), 'session cookies are HttpOnly');
+ok(/Secure/.test(H.cookie('vl_session', 'x', { maxAge: 60, secure: true })), 'session cookies are Secure on HTTPS');
+ok(!/Secure/.test(H.cookie('vl_session', 'x', { maxAge: 60, secure: false })), 'localhost sessions stay on HTTP');
+
+eq(Auth.normalizeEmail(' Me@Example.COM '), 'me@example.com', 'emails are normalised');
+ok(Auth.validEmail('me@example.co.uk'), 'a normal email is accepted');
+ok(!Auth.validEmail('me@example'), 'an email without a dot is rejected');
+eq(Auth.cleanName('  Khoi\n '), 'Khoi', 'names are trimmed');
+eq(Auth.checkPassword('12345678'), '', 'eight characters is enough');
+ok(Auth.checkPassword('1234567').length > 0, 'seven characters is too short');
+
+eq(Daily.checkDate('2026-13-01'), 'Invalid date.', 'the API rejects impossible dates');
+eq(Daily.checkDate('2000-01-01'), 'Date is out of range.', 'the API rejects old dates');
+eq(Daily.checkDate(Quests.dateKey(new Date())), '', 'today is accepted');
+
+section('Home, auth and quest wiring');
+ok(/id="authScreen"/.test(htmlSrc) && /id="authForm"/.test(htmlSrc) && /id="authEmail"/.test(htmlSrc),
+  'the page has a sign-in gate');
+ok(/id="homeDate"/.test(htmlSrc) && /id="homeName"/.test(htmlSrc) && /id="streakChip"/.test(htmlSrc),
+  'home has a date, a name and a streak chip');
+ok(/id="questList"/.test(htmlSrc) && /id="questCount"/.test(htmlSrc) && /id="questAllDone"/.test(htmlSrc),
+  'home has a daily quest card with progress and an all-done state');
+ok(htmlSrc.indexOf('js/quests.js') !== -1 && htmlSrc.indexOf('js/quests.js') < htmlSrc.indexOf('js/app.js'),
+  'the quest engine loads before the app');
+ok(htmlSrc.indexOf('js/account.js') !== -1 && htmlSrc.indexOf('js/account.js') < htmlSrc.indexOf('js/app.js'),
+  'the account/sync layer loads before the app');
+ok(/questEvent\('mc30'/.test(appSrc) && /questEvent\('mixed20'/.test(appSrc) &&
+  /questEvent\('correct10'/.test(appSrc), 'quiz answers update every quiz quest');
+ok(/questEvent\('paragraph1'/.test(appSrc) && /questEvent\('cards20'/.test(appSrc) &&
+  /questEvent\('shadow3'/.test(appSrc), 'paragraph, flashcards and shadowing update their quests');
+ok(/questEvent\('grammar1'/.test(appSrc) && /onChapterDone/.test(grammarSrc) && /notifyChapterDone/.test(grammarSrc),
+  'finishing a grammar lesson updates the grammar quest');
+ok(/function startQuest\(/.test(appSrc) && /setPracticeTypes\(\['mc'\]\)/.test(appSrc) &&
+  /setPracticeCount\(30\)/.test(appSrc) && /setPracticeTypes\(\['mc', 'blank', 'translate'\]\)/.test(appSrc),
+  'a quest Start preconfigures the exact quiz and count');
+ok(/openNextLesson/.test(grammarSrc) && /openGrammar\(true\)/.test(appSrc),
+  'the grammar quest opens the next unfinished lesson');
+ok(/initAuth\(\)/.test(appSrc) && /auth-locked/.test(appSrc) && /showAuth\(\)/.test(appSrc),
+  'the app starts behind the account gate');
+ok(/Account\.flush/.test(appSrc) && /Account\.queueProgress/.test(appSrc) && /navigator\.onLine/.test(appSrc),
+  'quest progress is queued locally and retried when online');
+ok(/quests-dropped/.test(accountSrc) && /too old to sync/.test(appSrc),
+  'progress that is too old to sync is dropped with a visible warning');
+ok(/showRecovery\(/.test(appSrc) && /recoveryDialog/.test(htmlSrc), 'the recovery code is shown once at signup');
+ok(/streakWarn/.test(appSrc) && /is-at-risk/.test(cssSrc), 'the “!” warning has markup and a style');
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+ok(pkg.dependencies && pkg.dependencies.mongodb, 'the API uses the official MongoDB driver');
+const ignore = fs.readFileSync(path.join(root, '.gitignore'), 'utf8');
+ok(/^\.env$/m.test(ignore) && /^\.env\.\*$/m.test(ignore) && /node_modules\//.test(ignore),
+  'secrets and node_modules are git-ignored');
+
+section('Account API (in-memory Mongo)');
+
+function createFakeDb() {
+  const store = { users: [], sessions: [], daily: [], throttle: [] };
+  let seq = 0;
+  function nextId(prefix) { seq += 1; return prefix + seq; }
+  function matches(doc, filter) {
+    return Object.keys(filter || {}).every(function (key) {
+      if (filter[key] === null) return doc[key] == null;
+      if (key === '_id') return String(doc[key]) === String(filter[key]);
+      return doc[key] === filter[key];
+    });
+  }
+  function applySet(doc, update) {
+    const set = (update && update.$set) || {};
+    let changed = false;
+    Object.keys(set).forEach(function (key) {
+      if (JSON.stringify(doc[key]) !== JSON.stringify(set[key])) changed = true;
+      doc[key] = set[key];
+    });
+    return changed;
+  }
+  function collection(name) {
+    const rows = store[name];
+    return {
+      createIndex: async function () { return 'ok'; },
+      insertOne: async function (doc) {
+        if (doc._id == null) doc._id = nextId(name === 'users' ? 'u' : name.charAt(0));
+        rows.push(doc);
+        return { insertedId: doc._id };
+      },
+      findOne: async function (filter) {
+        return rows.find(function (doc) { return matches(doc, filter); }) || null;
+      },
+      findOneAndUpdate: async function (filter, update) {
+        if (name !== 'throttle') return null;
+        let doc = rows.find(function (d) { return d._id === filter._id; });
+        if (!doc) { doc = { _id: filter._id, count: 0 }; rows.push(doc); }
+        doc.count += (update.$inc && update.$inc.count) || 1;
+        if (update.$setOnInsert) Object.assign(doc, update.$setOnInsert);
+        return doc;
+      },
+      updateOne: async function (filter, update) {
+        const doc = rows.find(function (d) { return matches(d, filter); });
+        if (!doc) return { modifiedCount: 0 };
+        return { modifiedCount: applySet(doc, update) ? 1 : 0 };
+      },
+      deleteOne: async function (filter) {
+        const i = rows.findIndex(function (d) { return matches(d, filter); });
+        if (i < 0) return { deletedCount: 0 };
+        rows.splice(i, 1);
+        return { deletedCount: 1 };
+      },
+      deleteMany: async function (filter) {
+        let n = 0;
+        for (let i = rows.length - 1; i >= 0; i--) {
+          if (matches(rows[i], filter)) { rows.splice(i, 1); n += 1; }
+        }
+        return { deletedCount: n };
+      }
+    };
+  }
+  return { store: store, collection: collection, databaseName: 'vocablab-test' };
+}
+
+const dbPath = require.resolve('../lib/db.js');
+const fakeDb = createFakeDb();
+const fakeDbModule = {
+  ready: async function () { return fakeDb; },
+  getDb: async function () { return fakeDb; },
+  close: async function () {}
+};
+// Inject the fake before the API handlers load, so the logic suite does not
+// need the `mongodb` package (or a real database) to run.
+require.cache[dbPath] = {
+  id: dbPath,
+  filename: dbPath,
+  loaded: true,
+  children: [],
+  paths: [],
+  exports: fakeDbModule
+};
+
+const signupApi = require('../api/auth/signup.js');
+const loginApi = require('../api/auth/login.js');
+const logoutApi = require('../api/auth/logout.js');
+const meApi = require('../api/auth/me.js');
+const resetApi = require('../api/auth/reset.js');
+const profileApi = require('../api/profile.js');
+const homeApi = require('../api/home.js');
+const progressApi = require('../api/daily/progress.js');
+
+async function apiCall(handler, method, url, opts) {
+  const options = opts || {};
+  const req = {
+    method: method,
+    url: url,
+    headers: Object.assign({ host: 'localhost' }, options.headers || {}),
+    body: options.body,
+    socket: {}
+  };
+  const res = {
+    statusCode: 0, headers: {}, body: '', headersSent: false,
+    setHeader: function (key, value) { this.headers[String(key).toLowerCase()] = value; },
+    end: function (chunk) { this.body += chunk == null ? '' : String(chunk); this.headersSent = true; }
+  };
+  await handler(req, res);
+  let data = null;
+  try { data = res.body ? JSON.parse(res.body) : null; } catch (e) { data = null; }
+  return { status: res.statusCode, data: data, headers: res.headers };
+}
+
+const apiDate = Quests.dateKey(new Date());
+const apiEmail = 'api-test-' + Date.now() + '@example.com';
+const signupRes = await apiCall(signupApi, 'POST', '/api/auth/signup', {
+  body: { name: 'Test User', email: apiEmail, password: 'longpassword' }
+});
+eq(signupRes.status, 201, 'signup creates an account');
+eq(signupRes.data.user.name, 'Test User', 'signup returns the public user');
+ok(signupRes.data.user.id && signupRes.data.user.email === apiEmail, 'signup returns the id and email');
+ok(/^[A-HJ-KM-NP-TV-Z2-9]{5}-[A-HJ-KM-NP-TV-Z2-9]{5}$/.test(signupRes.data.recoveryCode),
+  'signup returns a one-time recovery code');
+const rawCookie = String(signupRes.headers['set-cookie'] || '');
+ok(/vl_session=/.test(rawCookie) && /HttpOnly/.test(rawCookie) && /SameSite=Lax/.test(rawCookie),
+  'signup sets an HttpOnly session cookie');
+const apiCookie = rawCookie.split(';')[0];
+
+const meRes = await apiCall(meApi, 'GET', '/api/auth/me', { headers: { cookie: apiCookie } });
+eq(meRes.status, 200, 'the session cookie identifies the user');
+eq(meRes.data.user.email, apiEmail, 'me returns the signed-in account');
+
+const homeRes = await apiCall(homeApi, 'GET', '/api/home?date=' + apiDate, { headers: { cookie: apiCookie } });
+eq(homeRes.status, 200, 'home loads for a signed-in user');
+eq(homeRes.data.daily.quests.length, 3, 'home returns three daily quests');
+eq(homeRes.data.streak.current, 0, 'a new account starts at a 0-day streak');
+
+let lastProgress = null;
+for (const quest of homeRes.data.daily.quests) {
+  lastProgress = await apiCall(progressApi, 'POST', '/api/daily/progress', {
+    headers: { cookie: apiCookie },
+    body: { date: apiDate, questId: quest.id, progress: quest.target }
+  });
+  eq(lastProgress.status, 200, 'progress is accepted for ' + quest.id);
+}
+eq(lastProgress.data.completedNow, true, 'the last quest marks the day complete');
+eq(lastProgress.data.streak.current, 1, 'a completed day starts the streak');
+ok(!!lastProgress.data.daily.completedAt, 'the daily document records its completion time');
+const repeatProgress = await apiCall(progressApi, 'POST', '/api/daily/progress', {
+  headers: { cookie: apiCookie },
+  body: { date: apiDate, questId: lastProgress.data.daily.quests[0].id,
+    progress: lastProgress.data.daily.quests[0].target }
+});
+eq(repeatProgress.data.streak.current, 1, 'a repeated sync does not add a second streak day');
+
+const profileRes = await apiCall(profileApi, 'PATCH', '/api/profile', {
+  headers: { cookie: apiCookie }, body: { name: 'Renamed User' }
+});
+eq(profileRes.status, 200, 'the profile can be updated');
+eq(profileRes.data.user.name, 'Renamed User', 'the new name is returned');
+const evilRes = await apiCall(profileApi, 'PATCH', '/api/profile', {
+  headers: { cookie: apiCookie, origin: 'https://evil.example' }, body: { name: 'Evil' }
+});
+eq(evilRes.status, 403, 'cross-site writes are rejected');
+const noCookieRes = await apiCall(homeApi, 'GET', '/api/home?date=' + apiDate, {});
+eq(noCookieRes.status, 401, 'daily data needs a session');
+
+const logoutRes = await apiCall(logoutApi, 'POST', '/api/auth/logout', { headers: { cookie: apiCookie } });
+eq(logoutRes.status, 200, 'logout succeeds');
+const afterLogout = await apiCall(meApi, 'GET', '/api/auth/me', { headers: { cookie: apiCookie } });
+eq(afterLogout.status, 401, 'logout destroys the session cookie');
+
+const badLogin = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: apiEmail, password: 'wrong-password' }
+});
+eq(badLogin.status, 401, 'a wrong password is rejected');
+const goodLogin = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: apiEmail, password: 'longpassword' }
+});
+eq(goodLogin.status, 200, 'the right password signs in');
+const loginCookie = String(goodLogin.headers['set-cookie'] || '').split(';')[0];
+
+const badReset = await apiCall(resetApi, 'POST', '/api/auth/reset', {
+  body: { email: apiEmail, code: 'WRONG-CODE9', password: 'newpassword' }
+});
+eq(badReset.status, 400, 'a wrong recovery code cannot reset the password');
+const resetRes = await apiCall(resetApi, 'POST', '/api/auth/reset', {
+  body: { email: apiEmail, code: signupRes.data.recoveryCode, password: 'newpassword' }
+});
+eq(resetRes.status, 200, 'the recovery code resets the password');
+ok(resetRes.data.recoveryCode && resetRes.data.recoveryCode !== signupRes.data.recoveryCode,
+  'the recovery code is rotated after use');
+const resetCookie = String(resetRes.headers['set-cookie'] || '').split(';')[0];
+const oldPassword = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: apiEmail, password: 'longpassword' }
+});
+eq(oldPassword.status, 401, 'the old password no longer works');
+const newPassword = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: apiEmail, password: 'newpassword' }
+});
+eq(newPassword.status, 200, 'the new password works');
+const oldSession = await apiCall(meApi, 'GET', '/api/auth/me', { headers: { cookie: loginCookie } });
+eq(oldSession.status, 401, 'a reset signs out the other sessions');
+const newSession = await apiCall(meApi, 'GET', '/api/auth/me', { headers: { cookie: resetCookie } });
+eq(newSession.status, 200, 'the reset session stays signed in');
+
+const duplicate = await apiCall(signupApi, 'POST', '/api/auth/signup', {
+  body: { name: 'Someone Else', email: apiEmail, password: 'longpassword' }
+});
+eq(duplicate.status, 409, 'one account per email address');
+
+section('Offline quest queue');
+
+const queueStore = new Map();
+const queueEvents = [];
+const queueSandbox = {
+  window: null,
+  Util: {
+    lsGet: function (key, fallback) {
+      const raw = queueStore.get('vocablab.' + key);
+      if (raw == null) return fallback;
+      try { return JSON.parse(raw); } catch (e) { return fallback; }
+    },
+    lsSet: function (key, value) { queueStore.set('vocablab.' + key, JSON.stringify(value)); return true; },
+    lsRemove: function (key) { queueStore.delete('vocablab.' + key); }
+  },
+  CustomEvent: class QueueEvent {
+    constructor(type, init) { this.type = type; this.detail = (init || {}).detail || null; }
+  },
+  AbortController: globalThis.AbortController,
+  setTimeout: setTimeout,
+  clearTimeout: clearTimeout,
+  Date: Date, JSON: JSON, Object: Object, Array: Array, String: String,
+  Number: Number, Boolean: Boolean, Math: Math, Promise: Promise, Error: Error,
+  isFinite: isFinite
+};
+queueSandbox.window = queueSandbox;
+queueSandbox.window.dispatchEvent = function (event) { queueEvents.push(event); };
+vm.createContext(queueSandbox);
+vm.runInContext(fs.readFileSync(path.join(root, 'js/account.js'), 'utf8'), queueSandbox,
+  { filename: 'js/account.js' });
+const QAccount = queueSandbox.Account;
+
+let qMode = 'ok';
+let qGate = null;
+let qLastBody = null;
+queueSandbox.fetch = async function (url, opts) {
+  qLastBody = opts && opts.body ? JSON.parse(opts.body) : null;
+  if (qGate) await qGate;
+  if (qMode === 'offline') {
+    const err = new Error('network down');
+    err.name = 'TypeError';
+    throw err;
+  }
+  if (qMode === 'unauthorized') {
+    return { ok: false, status: 401, json: async function () { return { error: 'Please sign in.' }; } };
+  }
+  if (qMode === 'drop') {
+    return { ok: false, status: 400, json: async function () { return { error: 'Date is out of range.' }; } };
+  }
+  return {
+    ok: true, status: 200,
+    json: async function () {
+      return { daily: { date: qLastBody.date, quests: [] }, streak: null, completedNow: false };
+    }
+  };
+};
+
+QAccount.queueProgress('u1', '2026-10-23', 'mc30', 3);
+eq(QAccount.queueCount('u1'), 1, 'quest progress is queued locally');
+
+let releaseFlush;
+qGate = new Promise(function (resolve) { releaseFlush = resolve; });
+const inFlight = QAccount.flush('u1');
+await new Promise(function (resolve) { setTimeout(resolve, 0); });
+QAccount.queueProgress('u1', '2026-10-23', 'mc30', 7);
+releaseFlush();
+qGate = null;
+const firstFlush = await inFlight;
+eq(firstFlush.results.length, 1, 'the in-flight update reaches the API');
+eq(QAccount.queueCount('u1'), 1, 'progress queued during a flush is not lost');
+const queuedAfterRace = queueSandbox.Util.lsGet('questQueue', []);
+eq(queuedAfterRace[0].progress, 7, 'the newer, higher progress is kept');
+
+const secondFlush = await QAccount.flush('u1');
+eq(secondFlush.results.length, 1, 'the kept update is retried');
+eq(qLastBody.progress, 7, 'the retry sends the newer progress');
+eq(QAccount.queueCount('u1'), 0, 'a successful flush clears the queue');
+
+QAccount.queueProgress('u1', '2026-10-23', 'shadow3', 1);
+qMode = 'offline';
+const offlineFlush = await QAccount.flush('u1');
+eq(offlineFlush.offline, true, 'a network failure is reported');
+eq(QAccount.queueCount('u1'), 1, 'offline progress stays queued');
+qMode = 'ok';
+
+qMode = 'drop';
+const dropFlush = await QAccount.flush('u1');
+eq(dropFlush.results.length, 0, 'a rejected update is not reported as applied');
+eq(QAccount.queueCount('u1'), 0, 'a permanently rejected update is removed');
+ok(queueEvents.some(function (e) { return e.type === 'vocablab:quests-dropped'; }),
+  'a dropped update announces itself');
+qMode = 'ok';
+
+QAccount.queueProgress('u1', '2026-10-23', 'cards20', 2);
+qMode = 'unauthorized';
+const expiredFlush = await QAccount.flush('u1');
+eq(expiredFlush.unauthorized, true, 'an expired session is reported');
+eq(QAccount.queueCount('u1'), 1, 'an expired session keeps the unsent queue');
+qMode = 'ok';
+
+QAccount.queueProgress('u2', '2026-10-23', 'grammar1', 1);
+await QAccount.flush('u1'); // clear the signed-in user's remaining entry
+const otherFlush = await QAccount.flush('u1');
+eq(otherFlush.results.length, 0, 'another account’s updates are not sent');
+eq(QAccount.queueCount('u2'), 1, 'another account’s queue is untouched');
+
+QAccount.queueProgress('u3', '2026-10-23', 'mc30', 1);
+qMode = 'offline';
+let offlineLogoutFailed = false;
+try { await QAccount.logout(); } catch (e) { offlineLogoutFailed = true; }
+eq(offlineLogoutFailed, true, 'a network failure stops a local-only sign-out');
+eq(QAccount.queueCount('u3'), 1, 'the queue survives a failed sign-out');
+qMode = 'unauthorized';
+await QAccount.logout();
+eq(QAccount.queueCount('u3'), 0, 'an already-expired session can still clear local data');
+qMode = 'ok';
 
 /* ---------- summary ---------- */
 console.log('\n' + '─'.repeat(46));

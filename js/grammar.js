@@ -227,6 +227,7 @@
   function markChapter(chapterId, done) {
     var progress = readProgress();
     var rec = progress[chapterId] || {};
+    var wasDone = !!rec.done;
     if (!rec.exercises) rec.exercises = {};
     rec.done = !!done;
     rec.at = done ? Date.now() : null;
@@ -235,7 +236,14 @@
     writeProgress(progress);
     notifyProgress();
     refreshCompletionUI();
+    if (done && !wasDone) notifyChapterDone(chapterId);
     if (done && U.toast) U.toast(tr('lessonDone'), 'ok');
+  }
+
+  function notifyChapterDone(chapterId) {
+    if (state.opts && typeof state.opts.onChapterDone === 'function') {
+      try { state.opts.onChapterDone(chapterId); } catch (e) { /* a quest must never break the lesson */ }
+    }
   }
 
   function recordExercise(chapterId, index, status) {
@@ -257,6 +265,7 @@
       rec.at = Date.now();
       writeProgress(progress);
       if (U.toast) U.toast(tr('allExercises'), 'ok');
+      notifyChapterDone(chapterId);
     }
     notifyProgress();
     refreshCompletionUI();
@@ -1024,6 +1033,17 @@
     notifyProgress();
   }
 
+  /** Jump straight to the first unfinished chapter (used by the grammar quest). */
+  function openNextLesson() {
+    for (var i = 0; i < DATA.chapters.length; i++) {
+      if (!chapterDone(DATA.chapters[i].id)) {
+        openLesson(DATA.chapters[i].id);
+        return;
+      }
+    }
+    openCourse();
+  }
+
   function openLesson(id) {
     if (!chapterById(id)) return;
     if (!state.root) state.root = document.getElementById('screenGrammar');
@@ -1124,6 +1144,7 @@
     init: init,
     openCourse: openCourse,
     openLesson: openLesson,
+    openNextLesson: openNextLesson,
     progressSummary: progressSummary
   };
 })(typeof window !== 'undefined' ? window : globalThis);
