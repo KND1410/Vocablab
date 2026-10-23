@@ -1,6 +1,15 @@
 # Your own sheet link + tab names — copy my-sheet.txt.example to create it.
 my-sheet.txt
 
+# Secrets — never commit a real connection string or key.
+.env
+.env.*
+!.env.example
+
+# Vercel + Node
+.vercel/
+node_modules/
+
 # Throwaway diagnostics / OS junk
 _diag.html
 .DS_Store

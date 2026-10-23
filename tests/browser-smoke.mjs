@@ -14,8 +14,11 @@ import net from 'node:net';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const require = createRequire(import.meta.url);
+const Quests = require('../js/quests.js');
 const discover = process.argv.includes('--discover');
 const live = process.argv.includes('--live') || discover;
 
@@ -42,10 +45,110 @@ function findChrome() {
   return null;
 }
 
+/* ---------- fake account API (same origin, no Atlas needed) ---------- */
+const apiLog = [];
+function startFakeApi() {
+  const today = Quests.dateKey(new Date());
+  const state = {
+    signedIn: false,
+    user: { id: 'smoke-user', name: 'Khoi', email: 'khoi@example.com' },
+    streak: { current: 4, best: 6, lastCompletedDate: Quests.addDays(today, -1) },
+    daily: {
+      date: today,
+      quests: [
+        { id: 'mc30', target: 30, progress: 29, done: false },
+        { id: 'paragraph1', target: 1, progress: 1, done: true },
+        { id: 'grammar1', target: 1, progress: 1, done: true }
+      ],
+      allDone: false,
+      completedAt: null
+    }
+  };
+  function body(req) {
+    return new Promise((resolve) => {
+      let raw = '';
+      req.on('data', (c) => { raw += c; });
+      req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch (e) { resolve({}); } });
+    });
+  }
+  function send(res, status, payload) {
+    res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+    res.end(JSON.stringify(payload));
+  }
+  async function handler(req, res) {
+    const u = new URL(req.url, 'http://127.0.0.1');
+    apiLog.push(req.method + ' ' + u.pathname);
+    if (u.pathname === '/api/auth/me') {
+      if (!state.signedIn) return send(res, 401, { error: 'Please sign in.' });
+      return send(res, 200, { user: state.user });
+    }
+    if (u.pathname === '/api/auth/login') {
+      const b = await body(req);
+      if (!b.email || !b.password) return send(res, 400, { error: 'Enter your email and password.' });
+      state.signedIn = true;
+      return send(res, 200, { user: state.user });
+    }
+    if (u.pathname === '/api/auth/signup') {
+      const b = await body(req);
+      if (!b.name || !b.email || !b.password) return send(res, 400, { error: 'Missing fields.' });
+      state.signedIn = true;
+      state.user = { id: 'smoke-user', name: b.name, email: b.email };
+      return send(res, 201, { user: state.user, recoveryCode: 'ABCDE-FGHJK' });
+    }
+    if (u.pathname === '/api/auth/logout') {
+      state.signedIn = false;
+      return send(res, 200, { ok: true });
+    }
+    if (u.pathname === '/api/profile') {
+      if (!state.signedIn) return send(res, 401, { error: 'Please sign in.' });
+      const b = await body(req);
+      if (b.name) state.user.name = String(b.name).slice(0, 60);
+      return send(res, 200, { user: state.user });
+    }
+    if (u.pathname === '/api/home') {
+      if (!state.signedIn) return send(res, 401, { error: 'Please sign in.' });
+      const date = u.searchParams.get('date') || today;
+      return send(res, 200, {
+        user: state.user,
+        streak: Quests.streakView(state.streak, date, !!state.daily.completedAt),
+        daily: state.daily,
+        serverToday: today
+      });
+    }
+    if (u.pathname === '/api/daily/progress') {
+      if (!state.signedIn) return send(res, 401, { error: 'Please sign in.' });
+      const b = await body(req);
+      let completedNow = false;
+      if (b.date === state.daily.date) {
+        const q = Quests.findQuest(state.daily, b.questId);
+        if (q) {
+          Quests.setProgress(state.daily, b.questId, b.progress);
+          if (Quests.isAllDone(state.daily) && !state.daily.completedAt) {
+            state.daily.completedAt = new Date().toISOString();
+            state.streak = Quests.nextStreak(state.streak, b.date);
+            completedNow = true;
+          }
+        }
+      }
+      return send(res, 200, {
+        daily: state.daily,
+        streak: Quests.streakView(state.streak, state.daily.date, !!state.daily.completedAt),
+        completedNow: completedNow
+      });
+    }
+    send(res, 404, { error: 'Not found.' });
+  }
+  return { handler, state };
+}
+
 /* ---------- tiny static server ---------- */
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.txt': 'text/plain', '.csv': 'text/csv' };
-function startServer() {
+function startServer(api) {
   const server = http.createServer((req, res) => {
+    if (req.url.indexOf('/api/') === 0) {
+      api.handler(req, res);
+      return;
+    }
     const rel = decodeURIComponent(req.url.split('?')[0]);
     const file = path.join(root, rel === '/' ? 'index.html' : rel);
     if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
@@ -86,6 +189,7 @@ function freePort() {
    the request is a correction prompt — enough to drive the whole exercise. */
 function startParaProvider() {
   const seen = [];
+  let corrections = 0;
   const cors = {
     'access-control-allow-origin': '*',
     'access-control-allow-headers': '*',
@@ -120,13 +224,21 @@ function startParaProvider() {
       const keywords = picks.map((p, i) => ({
         term: p.term, meaning: p.meaning, note: i === 0 ? 'note for the first word' : ''
       }));
-      const content = promptText.indexOf("LEARNER'S TRANSLATION") !== -1
-        ? JSON.stringify({
+      const isCorrection = promptText.indexOf("LEARNER'S TRANSLATION") !== -1;
+      if (isCorrection) corrections++;
+      const content = isCorrection
+        ? JSON.stringify(corrections === 1 ? {
           score: 82,
           corrected: 'Les habitants constatent que la pollution augmente.',
           notes: [{ text: 'les habittants', fix: 'les habitants', why: 'plural takes -s' }],
           used: keywords.map((k) => k.term),
           comment: 'Close — mind the plural.'
+        } : {
+          score: 100,
+          corrected: 'Les habitants constatent que la pollution augmente.',
+          notes: [],
+          used: keywords.map((k) => k.term),
+          comment: 'All good — the correction is applied.'
         })
         : JSON.stringify({
           paragraph: 'Les habitants constatent que la pollution augmente chaque année.',
@@ -146,6 +258,7 @@ function buildProbe(deadPort, blockedPort, paraPort) {
 
   const early = [
     '<script>',
+    'try { if (!' + String(live) + ') localStorage.clear(); } catch (e) {}',
     'window.__log = [];',
     'window.addEventListener("error", function (e) {',
     '  var t = e.target;',
@@ -283,7 +396,22 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '      await new Promise(function (r) { document.addEventListener("DOMContentLoaded", r); });',
     '    }',
     '    await wait(30);',
-    '    if (!' + String(live) + ') localStorage.clear();',
+    '    out("auth gate: locked=" + document.body.classList.contains("auth-locked") + " visible=" + vis(byId("authScreen")));',
+    '    if (document.body.classList.contains("auth-locked")) {',
+    '      byId("authEmail").value = "khoi@example.com";',
+    '      byId("authPassword").value = "password123";',
+    '      byId("authForm").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));',
+    '    }',
+    '    var signedIn = await waitFor(function () {',
+    '      return !document.body.classList.contains("auth-locked") &&',
+    '        document.querySelectorAll("#questList .quest").length === 3;',
+    '    }, 8000, "sign in");',
+    '    out("auth signed-in=" + signedIn + " name=" + byId("homeName").textContent +',
+    '        " streak=" + byId("streakCount").textContent +',
+    '        " quests=" + document.querySelectorAll("#questList .quest").length +',
+    '        " count=" + byId("questCount").textContent +',
+    '        " greeting=" + JSON.stringify(byId("homeGreeting").textContent) +',
+    '        " date=" + JSON.stringify(byId("homeDate").textContent));',
     '    out("loaded: " + document.title);',
     setup,
     '    out("deck: " + byId("sheetStatus").textContent);',
@@ -334,6 +462,11 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '        " subs=" + document.querySelectorAll("#qOptions .opt-sub").length +',
     '        " answer-translated=" + (!!wantSub && wantRelated.some(function (t) { return wantSub.textContent.indexOf(t) !== -1; })) +',
     '        " title=" + JSON.stringify(byId("fbTitle").textContent));',
+    '    await wait(250);',
+    '    var qbar = document.querySelector(\'#questList .quest[data-quest="mc30"] .quest-count\');',
+    '    out("quest after answer: bar=" + (qbar ? qbar.textContent : "missing") +',
+    '        " all-done=" + !byId("questAllDone").hidden + " streak=" + byId("streakCount").textContent);',
+    '    await wait(900);',
     '',
     '    /* Every option, including the one you picked wrongly, shows its translation. */',
     '    byId("btnNext").click();',
@@ -562,13 +695,184 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '        " notes=" + document.querySelectorAll("#paraFeedback .pf-note").length +',
     '        " used=" + document.querySelectorAll("#paraFeedback .pf-words li.ok").length +',
     '        " corrected=" + !!document.querySelector("#paraFeedback .pf-fixed") +',
-    '        " next=" + !!document.querySelector("#paraFeedback .pf-actions button"));',
-    '    document.querySelector("#paraFeedback .pf-actions button").click();',
+    '        " actions=" + document.querySelectorAll("#paraFeedback .pf-actions button").length);',
+    '    var pfButtons = function () { return Array.prototype.slice.call(document.querySelectorAll("#paraFeedback .pf-actions button")); };',
+    '    var applyBtn = pfButtons().filter(function (b) { return /Apply fixes/.test(b.textContent); })[0];',
+    '    out("paragraph retry: apply=" + !!applyBtn + " can-edit=" + !byId("paraInput").disabled +',
+    '        " attempts=" + document.querySelectorAll("#paraFeedback .pf-history li").length);',
+    '    if (applyBtn) applyBtn.click();',
+    '    await wait(80);',
+    '    var againBtn = pfButtons().filter(function (b) { return /Check again/.test(b.textContent); })[0];',
+    '    out("paragraph retry: corrected-text=" + JSON.stringify(byId("paraInput").value) + " again=" + !!againBtn);',
+    '    if (againBtn) againBtn.click();',
+    '    await waitFor(function () { return pfButtons().some(function (b) { return /(Next paragraph|See results)/.test(b.textContent); }); }, 20000, "paragraph retry success");',
+    '    out("paragraph retry: score=" + (document.querySelector("#paraFeedback .pf-score") || {}).textContent +',
+    '        " attempts=" + document.querySelectorAll("#paraFeedback .pf-history li").length +',
+    '        " complete=" + (pfButtons().some(function (b) { return /(Next paragraph|See results)/.test(b.textContent); })));',
+    '    pfButtons().filter(function (b) { return /(Next paragraph|See results)/.test(b.textContent); })[0].click();',
     '    await waitFor(function () { return screen("Results"); }, 20000, "results after a paragraph");',
     '    out("paragraph results=" + screen("Results") + " fraction=" + byId("resFraction").textContent +',
     '        " title=" + JSON.stringify(byId("resTitle").textContent) +',
     '        " new=" + JSON.stringify(byId("btnNewQuiz").textContent) +',
     '        " back=" + !byId("btnBackSetup").hidden);',
+    '',
+    '    /* Shadowing: AI paragraph, one sentence, recording, local save and a',
+    '       stubbed Azure score (no Azure key is needed in the smoke test). */',
+    '    var origAssess = Speech.assess;',
+    '    var origAssessSpeech = Ai.assessSpeech;',
+    '    var origTutor = Ai.askTutor;',
+    '    Speech.assess = async function () {',
+    '      return { score: 88, accuracy: 90, fluency: 84, completeness: 91, recognized: "Les habitants constatent que la pollution augmente.",',
+    '        words: [{ word: "habitants", accuracy: 62, errorType: "Mispronunciation" }, { word: "pollution", accuracy: 92, errorType: "None" }] };',
+    '    };',
+    '    Ai.askTutor = async function () { return { text: "AI-COACH-OK" }; };',
+    '    document.querySelector("#segPractice .seg-btn[data-value=shadowing]").click();',
+    '    await wait(40);',
+    '    out("shadowing setup: mode=" + byId("selPractice").value + " pane=" + !byId("shadowingSetupPane").hidden +',
+    '        " start-enabled=" + !byId("btnStartShadowing").disabled + " hint=" + JSON.stringify(byId("shadowStartHint").textContent.slice(0, 70)));',
+    '    byId("btnStartShadowing").click();',
+    '    await waitFor(function () { return screen("Shadowing") && byId("shSentence").textContent.length > 5; }, 25000, "shadowing sentence");',
+    '    out("shadowing card: progress=" + byId("shProgressText").textContent +',
+    '        " sentence=" + (byId("shSentence").textContent.length > 5) + " translation-hidden=" + byId("shTranslation").hidden +',
+    '        " record-enabled=" + !byId("btnShadowRecord").disabled + " assess-disabled=" + byId("btnShadowAssess").disabled);',
+    '    Speech.configure({ azureKey: "test-key", azureRegion: "test-region", azureVoice: "fr-FR-DeniseNeural", cloudVoice: false });',
+    '    byId("btnShadowTranslate").click();',
+    '    await wait(30);',
+    '    out("shadowing translation: visible=" + !byId("shTranslation").hidden + " text=" + (byId("shTranslation").textContent.length > 5));',
+    '    out("shadowing mic: media=" + !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) +',
+    '        " recorder=" + (typeof MediaRecorder !== "undefined"));',
+    '    /* Headless Chrome has no audio device; stub the microphone and recorder so',
+    '       the rest of the flow (blob, replay, save, assessment UI) is still real. */',
+    '    var fakeStream = { getTracks: function () { return [{ stop: function () {} }]; } };',
+    '    if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = async function () { return fakeStream; };',
+    '    function FakeRecorder(stream, opts) { this.mimeType = (opts && opts.mimeType) || "audio/webm"; this.state = "inactive"; }',
+    '    FakeRecorder.prototype.start = function () {',
+    '      this.state = "recording"; var self = this;',
+    '      setTimeout(function () { if (self.ondataavailable) self.ondataavailable({ data: new Blob(["fake-audio"], { type: "audio/webm" }) }); }, 60);',
+    '    };',
+    '    FakeRecorder.prototype.stop = function () { this.state = "inactive"; if (this.onstop) this.onstop(); };',
+    '    FakeRecorder.isTypeSupported = function () { return true; };',
+    '    window.MediaRecorder = FakeRecorder;',
+    '    byId("btnShadowRecord").click();',
+    '    await wait(300);',
+    '    out("shadowing record attempt: stop-visible=" + !byId("btnShadowStop").hidden +',
+    '        " status=" + JSON.stringify(byId("shRecordStatus").textContent));',
+    '    await waitFor(function () { return !byId("btnShadowStop").hidden; }, 5000, "recording started");',
+    '    await wait(450);',
+    '    byId("btnShadowStop").click();',
+    '    await waitFor(function () { return !byId("btnShadowReplay").hidden; }, 8000, "recording finished");',
+    '    out("shadowing recording: replay=" + !byId("btnShadowReplay").hidden + " save=" + !byId("btnShadowSave").hidden +',
+    '        " assess-enabled=" + !byId("btnShadowAssess").disabled + " meta=" + JSON.stringify(byId("shAudioMeta").textContent.slice(0, 40)));',
+    '    /* IndexedDB timing is unreliable under Chrome’s virtual clock, so the smoke',
+    '       test stubs the storage calls and verifies the save/list UI contract. */',
+    '    var savedRecords = [];',
+    '    var realSave = Speech.saveRecording, realList = Speech.listRecordings;',
+    '    var realGet = Speech.getRecording, realDelete = Speech.deleteRecording, realCount = Speech.countRecordings;',
+    '    Speech.saveRecording = async function (rec) {',
+    '      savedRecords = savedRecords.filter(function (r) { return r.id !== rec.id; });',
+    '      savedRecords.push(rec); return rec;',
+    '    };',
+    '    Speech.listRecordings = async function () {',
+    '      return savedRecords.map(function (r) { return { id: r.id, reference: r.reference, createdAt: r.createdAt, score: r.score, size: r.blob ? r.blob.size : 0 }; });',
+    '    };',
+    '    Speech.getRecording = async function (id) { return savedRecords.filter(function (r) { return r.id === id; })[0] || null; };',
+    '    Speech.deleteRecording = async function (id) { savedRecords = savedRecords.filter(function (r) { return r.id !== id; }); };',
+    '    Speech.countRecordings = async function () { return savedRecords.length; };',
+    '    byId("btnShadowSave").click();',
+    '    await waitFor(function () { return byId("shSavedCount").textContent === "1"; }, 8000, "recording saved");',
+    '    out("shadowing save: count=" + byId("shSavedCount").textContent + " meta=" + JSON.stringify(byId("shAudioMeta").textContent.slice(0, 40)) +',
+    '        " blob=" + (savedRecords[0] && savedRecords[0].blob ? savedRecords[0].blob.size : 0));',
+    '    /* Gemini scoring: the same recording, judged from audio without any Azure',
+    '       speech-to-text call. WAV conversion and the model call are stubbed (the',
+    '       conversion is verified separately in real Chrome). */',
+    '    byId("btnSettings").click();',
+    '    await wait(60);',
+    '    document.querySelector(".tab-btn[data-tab=ai]").click();',
+    '    byId("inpGeminiKey").value = "AIza" + "b".repeat(35);',
+    '    byId("inpGeminiKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    document.querySelector(".tab-btn[data-tab=speech]").click();',
+    '    await wait(40);',
+    '    byId("selScoreEngine").value = "gemini";',
+    '    byId("selScoreEngine").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    out("scoring engine: status=" + JSON.stringify(byId("scoreStatus").textContent.slice(0, 60)) +',
+    '        " saved=" + JSON.parse(localStorage.getItem("vocablab.settings")).scoreEngine);',
+    '    byId("settingsDialog").close();',
+    '    await wait(80);',
+    '    var realWav = Speech.blobToWav, realB64 = Speech.blobToBase64;',
+    '    Speech.blobToWav = async function () { return new Blob(["wav"], { type: "audio/wav" }); };',
+    '    Speech.blobToBase64 = async function () { return "AAAA"; };',
+    '    var geminiCalls = 0;',
+    '    Ai.assessSpeech = async function (cfg) {',
+    '      geminiCalls++;',
+    '      out("gemini request: audio=" + (cfg.audio === "AAAA") + " ref=" + (cfg.reference.length > 20) + " model=" + cfg.model);',
+    '      return { source: "gemini", score: 77, accuracy: 78, fluency: 74, completeness: 80,',
+    '        recognized: "Les habitants constatent que la pollution augmente.",',
+    '        words: [{ word: "habitants", accuracy: 66, errorType: "Mispronunciation" }],',
+    '        tips: "GEMINI-TIP-OK" };',
+    '    };',
+    '    byId("btnShadowAssess").click();',
+    '    await waitFor(function () { return !byId("shResult").hidden; }, 8000, "Gemini score");',
+    '    out("shadowing gemini: score=" + byId("shScoreBig").textContent +',
+    '        " source=" + JSON.stringify(byId("shScoreSource").textContent) +',
+    '        " tips=" + JSON.stringify(byId("shTips").textContent) +',
+    '        " calls=" + geminiCalls);',
+    '    Ai.assessSpeech = origAssessSpeech;',
+    '    Speech.blobToWav = realWav; Speech.blobToBase64 = realB64;',
+    '    byId("btnSettings").click();',
+    '    await wait(60);',
+    '    document.querySelector(".tab-btn[data-tab=speech]").click();',
+    '    await wait(40);',
+    '    byId("inpAzureKey").value = "test-key";',
+    '    byId("inpAzureKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    byId("selScoreEngine").value = "azure";',
+    '    byId("selScoreEngine").dispatchEvent(new Event("change", { bubbles: true }));',
+    '    byId("settingsDialog").close();',
+    '    await wait(80);',
+    '    byId("btnShadowAssess").click();',
+    '    await waitFor(function () { return !byId("shResult").hidden; }, 8000, "shadowing result");',
+    '    await wait(300);',
+    '    out("shadowing score: score=" + byId("shScoreBig").textContent + " accuracy=" + byId("shAccuracy").textContent +',
+    '        " fluency=" + byId("shFluency").textContent + " completeness=" + byId("shCompleteness").textContent +',
+    '        " words=" + document.querySelectorAll("#shWords .sh-word").length + " tips=" + JSON.stringify(byId("shTips").textContent));',
+    '    byId("btnShadowNext").click();',
+    '    await wait(80);',
+    '    out("shadowing summary: shown=" + !byId("shadowSummary").hidden + " avg=" + byId("shSummaryAvg").textContent +',
+    '        " count=" + byId("shSummaryCount").textContent);',
+    '    byId("btnShadowSaved").click();',
+    '    await waitFor(function () { return !byId("shadowSavedPanel").hidden && !/Loading/.test(byId("shSavedList").textContent); }, 8000, "saved panel");',
+    '    out("shadowing saved: items=" + document.querySelectorAll("#shSavedList .saved-item").length +',
+    '        " status=" + JSON.stringify(byId("shSavedList").textContent.slice(0, 50)));',
+    '    var savedButtons = document.querySelectorAll("#shSavedList .saved-item button");',
+    '    if (savedButtons.length > 1) savedButtons[1].click();',
+    '    await waitFor(function () { return byId("shSavedCount").textContent === "0"; }, 8000, "recording deleted");',
+    '    out("shadowing delete: count=" + byId("shSavedCount").textContent +',
+    '        " items=" + document.querySelectorAll("#shSavedList .saved-item").length);',
+    '    byId("btnShadowCloseSaved").click();',
+    '    await wait(50);',
+    '    Speech.assess = origAssess;',
+    '    Speech.saveRecording = realSave;',
+    '    Speech.listRecordings = realList;',
+    '    Speech.getRecording = realGet;',
+    '    Speech.deleteRecording = realDelete;',
+    '    Speech.countRecordings = realCount;',
+    '    Ai.askTutor = origTutor;',
+    '    /* Clear the test keys so the homepage speaker test exercises the browser',
+    '       voice path, not a fake Azure key. */',
+    '    byId("btnSettings").click();',
+    '    await wait(60);',
+    '    document.querySelector(".tab-btn[data-tab=speech]").click();',
+    '    await wait(40);',
+    '    byId("inpAzureKey").value = "";',
+    '    byId("inpAzureKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    byId("btnScoreAiSettings").click();',
+    '    await wait(40);',
+    '    out("settings ai link: active=" + document.querySelector(".tab-pane[data-pane=ai]").classList.contains("active"));',
+    '    byId("inpGeminiKey").value = "";',
+    '    byId("inpGeminiKey").dispatchEvent(new Event("input", { bubbles: true }));',
+    '    byId("settingsDialog").close();',
+    '    await wait(80);',
+    '    byId("btnShadowBackSetup").click();',
+    '    await wait(80);',
     '',
     '    byId("btnFlashcards").click();',
     '    await waitFor(function () { return screen("Flashcards"); }, 8000, "flashcards");',
@@ -648,6 +952,10 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '    document.querySelector("#screenGrammar [data-action=exit]").click();',
     '    await wait(50);',
     '    out("grammar exit: welcome=" + screen("Welcome") + " grammar-hidden=" + !screen("Grammar"));',
+    '    byId("btnTestVoice").click();',
+    '    await wait(120);',
+    '    var speechToasts = document.querySelectorAll("#toasts .toast");',
+    '    out("speech test: toast=" + JSON.stringify(speechToasts.length ? speechToasts[speechToasts.length - 1].textContent : ""));',
     '    out("DONE");',
     '  }',
     '',
@@ -663,7 +971,8 @@ function buildProbe(deadPort, blockedPort, paraPort) {
 /* ---------- run ---------- */
 function runChrome(chrome, url) {
   const args = ['--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage',
-    '--window-size=1280,1800', '--virtual-time-budget=60000', '--dump-dom', url];
+    '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream',
+    '--window-size=1280,1800', '--virtual-time-budget=120000', '--dump-dom', url];
   return new Promise((resolve) => {
     execFile(chrome, args, { maxBuffer: 64 * 1024 * 1024, timeout: 180000 }, (err, stdout) => resolve(stdout || ''));
   });
@@ -682,7 +991,8 @@ if (!chrome) {
   process.exit(0);
 }
 
-const server = startServer();
+const api = startFakeApi();
+const server = startServer(api);
 const port = await freePort();
 const deadPort = await freePort(); // nothing listens here: models the “Ollama is not running” case
 const blockedPort = await freePort(); // answers, but sends no CORS headers: models “Ollama is running, page refused”
@@ -713,6 +1023,14 @@ if (!block) {
 console.log(log.trim().split('\n').map((l) => '    ' + l).join('\n'));
 
 check(/^loaded: /m.test(log), 'app boots (scripts load, init runs)');
+check(/^auth gate: locked=true visible=true/m.test(log), 'a signed-out visitor sees the sign-in screen, not the app');
+check(/^auth signed-in=true name=Khoi streak=4 quests=3 count=2 \/ 3 greeting="Good (morning|afternoon|evening)," date="[^"]+"$/m.test(log),
+  'sign-in renders the greeting, the date, the streak and three daily quests',
+  (log.match(/^auth signed-in=.*/m) || [''])[0]);
+check(/^quest after answer: bar=30 \/ 30 all-done=true streak=5$/m.test(log),
+  'answering a quiz fills the HP bar, completes the day and adds the streak',
+  (log.match(/^quest after answer: .*/m) || [''])[0]);
+check(apiLog.indexOf('POST /api/daily/progress') !== -1, 'quest progress is sent to the account API');
 check(/^deck: Loaded/m.test(log), 'deck loads', (log.match(/^deck: .*/m) || [''])[0]);
 check(/^toasts: [01] notes=/m.test(log), 'one load message, not a success toast plus a warning');
 check(/^setup: difficulty=hard on=hard req="short sentences, travel situations" count=\d+\/600 saved=hard\/"short sentences, travel situations"/m.test(log),
@@ -790,12 +1108,55 @@ check(/^paragraph card: dir=French → Vietnamese text=true words=[3-9] prompt-h
   (log.match(/^paragraph card: .*/m) || [''])[0]);
 check(/^paragraph count=\d+ words/m.test(log), 'the textarea counts what you type',
   (log.match(/^paragraph count=.*/m) || [''])[0]);
-check(/^paragraph feedback: score=82\/100 notes=1 used=3 corrected=true next=true/m.test(log),
-  'the AI correction shows a score, the fixes, the words used and a way on',
+check(/^paragraph feedback: score=82\/100 notes=1 used=3 corrected=true actions=[2-9]/m.test(log),
+  'the AI correction shows a score, the fixes, the words used and retry actions',
   (log.match(/^paragraph feedback: .*/m) || [''])[0]);
+check(/^paragraph retry: apply=true can-edit=true attempts=0/m.test(log),
+  'a checked paragraph stays editable and offers the AI fixes',
+  (log.match(/^paragraph retry: apply=.*/m) || [''])[0]);
+check(/^paragraph retry: corrected-text="Les habitants constatent que la pollution augmente\." again=true/m.test(log),
+  'applying the fixes replaces the learner text without locking it',
+  (log.match(/^paragraph retry: corrected-text=.*/m) || [''])[0]);
+check(/^paragraph retry: score=100\/100 attempts=2 complete=true/m.test(log),
+  'the paragraph can be re-submitted until it is all good',
+  (log.match(/^paragraph retry: score=.*/m) || [''])[0]);
 check(/^paragraph results=true fraction=1\/1 title="[^"]*translation[^"]*" new="New paragraph" back=true/m.test(log),
   'a paragraph result is a practice result with its own restart and setup button',
   (log.match(/^paragraph results=.*/m) || [''])[0]);
+check(/^shadowing setup: mode=shadowing pane=true start-enabled=true/m.test(log),
+  'shadowing is a separate practice mode with an AI paragraph start button',
+  (log.match(/^shadowing setup: .*/m) || [''])[0]);
+check(/^shadowing card: progress=Sentence 1 of \d+ sentence=true translation-hidden=true record-enabled=true assess-disabled=true/m.test(log),
+  'the shadowing card shows a sentence, hides the translation and starts with recording only',
+  (log.match(/^shadowing card: .*/m) || [''])[0]);
+check(/^shadowing translation: visible=true text=true/m.test(log), 'the translation can be revealed on demand');
+check(/^shadowing recording: replay=true save=true assess-enabled=true meta="Not saved/m.test(log),
+  'a recording can be replayed or saved, and is marked unsaved by default',
+  (log.match(/^shadowing recording: .*/m) || [''])[0]);
+check(/^shadowing save: count=1 meta="Saved on this device/m.test(log),
+  'pressing Save stores the recording locally',
+  (log.match(/^shadowing save: .*/m) || [''])[0]);
+check(/^scoring engine: status="Scoring uses Gemini .* saved=gemini$/m.test(log),
+  'the scoring engine can be switched to Gemini and is saved',
+  (log.match(/^scoring engine: .*/m) || [''])[0]);
+check(/^gemini request: audio=true ref=true model=gemini-flash-latest$/m.test(log),
+  'Gemini scoring receives the recording and the reference sentence',
+  (log.match(/^gemini request: .*/m) || [''])[0]);
+check(/^shadowing gemini: score=77 source="AI estimate — not a real test" tips="GEMINI-TIP-OK" calls=1$/m.test(log),
+  'Gemini scores are rendered and clearly labelled as an AI estimate',
+  (log.match(/^shadowing gemini: .*/m) || [''])[0]);
+check(/^shadowing score: score=88 accuracy=90 fluency=84 completeness=91 words=2 tips="AI-COACH-OK"/m.test(log),
+  'Azure scores and the AI coach are rendered for the recording',
+  (log.match(/^shadowing score: .*/m) || [''])[0]);
+check(/^shadowing summary: shown=true avg=88\/100 count=1/m.test(log),
+  'the last sentence leads to a shadowing summary',
+  (log.match(/^shadowing summary: .*/m) || [''])[0]);
+check(/^shadowing saved: items=1 status=/m.test(log),
+  'saved recordings are listed from local storage',
+  (log.match(/^shadowing saved: .*/m) || [''])[0]);
+check(/^shadowing delete: count=0 items=0/m.test(log),
+  'a saved recording can be deleted from local storage',
+  (log.match(/^shadowing delete: .*/m) || [''])[0]);
 check(/flashcard flipped=true/m.test(log), 'flashcard flips');
 check(/flashcard next=\d+\s*\/\s*\d+/m.test(log), 'flashcard advances');
 check(/^grammar course: visible=true cards=18 parts=7 title="Các thì tiếng Pháp" back=true/m.test(log),
@@ -825,6 +1186,12 @@ check(/^grammar lang: subtitle="The present" on=en/m.test(log),
   (log.match(/^grammar lang: .*/m) || [''])[0]);
 check(/^grammar exit: welcome=true grammar-hidden=true/m.test(log),
   'the course has a working route back to vocabulary');
+check(/^speech test: toast="(?:No speech voices found|Playing a French test phrase)/m.test(log),
+  'the homepage speaker test reports whether the browser has voices',
+  (log.match(/^speech test: .*/m) || [''])[0]);
+check(/^settings ai link: active=true$/m.test(log),
+  'the Speech tab can jump to the AI settings for the Gemini key',
+  (log.match(/^settings ai link: .*/m) || [''])[0]);
 check(/DONE/m.test(log), 'probe ran to the end');
 check(!/JS-ERROR|JS-REJECT|RESOURCE-ERROR|DRIVER-THROW|TIMEOUT/m.test(log), 'no JavaScript errors or timeouts',
   (log.match(/^(JS-ERROR|JS-REJECT|RESOURCE-ERROR|DRIVER-THROW|TIMEOUT).*/m) || [''])[0]);

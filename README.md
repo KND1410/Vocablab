@@ -3,24 +3,36 @@
 **Live app: <https://vocablab-one.vercel.app>** — no install, nothing to run.
 
 Turn a **Google Sheet of vocabulary** into AI-generated quizzes: multiple choice,
-fill-in-the-blank, typed translation and whole-paragraph translation. Built for
-learning **French** (Vietnamese meanings out of the box), but works with any
-language.
+fill-in-the-blank, typed translation, whole-paragraph translation and **shadowing**
+with pronunciation feedback. Built for learning **French** (Vietnamese meanings
+out of the box), but works with any language.
 
 - Every **tab** of your sheet becomes a **topic**.
 - Questions are written by an **AI model** — a free keyless model works out of the
   box (no account, no key), or bring your own key for Google Gemini, Groq,
   Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare or a local
   Ollama — with a solid built-in generator when AI is unavailable.
+- **Daily quests + streak**: the home page greets you, shows the date, and picks
+  three small daily quests — one quiz, one production (paragraph or shadowing) and
+  one review (flashcards or grammar). Finish all three to extend your streak; one
+  missed day is a grace day (the flame shows a **!**), two resets it. Progress is
+  filled HP-style as you practise, and every quest's **Start** jumps straight into
+  that exact practice.
+- **Accounts**: email + password, with your name and a one-time recovery code (no
+  email service needed). The whole app is behind the login screen. Name, daily
+  quests and streak sync to **your own MongoDB Atlas database** through `/api`;
+  the deck, mastery, grammar progress, settings and recordings stay local.
 - **Grammar → French Tenses**: an 18-chapter DELF B2 course with a course map,
   bilingual Vietnamese/English explanations, conjugation tables, short exercises,
   saved progress and a lesson-aware AI tutor. The source PDF stays local; the
   lessons live in `js/grammar-data.js`.
-- No build step, no backend, no dependencies: a static page + your browser.
+- No build step: static files plus Vercel serverless functions. The optional Azure
+  Speech SDK is loaded from a pinned CDN only when you use the cloud voice or Azure
+  pronunciation scoring; Gemini scoring uses your existing AI key.
 
 ```
 language/
-├── index.html          the app
+├── index.html          the app + auth screen + home dashboard
 ├── css/styles.css      styles (light/dark)
 ├── js/util.js          helpers + storage
 ├── js/demo.js          built-in French demo deck (36 words)
@@ -28,12 +40,18 @@ language/
 ├── js/ai.js            Gemini + OpenAI-compatible clients (JSON mode, retries)
 ├── js/generator.js     built-in offline question generator
 ├── js/quiz.js          selection, batching, caching, grading, mastery
+├── js/quests.js        shared quest definitions, daily picker, progress, streak
+├── js/account.js       auth client, local home cache, offline progress queue
+├── js/speech.js        Azure neural TTS, pronunciation assessment, local recordings
 ├── js/grammar-data.js  18-chapter French tenses course (bilingual data)
 ├── js/grammar.js       course map, lessons, exercises, progress, AI tutor
-├── js/app.js           UI wiring
+├── js/app.js           UI wiring, dashboard, quest hooks
+├── api/                Vercel functions: auth, home, progress, profile
+├── lib/                Mongo client, scrypt/session helpers, daily/streak logic
+├── scripts/init-db.mjs creates the Atlas indexes
 ├── my-sheet.txt.example  template for your own link list (copy to my-sheet.txt)
 ├── sample-sheet.csv    example of the sheet format
-├── tests/run-tests.mjs logic tests (node tests/run-tests.mjs)
+├── tests/run-tests.mjs logic + API tests (node tests/run-tests.mjs)
 └── tests/browser-smoke.mjs real-UI test in headless Chrome
 ```
 
@@ -41,21 +59,57 @@ language/
 
 ## 1 · Run it
 
-**Hosted:** <https://vocablab-one.vercel.app> (this repo, deployed by Vercel on
-every push to `main`; nothing to build or configure).
+**Hosted:** <https://vocablab-one.vercel.app> — Vercel serves the static app and
+the `/api` functions. The account data goes to the MongoDB Atlas database set in
+`MONGODB_URI`.
 
-**Easiest locally:** double-click `index.html`. The demo deck works immediately.
+The app now needs its API for login. A static-only host (GitHub Pages, Netlify
+Drop, Cloudflare Pages, `python3 -m http.server`) can still show the interface,
+but the sign-in screen will report that the account server is unreachable.
 
-**Better (recommended):** serve the folder so browser requests are never blocked:
+### Locally (full app)
 
-```bash
-cd language
-python3 -m http.server 8080
-# open http://localhost:8080
-```
+1. Install the one server dependency:
 
-To use it on your phone or share it, host the folder anywhere static
-(GitHub Pages, Netlify Drop, Cloudflare Pages…). It is just files.
+   ```bash
+   npm install
+   ```
+
+2. Create a free **MongoDB Atlas M0** cluster and a database user, allow your IP
+   under **Network Access**, then copy the connection string:
+
+   ```bash
+   cp .env.example .env.local
+   # edit .env.local and paste MONGODB_URI; never commit this file
+   ```
+
+   The database name is `vocablab` (override with `MONGODB_DB`).
+
+3. Create the indexes once:
+
+   ```bash
+   npm run db:init
+   ```
+
+4. Run the Vercel dev server (the API needs it; `python3 -m http.server` alone
+   cannot sign anyone in):
+
+   ```bash
+   npx vercel dev        # or: npm run dev
+   # open http://localhost:3000
+   ```
+
+### Deploy
+
+- Import the repo in Vercel. The `api/` folder is detected automatically; there is
+  no build command.
+- Add `MONGODB_URI` (and optionally `MONGODB_DB`) to **Production** and
+  **Preview** environment variables, then deploy.
+- Atlas network access must allow Vercel's egress. `0.0.0.0/0` is the simple
+  option; restrict it if you prefer.
+- If a connection string has ever been pasted into a chat, a ticket or a
+  screenshot, rotate that Atlas user's password in **Database Access** and update
+  `MONGODB_URI` in Vercel and `.env.local`.
 
 ---
 
@@ -157,17 +211,14 @@ Things to know:
 - If discovery fails (old browser, offline), the tab list from the **last load** of
   that sheet is reused — including a tab-name list you typed once — and a single
   note explains what happened (also kept in **Settings → Google Sheet**).
-- On a double-clicked `file://` page the browser refuses to download Google's tab
-  list (the page's origin is `null`, which Google blocks). VocabLab then asks the
-  public **[r.jina.ai](https://r.jina.ai)** reader for the same page, which works
-  from `file://`, and loads every tab — still no key and nothing to type. That
-  reader is a free third-party service, so treat it as best-effort: if it is
-  unreachable the remembered tab list is used, and failing that you get one honest
-  “first tab only” note. Serving the folder over `http://localhost` needs no third
-  party at all.
-- If the browser blocks requests to Google (Chrome/Edge on a double-clicked
-  `file://` page, or a strict ad blocker), VocabLab retries the words themselves
-  with a **script-tag (JSONP) method**, which does not need a server.
+- If the preview download is blocked, VocabLab asks the public
+  **[r.jina.ai](https://r.jina.ai)** reader for the same tab list — still no key and
+  nothing to type. That reader is a free third-party service, so treat it as
+  best-effort: if it is unreachable the remembered tab list is used, and failing
+  that you get one honest “first tab only” note.
+- If the browser blocks requests to Google (for example a strict ad blocker),
+  VocabLab retries the words themselves with a **script-tag (JSONP) method**, which
+  does not need a server.
 - Loaded decks are **cached in the browser**, so the app opens instantly and works
   offline afterwards.
 
@@ -180,7 +231,8 @@ Open **Settings → AI**. There are two modes, both stored only in your browser:
 - **Simple** *(default)* — pick a free model and go. **No account, no API key.**
   It uses a shared public AI service limited to **one request every 30 seconds**;
   VocabLab batches up to 20 words per request and automatically waits for the next
-  free slot (a paragraph costs one request to write, one to correct). For heavy
+  free slot (a paragraph costs one request to write and one per correction check,
+  up to the retry limit). For heavy
   use, switch to Advanced.
 - **Advanced** — choose any provider below and paste your own key. Requests then
   go straight from your browser to that provider, with no shared queue.
@@ -291,9 +343,9 @@ on the DELF B2 tenses handbook:
 
 - **Question types**: Multiple choice · Fill in the blank (AI sentence with `___`,
   or spelling practice / example cloze in built-in mode) · Translate (typed).
-- **Practice modes**: **Quiz** and **Paragraph translation** are separate tabs.
-  Paragraph translation is not a quiz question type; it has its own direction,
-  count and **Start paragraph** button.
+- **Practice modes**: **Quiz**, **Paragraph translation** and **Shadowing** are
+  separate tabs. Paragraph translation is not a quiz question type; it has its own
+  direction, count and **Start paragraph** button.
 - **Direction** (quiz): mixed, French ➜ Vietnamese, or Vietnamese ➜ French (under
   **More options**). Paragraph direction is set in its own tab.
 - **Difficulty**: Easy / Standard / Hard sets the sentence length and CEFR level
@@ -347,15 +399,40 @@ on the DELF B2 tenses handbook:
     never a bundle, never a note where nothing changed),
   * the sheet words you used (✓) and the ones you missed (✗).
 
+  When the AI finds something to fix, the paragraph stays editable. Press
+  **Apply fixes and edit**, adjust anything you like, and **Check again**; only the
+  final attempt is scored and added to the results. Each paragraph gets at most
+  three AI checks; after the third, **Finish anyway** is offered (the score is the
+  last check). Re-checking the exact same text does not spend another AI request.
+  Each feedback panel shows the previous attempt scores.
+
   Paragraphs are never faked locally: when AI is unavailable (Advanced with no key)
   **Start paragraph** is disabled with the reason, and a failed generation or
   correction says so in Settings → AI instead of quietly swapping in another
   exercise. Simple mode (free, keyless) is enough for it. Paragraph practice always
   uses AI, so the quiz Generator setting does not affect it. `Ctrl/⌘ + Enter`
   checks without leaving the textarea.
-- **🔊 pronunciation** uses your browser's speech synthesis — set the voice code
-  in Settings → AI (`fr-FR`, `de-DE`, `ja-JP`, …); “Auto-play” reads the word
-  when a card is revealed.
+- **🎙 Shadowing** (AI paragraph + pronunciation feedback): open the **Shadowing**
+  tab and press **Start shadowing**. The AI writes a short French paragraph from
+  your sheet words and splits it into sentences. For each one: **Listen**, record
+  yourself with **Record**, replay it, and keep the translation hidden until you
+  press **Show translation**. **Check pronunciation** sends only that recording to
+  the engine chosen in Settings → Speech:
+  - **Gemini** (default when a Gemini key exists) listens to a short WAV clip on
+    its free tier. You get a transcript, estimated accuracy/fluency/completeness,
+    word highlights and two tips. This is labelled **AI estimate** and spends **no
+    Azure speech hours**; free-tier audio is sent to Google.
+  - **Azure** returns real word-level Pronunciation Assessment scores but consumes
+    your 5 free speech-to-text hours (TTS characters are a separate quota).
+  Re-record after listening, then continue. The summary shows the average and each
+  sentence's score.
+  Recordings are in memory only until **Save**; saved audio goes to this browser's
+  IndexedDB, never to this app's server or database. Leaving shadowing, moving to the next
+  sentence, finishing, recording again, or closing the tab deletes unsaved audio.
+  See **Settings → Speech** for both keys and the engine switch.
+- **🔊 pronunciation** uses Azure's neural voice when configured (Settings → Speech),
+  otherwise the browser's speech synthesis — set the voice code in Settings → AI
+  (`fr-FR`, `de-DE`, `ja-JP`, …); “Auto-play” reads the word when a card is revealed.
 - **🃏 Flashcards** mode for quick review with *Again / Got it*.
 - **Practice mistakes** button on the results screen.
 
@@ -368,8 +445,9 @@ Keyboard: `1`–`4` answer · `Enter` check/next · `Space` flip card · `←`/`
 | Tab | What's there |
 |---|---|
 | **AI** | Simple mode (free, keyless model picker) / Advanced mode (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, target language + voice, auto-play |
+| **Speech** | Azure Speech key + region, French neural voice, “use Azure for every speaker icon” toggle, **Test Azure voice**, pronunciation-scoring engine (Gemini estimate / Azure / automatic) |
 | **Google Sheet** | the three connection modes, load buttons, setup help |
-| **Data** | cached deck info, forget deck, reset progress, wipe everything |
+| **Data** | cached deck info, saved-recording count and deletion, forget deck, reset progress, wipe everything |
 
 Switching the **target language** (e.g. `French` / `fr-FR`) is all you need for a
 different language — the AI prompt, RTL-free UI text and the TTS voice follow it.
@@ -388,11 +466,21 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 | Provider rejects the key (`401`/`403`) | The app now names the provider and its own reason (“Invalid API Key”). Keys are *not* shared between providers: `gsk_…` (56 chars) = Groq, `xai-…` = xAI **Grok**, `sk-or-…` = OpenRouter, `sk-…` = DeepSeek, `AIza…` = Gemini. **Groq (fast inference, free) and Grok (xAI, paid) are different companies one letter apart** — a key from a “Grok” page will never work on the Groq provider. A key that matches no provider's format, or another provider's, is called out the moment you paste it, with the console it should come from. A pasted `Bearer ` prefix, quotes or a stray newline are stripped automatically (keys saved earlier are repaired on load). On OpenRouter use a `:free` model; on Cloudflare include your account ID in the Base URL |
 | AI replies, but the quiz still shows built-in questions | The model answered in a shape VocabLab can't use. The prompt now spells out the exact JSON (`{"questions":[…]}`, one object per word) and the app retries once, colder and with more room, before giving up. If it still fails, the model ignores JSON mode: open Settings → AI (the box shows how the reply began) and pick a plain chat model instead of a reasoning one |
 | Paragraph translation is greyed out | It is AI-only, by design: use Simple mode (free, no key) in Settings → AI, or add your own key in Advanced. The quiz Generator setting does **not** affect paragraph practice — it always uses AI. A paragraph is written **and** corrected by AI, so it is never replaced by a built-in question; if a generation fails mid-session the reason is kept in Settings → AI |
+| Shadowing is greyed out | **Start shadowing** needs AI to write the paragraph (Simple mode is enough). Recording and replay then work without a scoring key; **Check pronunciation** needs a free Gemini key (Settings → AI) or an Azure key (Settings → Speech). If there is no microphone, allow the site permission and use `https://` or `localhost` |
+| Gemini pronunciation check fails | The key must be a Google AI Studio key (`AIza…`); test it in **Settings → AI**. A 429 means the free-tier audio limit is briefly used up — wait a minute or switch scoring to Azure. A 403 can mean audio input is unavailable for that key's region. Gemini scores are an **estimate**, not a certified test |
 | Can't reach the provider (CORS/network) | The message says which side is broken. *“nothing is running there”* → for a local server: it isn't installed/started (`ollama serve`, then `ollama pull <model>`; check `http://localhost:11434/api/tags` in a new tab); *“a server answered, but it blocked this page”* → CORS: restart Ollama with `OLLAMA_ORIGINS=*` and serve the page over `http(s)://`, not `file://`. Gemini, Groq, OpenRouter and Mistral need no CORS setup |
 | A renamed tab shows up twice | Only happens with a manual tab-name list: Google serves the *first* tab for an unknown name. Delete/rename that line, or use the link-only mode for auto-detection |
 | New words/tabs don't show up | Press **↻ Reload** in the header |
 | “Network error…” when opened as `file://` | Chrome/Edge block requests to Google from double-clicked pages. VocabLab asks the public `r.jina.ai` reader for the tab list (no key, nothing to type), falls back to the remembered list, and only then says “first tab only” in one message (kept in Settings → Google Sheet). To drop the third party, serve the folder (`python3 -m http.server 8080` → `http://localhost:8080`) |
-| Voice is silent | Pick a BCP-47 code matching an installed voice (`fr-FR`), and note some browsers require one user interaction first |
+| Sign-in says “server is not reachable” | The page needs the `/api` functions. Run `npx vercel dev` (not `python3 -m http.server`) or use the deployed site, and check that `MONGODB_URI` is set. |
+| `npm run db:init` cannot connect | Check the Atlas database user's password, the cluster hostname in `MONGODB_URI`, and Atlas **Network Access** for your current IP. A pasted password should be rotated. |
+| I lost my recovery code | There is no email reset by design. Create a new account; only the name, daily quests and streak are lost — the local deck, mastery, grammar progress and recordings stay in this browser. |
+| The flame shows **!** | You missed one day. Finish all three quests today and the streak continues; a second missed day resets it (the best streak is kept). |
+| A quest target is bigger than my deck | Progress accumulates across sessions: start the quest again and the bar continues from where it was. |
+| Voice is silent | Press **Test speaker** on the home screen; it tests Azure first when configured, otherwise reports how many browser voices are available. On Linux, Chrome does not use speech-dispatcher — use Firefox and restart it after speech-dispatcher starts. Also pick a BCP-47 code matching an installed voice (`fr-FR`); some browsers require one user interaction first |
+| Azure rejects the key or region | They must belong to the same Azure Speech resource. Copy the region from the resource's **Keys and Endpoint** page (e.g. `southeastasia`), not the resource-group location. A new free F0 resource can take a minute to become active. Use **Settings → Speech → Test Azure voice** for the exact error |
+| Azure voice works but scoring is off | Scoring needs a key for the selected engine and a recording. Gemini scoring needs a Gemini key in **Settings → AI**; Azure scoring needs the key + region in **Settings → Speech**. Record again after changing the engine. Without either key, recording/replay still works but **Check pronunciation** stays disabled |
+| Save does nothing / recordings missing | Saved audio uses IndexedDB, not localStorage. Check that the browser allows site data for this page; **Settings → Data** shows the saved-recording count and can delete them. Unsaved recordings disappear when you leave shadowing or record again, by design |
 | Wrong columns read | Add a header row, or name columns with one of the recognised words above |
 | Apps Script returns HTML | Redeploy with access **Anyone**, and copy the `/exec` URL |
 
@@ -418,24 +506,51 @@ parsing incl. JS escapes), the tab-list fallbacks used when that download is blo
 (remembered list, last deck), the built-in generator, answer grading (incl.
 Vietnamese diacritics, typos and comma/slash lists with bracketed clarifications), AI JSON repair, OpenAI-compatible request
 building, question planning, the cache path, the full quiz pipeline, the grammar
-course data (18 chapters, 123 exercises, bilingual feedback), grammar progress and
-the prose tutor transport, and the `app.js` ↔ `index.html` element wiring.
+course data (18 chapters, 123 exercises, bilingual feedback), grammar progress,
+the prose tutor transport, Azure voice mapping, WAV encoding, shadowing sentence
+splitting, and the `app.js` ↔ `index.html` element wiring. It also covers the daily
+quest picker (deterministic per user + date, one of each group, all seven types over
+time), progress clamping/merging, every streak transition (perfect day, grace day,
+reset, idempotent sync), scrypt password hashing, recovery-code rotation, validation,
+and a full in-memory API flow: signup → home → complete all quests → streak → rename →
+logout → login → reset → old sessions invalidated.
 
-The browser smoke test serves the folder, opens it in headless Chrome
-(`CHROME=/path/to/chrome` to override, or it is skipped when no browser is
-installed) and checks the things only a browser can: that the app initialises,
-the deck loads, multiple-choice options are actually clickable (nothing covering
-them), clicks and digit keys answer, typed answers are graded, the quiz reaches
-the results screen, flashcards flip, the Grammar course opens with all 18 chapters,
-a lesson exercise is graded and saved, the AI tutor renders a reply, the VI/EN
-toggle works and the course returns to vocabulary — and that no JavaScript error
-is thrown.
+The browser smoke test serves the folder with a fake `/api`, opens it in headless
+Chrome (`CHROME=/path/to/chrome` to override, or it is skipped when no browser is
+installed) and checks the things only a browser can: the signed-out gate, sign-in,
+the greeting/date/streak/daily-quest card, a quiz answer filling the HP bar and
+completing a pre-seeded day (streak +1), the progress POST reaching the API, the
+deck loading, multiple-choice options actually being clickable (nothing covering
+them), clicks and digit keys answering, typed answers being graded, the quiz
+reaching the results screen, paragraph retry applying the AI fixes and finishing,
+shadowing recording (with a stubbed microphone in headless Chrome), saving locally,
+rendering Azure-style scores and reaching its summary, flashcards flipping, the
+Grammar course opening with all 18 chapters, a lesson exercise being graded and
+saved, the AI tutor rendering a reply, the VI/EN toggle working and the course
+returning to vocabulary — and that no JavaScript error is thrown.
 
 ---
 
 ## Privacy
 
-Everything lives in your browser's `localStorage` (keys, deck cache, progress,
-grammar progress, question cache). The only network calls are: your Google Sheet,
-the AI provider you configure (with your key), the Google Fonts stylesheet. No
-analytics, no server.
+Your **account** (name, email, password hash, recovery-code hash, daily quests and
+streak) is stored in the **MongoDB Atlas database you created** and reaches it only
+through this app's own `/api` functions. The server keeps one HttpOnly session
+cookie (30 days) and no other browser identifier. Passwords are hashed with Node's
+`scrypt`; the recovery code is stored hashed and is shown in plain text exactly once
+(at signup, and again after a reset because it rotates).
+
+Everything else stays in this browser: the deck cache, settings, per-word mastery,
+quiz/stats history, grammar progress and the question cache are in `localStorage`;
+saved shadowing recordings are in IndexedDB. The other network calls are: your
+Google Sheet, the AI provider you configure (with your key), Gemini when it scores
+a recording, Azure Speech when you use the cloud voice or ask it for pronunciation
+scoring, the pinned Azure Speech SDK from jsDelivr, and the Google Fonts stylesheet.
+Azure receives text for synthesis and (only if you choose Azure scoring) the
+recorded sentence; Gemini receives the short WAV clip. Saved audio is never
+uploaded. No analytics, no ads.
+
+**No email is sent** (there is no email service in this app), so signup does not
+verify that an address belongs to you and password reset uses the recovery code,
+not an email link. There is no "forgot my code" path by design — save the code
+when it is shown.

@@ -266,7 +266,8 @@
   }
 
   let ttsVoicesReady = false;
-  function speak(text, lang, rate) {
+  /** The system-voice path, kept separate so the cloud layer can fall back to it. */
+  function browserSpeak(text, lang, rate) {
     if (typeof global.speechSynthesis === 'undefined' || !text) return false;
     try {
       global.speechSynthesis.cancel();
@@ -281,6 +282,16 @@
       global.speechSynthesis.speak(utter);
       return true;
     } catch (e) { return false; }
+  }
+
+  /** Every speaker in the app goes through here; cloud voice wins when enabled. */
+  function speak(text, lang, rate) {
+    if (global.Speech && global.Speech.enabled && global.Speech.enabled()) {
+      global.Speech.speak(text, lang, rate);
+      return true;
+    }
+    if (global.Speech && global.Speech.stop) global.Speech.stop();
+    return browserSpeak(text, lang, rate);
   }
 
   function initVoices() {
@@ -302,6 +313,6 @@
     hash: hash, uid: uid, clamp: clamp, todayKey: todayKey,
     formatDuration: formatDuration, debounce: debounce,
     lsGet: lsGet, lsSet: lsSet, lsRemove: lsRemove, lsKeys: lsKeys, lsBytes: lsBytes,
-    toast: toast, speak: speak, initVoices: initVoices
+    toast: toast, speak: speak, browserSpeak: browserSpeak, initVoices: initVoices
   };
 })(typeof window !== 'undefined' ? window : globalThis);
