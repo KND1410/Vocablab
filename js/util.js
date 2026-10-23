@@ -266,6 +266,31 @@
   }
 
   let ttsVoicesReady = false;
+  let preferredVoiceURI = '';
+
+  function langRoot(value) {
+    return String(value || '').toLowerCase().split(/[-_]/)[0];
+  }
+
+  /** Prefer natural/neural voices over the robotic Linux eSpeak fallback. */
+  function voiceScore(voice, want) {
+    const label = String((voice && voice.name) || '') + ' ' + String((voice && voice.voiceURI) || '');
+    let score = 0;
+    if (String((voice && voice.lang) || '').toLowerCase() === String(want || '').toLowerCase()) score += 2;
+    if (/natural|neural|google|microsoft|piper|rhvoice|siri|premium|enhanced/i.test(label)) score += 8;
+    if (/espeak|speechd|speech-dispatcher/i.test(label)) score -= 4;
+    return score;
+  }
+
+  function voiceKey(voice) {
+    return voice ? String(voice.voiceURI || voice.name || '') : '';
+  }
+
+  /** The exact voice picked in Settings → Speech; empty means automatic. */
+  function setBrowserVoice(uri) {
+    preferredVoiceURI = String(uri || '');
+  }
+
   /** The system-voice path, kept separate so the cloud layer can fall back to it. */
   function browserSpeak(text, lang, rate) {
     if (typeof global.speechSynthesis === 'undefined' || !text) return false;
@@ -276,9 +301,19 @@
       utter.rate = rate || 0.92;
       const voices = global.speechSynthesis.getVoices() || [];
       const want = utter.lang.toLowerCase();
-      const exact = voices.find(function (v) { return (v.lang || '').toLowerCase() === want; });
-      const loose = exact || voices.find(function (v) { return (v.lang || '').toLowerCase().slice(0, 2) === want.slice(0, 2); });
-      if (loose) utter.voice = loose;
+      let voice = null;
+
+      if (preferredVoiceURI) {
+        voice = voices.find(function (v) { return voiceKey(v) === preferredVoiceURI; }) || null;
+        // A saved French voice must not read a Vietnamese or English prompt.
+        if (voice && langRoot(voice.lang) !== langRoot(want)) voice = null;
+      }
+      if (!voice) {
+        const pool = voices.filter(function (v) { return langRoot(v.lang) === langRoot(want); });
+        pool.sort(function (a, b) { return voiceScore(b, want) - voiceScore(a, want); });
+        voice = pool[0] || null;
+      }
+      if (voice) utter.voice = voice;
       global.speechSynthesis.speak(utter);
       return true;
     } catch (e) { return false; }
@@ -313,6 +348,7 @@
     hash: hash, uid: uid, clamp: clamp, todayKey: todayKey,
     formatDuration: formatDuration, debounce: debounce,
     lsGet: lsGet, lsSet: lsSet, lsRemove: lsRemove, lsKeys: lsKeys, lsBytes: lsBytes,
-    toast: toast, speak: speak, browserSpeak: browserSpeak, initVoices: initVoices
+    toast: toast, speak: speak, browserSpeak: browserSpeak, setBrowserVoice: setBrowserVoice,
+    initVoices: initVoices
   };
 })(typeof window !== 'undefined' ? window : globalThis);

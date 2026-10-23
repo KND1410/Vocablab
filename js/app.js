@@ -14,7 +14,7 @@
     simpleModel: 'openai-fast', simpleModels: [],
     targetLang: 'French', targetCode: 'fr-FR', autoPlay: true,
     azureKey: '', azureRegion: 'southeastasia', azureVoice: 'fr-FR-DeniseNeural', cloudVoice: true,
-    scoreEngine: 'auto',
+    browserVoice: '', scoreEngine: 'auto',
     sheetMode: 'links', sheetUrl: '', sheetApiKey: '', scriptUrl: '', links: '',
     quizTypes: ['mc', 'blank', 'translate'], direction: 'mixed', count: 20, source: 'auto',
     difficulty: 'standard', requirement: '', practiceMode: 'quiz',
@@ -32,6 +32,7 @@
   }
   function saveSettings() {
     U.lsSet('settings', settings);
+    U.setBrowserVoice(settings.browserVoice);
     if (window.Speech) Speech.configure(settings);
     if (E.voiceHint) updateVoiceHint();
   }
@@ -71,7 +72,7 @@
 
   const E = {};
   function cacheEls() {
-    const ids = ['srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnTestVoice', 'voiceHint', 'btnReload', 'srcName', 'srcMeta',
+    const ids = ['btnHome', 'srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnTestVoice', 'voiceHint', 'btnReload', 'srcName', 'srcMeta',
       'btnChangeSource', 'btnAllTopics', 'btnNoTopics', 'topicSearch', 'topicList', 'selectedSummary',
       'typeMc', 'typeBlank', 'typeTranslate', 'selPractice', 'quizSetupPane', 'paraSetupPane', 'shadowingSetupPane',
       'btnStartParagraph', 'paraStartHint', 'btnStartShadowing', 'shadowStartHint', 'btnShadowSavedSetup',
@@ -105,6 +106,7 @@
       'btnTestKey', 'inpModel', 'modelList', 'btnRefreshModels',
       'aiStatus', 'aiIssue', 'usageToday', 'cachedCount', 'btnClearQCache', 'inpTargetLang', 'inpTargetCode', 'chkAutoPlay',
       'inpAzureKey', 'btnToggleAzureKey', 'inpAzureRegion', 'selAzureVoice', 'chkCloudVoice', 'btnTestAzure', 'speechStatus',
+      'selBrowserVoice', 'browserVoiceHint', 'btnTestBrowserVoice', 'btnRefreshBrowserVoices',
       'selScoreEngine', 'scoreStatus', 'btnScoreAiSettings',
       'inpSheetUrl', 'inpSheetApiKey', 'btnLoadApi', 'inpScriptUrl', 'btnLoadScript', 'inpLinks', 'btnLoadLinks',
       'btnLoadDemo', 'sheetStatus', 'lnkShowScript', 'accountInfo', 'dataInfo', 'btnClearDeck', 'btnClearMastery',
@@ -163,11 +165,88 @@
     return 'Add a free Gemini key in Settings → AI, or an Azure Speech key in Settings → Speech.';
   }
 
+  function frenchVoices() {
+    if (typeof window.speechSynthesis === 'undefined') return [];
+    return (window.speechSynthesis.getVoices() || []).filter(function (v) {
+      return /^fr/i.test(v.lang || '');
+    });
+  }
+
+  function voiceKey(v) {
+    return v ? String(v.voiceURI || v.name || '') : '';
+  }
+
+  function voiceIsRobotic(v) {
+    return /espeak|speechd|speech-dispatcher/i.test(voiceKey(v) + ' ' + String((v && v.name) || ''));
+  }
+
+  function browserVoiceLabel() {
+    const list = frenchVoices();
+    if (!list.length) return '';
+    if (settings.browserVoice) {
+      const picked = list.find(function (v) { return voiceKey(v) === settings.browserVoice; });
+      if (picked) return picked.name || picked.voiceURI || 'selected voice';
+    }
+    return 'Automatic';
+  }
+
+  function populateBrowserVoices() {
+    if (!E.selBrowserVoice) return;
+    const list = frenchVoices();
+    const current = settings.browserVoice || '';
+    E.selBrowserVoice.textContent = '';
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = 'Automatic — best available French voice';
+    E.selBrowserVoice.appendChild(auto);
+    list.forEach(function (v) {
+      const opt = document.createElement('option');
+      opt.value = voiceKey(v);
+      opt.textContent = (v.name || v.voiceURI || 'French voice') + ' — ' + (v.lang || 'fr');
+      E.selBrowserVoice.appendChild(opt);
+    });
+    const has = current && list.some(function (v) { return voiceKey(v) === current; });
+    E.selBrowserVoice.value = has ? current : '';
+    if (!E.browserVoiceHint) return;
+    if (!list.length) {
+      E.browserVoiceHint.textContent = 'No French browser voice was found. Install a French voice in your system, or use Azure Speech below; otherwise the browser may read French with an English voice.';
+      return;
+    }
+    const picked = has ? list.find(function (v) { return voiceKey(v) === current; }) : null;
+    const robotic = picked ? voiceIsRobotic(picked) : list.every(voiceIsRobotic);
+    E.browserVoiceHint.textContent = list.length + ' French voice' + (list.length === 1 ? '' : 's') + ' found. ' +
+      (robotic
+        ? 'This is the Linux system voice (eSpeak) — it is robotic and can mispronounce French. Azure below is much more natural.'
+        : 'Pick the one that sounds best, then press Test browser voice.');
+  }
+
+  function testBrowserVoice() {
+    if (typeof window.speechSynthesis === 'undefined' ||
+      typeof window.SpeechSynthesisUtterance === 'undefined') {
+      U.toast('This browser cannot use local voices. Add Azure Speech below instead.', 'bad', 9000);
+      return;
+    }
+    if (!frenchVoices().length) {
+      U.toast('No French browser voice found. Install one or add Azure Speech below.', 'warn', 9000);
+      return;
+    }
+    if (!U.browserSpeak('Bonjour ! Ceci est un test de la voix française.', 'fr-FR', 0.95)) {
+      U.toast('The browser could not start speech. Check the volume and output.', 'warn', 9000);
+      return;
+    }
+    U.toast('Playing the selected browser voice.', 'ok', 4000);
+  }
+
   function updateVoiceHint() {
     if (!E.voiceHint) return;
-    E.voiceHint.textContent = Speech.enabled()
-      ? 'Azure neural voice · ' + (settings.azureVoice || 'fr-FR-DeniseNeural')
-      : "Uses your browser's system voices";
+    if (Speech.enabled()) {
+      E.voiceHint.textContent = 'Azure neural voice · ' + (settings.azureVoice || 'fr-FR-DeniseNeural');
+      return;
+    }
+    const list = frenchVoices();
+    E.voiceHint.textContent = list.length
+      ? 'Browser voice · ' + browserVoiceLabel()
+      : 'No French browser voice — use Azure or install one';
   }
 
   /** Homepage diagnostic: try Azure first, then explain the browser-voice fallback. */
@@ -212,7 +291,7 @@
     }
     U.toast('Playing a French test phrase — ' + voices.length + ' voice' +
       (voices.length === 1 ? '' : 's') + ' available' +
-      (french.length ? '.' : '; no French voice, so the default voice is used.'), 'ok', 6000);
+      (french.length ? '.' : '; no French voice — open Settings → Speech to pick one or add Azure.'), 'ok', 6000);
   }
 
   /* ---------- Overlay ---------- */
@@ -240,6 +319,15 @@
     Object.keys(map).forEach(function (k) { map[k].hidden = k !== name; });
     if (name === 'welcome') renderHome();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /** The logo and the results “Home” button both return to the daily quests. */
+  function goHome() {
+    if (window.Speech) Speech.stop();
+    if (state.screen === 'shadowing') { exitShadowing(false); return; }
+    state.session = null;
+    state.flashcards = null;
+    showScreen('welcome');
   }
 
   /* ---------- Account, greeting and daily quests ---------- */
@@ -2822,6 +2910,7 @@
     E.inpAzureRegion.value = settings.azureRegion || 'southeastasia';
     E.selAzureVoice.value = settings.azureVoice || 'fr-FR-DeniseNeural';
     E.chkCloudVoice.checked = settings.cloudVoice !== false;
+    populateBrowserVoices();
     E.speechStatus.textContent = speechReady()
       ? 'Azure is configured. Use “Test Azure voice” to verify the key and region.'
       : 'No Azure key yet — speaker icons use your browser voices.';
@@ -3203,8 +3292,31 @@
 
   /* ---------- Events ---------- */
   function bindEvents() {
+    E.btnHome.addEventListener('click', goHome);
     E.btnTheme.addEventListener('click', toggleTheme);
     E.btnTestVoice.addEventListener('click', testVoice);
+    if (E.selBrowserVoice) {
+      E.selBrowserVoice.addEventListener('change', function () {
+        settings.browserVoice = E.selBrowserVoice.value || '';
+        saveSettings();
+        populateBrowserVoices();
+      });
+    }
+    if (E.btnTestBrowserVoice) E.btnTestBrowserVoice.addEventListener('click', testBrowserVoice);
+    if (E.btnRefreshBrowserVoices) {
+      E.btnRefreshBrowserVoices.addEventListener('click', function () {
+        if (window.speechSynthesis && window.speechSynthesis.getVoices) window.speechSynthesis.getVoices();
+        populateBrowserVoices();
+        updateVoiceHint();
+        U.toast('Voice list refreshed.', 'ok');
+      });
+    }
+    if (window.speechSynthesis && window.speechSynthesis.addEventListener) {
+      window.speechSynthesis.addEventListener('voiceschanged', function () {
+        populateBrowserVoices();
+        updateVoiceHint();
+      });
+    }
     E.btnSettings.addEventListener('click', function () { openSettings('ai'); });
     E.btnChangeSource.addEventListener('click', function () { openSettings('sheet'); });
     E.btnHelp.addEventListener('click', function () { E.helpDialog.showModal(); });
@@ -3683,9 +3795,10 @@
   function init() {
     cacheEls();
     applyTheme();
+    U.setBrowserVoice(settings.browserVoice);
     if (window.Speech) Speech.configure(settings);
-    updateVoiceHint();
     U.initVoices();
+    updateVoiceHint();
     if (window.Grammar) {
       Grammar.init({
         screen: E.screenGrammar,

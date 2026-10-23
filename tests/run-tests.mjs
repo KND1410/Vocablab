@@ -165,6 +165,40 @@ eq(wav.size, 52, 'encodeWav writes a 44-byte header + 16-bit samples');
 const wavHead = new Uint8Array(await wav.arrayBuffer()).slice(0, 4);
 eq(Array.from(wavHead), [82, 73, 70, 70], 'the WAV starts with RIFF');
 
+/* ---------- local browser voices ---------- */
+section('Browser voice picker');
+const spoken = [];
+sandbox.SpeechSynthesisUtterance = class {
+  constructor(text) { this.text = text; }
+};
+const browserVoices = [
+  { name: 'English (America)', lang: 'en-US', voiceURI: 'en-us' },
+  { name: 'French (France)', lang: 'fr-FR', voiceURI: 'fr-espeak' },
+  { name: 'Google français', lang: 'fr-FR', voiceURI: 'fr-google' },
+  { name: 'French (Belgium)', lang: 'fr-BE', voiceURI: 'fr-be' }
+];
+sandbox.speechSynthesis = {
+  getVoices() { return browserVoices; },
+  cancel() { /* ignore */ },
+  speak(utter) { spoken.push(utter); }
+};
+Util.setBrowserVoice('fr-espeak');
+ok(Util.browserSpeak('bureau', 'fr-FR', 0.95), 'the local browser voice path starts speech');
+eq(spoken[0].voice.voiceURI, 'fr-espeak', 'a saved browser voice is used for a matching language');
+spoken.length = 0;
+Util.setBrowserVoice('en-us');
+Util.browserSpeak('bureau', 'fr-FR', 0.95);
+eq(spoken[0].voice.voiceURI, 'fr-google', 'a saved English voice never reads a French prompt');
+spoken.length = 0;
+Util.setBrowserVoice('');
+Util.browserSpeak('bureau', 'fr-FR', 0.95);
+eq(spoken[0].voice.voiceURI, 'fr-google', 'automatic mode prefers a natural French voice over eSpeak');
+spoken.length = 0;
+Util.setBrowserVoice('fr-espeak');
+Util.browserSpeak('xin chào', 'vi-VN', 0.95);
+eq(spoken[0].voice, undefined, 'a saved French voice is ignored for another language');
+Util.setBrowserVoice('');
+
 /* ---------- Gemini pronunciation scoring ---------- */
 section('Gemini pronunciation scoring');
 const speechPrompt = Ai.buildSpeechPrompt({

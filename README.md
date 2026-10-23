@@ -17,7 +17,8 @@ out of the box), but works with any language.
   one review (flashcards or grammar). Finish all three to extend your streak; one
   missed day is a grace day (the flame shows a **!**), two resets it. Progress is
   filled HP-style as you practise, and every quest's **Start** jumps straight into
-  that exact practice.
+  that exact practice. Click the **VocabLab logo** (or **Home** on the results
+  screen) to return to the dashboard and see the updated quest bars.
 - **Accounts**: email + password, with your name and a one-time recovery code (no
   email service needed). The whole app is behind the login screen. Name, daily
   quests and streak sync to **your own MongoDB Atlas database** through `/api`;
@@ -431,8 +432,11 @@ on the DELF B2 tenses handbook:
   sentence, finishing, recording again, or closing the tab deletes unsaved audio.
   See **Settings → Speech** for both keys and the engine switch.
 - **🔊 pronunciation** uses Azure's neural voice when configured (Settings → Speech),
-  otherwise the browser's speech synthesis — set the voice code in Settings → AI
-  (`fr-FR`, `de-DE`, `ja-JP`, …); “Auto-play” reads the word when a card is revealed.
+  otherwise the browser's speech synthesis. Pick a local voice in **Settings → Speech**
+  (with a **Test browser voice** button); set the language code in Settings → AI
+  (`fr-FR`, `de-DE`, `ja-JP`, …). On Linux, Firefox's default speech-dispatcher/eSpeak
+  voice is robotic, so choose a better installed voice or use Azure. “Auto-play” reads
+  the word when a card is revealed.
 - **🃏 Flashcards** mode for quick review with *Again / Got it*.
 - **Practice mistakes** button on the results screen.
 
@@ -444,8 +448,8 @@ Keyboard: `1`–`4` answer · `Enter` check/next · `Space` flip card · `←`/`
 
 | Tab | What's there |
 |---|---|
-| **AI** | Simple mode (free, keyless model picker) / Advanced mode (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, target language + voice, auto-play |
-| **Speech** | Azure Speech key + region, French neural voice, “use Azure for every speaker icon” toggle, **Test Azure voice**, pronunciation-scoring engine (Gemini estimate / Azure / automatic) |
+| **AI** | Simple mode (free, keyless model picker) / Advanced mode (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, target language + language code, auto-play |
+| **Speech** | Browser voice picker + **Test browser voice**, Azure Speech key + region, French neural voice, “use Azure for every speaker icon” toggle, **Test Azure voice**, pronunciation-scoring engine (Gemini estimate / Azure / automatic) |
 | **Google Sheet** | the three connection modes, load buttons, setup help |
 | **Data** | cached deck info, saved-recording count and deletion, forget deck, reset progress, wipe everything |
 
@@ -478,6 +482,7 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 | The flame shows **!** | You missed one day. Finish all three quests today and the streak continues; a second missed day resets it (the best streak is kept). |
 | A quest target is bigger than my deck | Progress accumulates across sessions: start the quest again and the bar continues from where it was. |
 | Voice is silent | Press **Test speaker** on the home screen; it tests Azure first when configured, otherwise reports how many browser voices are available. On Linux, Chrome does not use speech-dispatcher — use Firefox and restart it after speech-dispatcher starts. Also pick a BCP-47 code matching an installed voice (`fr-FR`); some browsers require one user interaction first |
+| French sounds robotic or wrong | On Linux/Firefox the default is speech-dispatcher's eSpeak voice, which mispronounces many French words. Open **Settings → Speech**, choose a different installed voice, and press **Test browser voice**. If the list only has eSpeak, install a Piper/RHVoice French voice in the system or add Azure Speech (free F0 tier), which is much more natural. Check that the language code in Settings → AI is `fr-FR`, not `en-US` |
 | Azure rejects the key or region | They must belong to the same Azure Speech resource. Copy the region from the resource's **Keys and Endpoint** page (e.g. `southeastasia`), not the resource-group location. A new free F0 resource can take a minute to become active. Use **Settings → Speech → Test Azure voice** for the exact error |
 | Azure voice works but scoring is off | Scoring needs a key for the selected engine and a recording. Gemini scoring needs a Gemini key in **Settings → AI**; Azure scoring needs the key + region in **Settings → Speech**. Record again after changing the engine. Without either key, recording/replay still works but **Check pronunciation** stays disabled |
 | Save does nothing / recordings missing | Saved audio uses IndexedDB, not localStorage. Check that the browser allows site data for this page; **Settings → Data** shows the saved-recording count and can delete them. Unsaved recordings disappear when you leave shadowing or record again, by design |

@@ -58,10 +58,10 @@
 </section>
 
 <header class="topbar">
-  <div class="brand">
-    <span class="brand-logo">📚</span>
+  <button id="btnHome" class="brand brand-home" type="button" title="Back to home" aria-label="Back to home">
+    <span class="brand-logo" aria-hidden="true">📚</span>
     <span class="brand-name">VocabLab</span>
-  </div>
+  </button>
   <div class="top-actions">
     <span id="srcBadge" class="pill pill-muted" title="Current vocabulary source">No deck loaded</span>
     <button id="btnHelp" class="icon-btn" title="Help &amp; setup guide" aria-label="Help">?</button>
@@ -539,7 +539,7 @@
             <button id="btnRetryMistakes" class="btn btn-primary" hidden>Practice mistakes</button>
             <button id="btnNewQuiz" class="btn btn-subtle">New quiz</button>
             <button id="btnResultsFlashcards" class="btn btn-ghost">🃏 Flashcards</button>
-            <button id="btnBackSetup" class="btn btn-ghost">← Setup</button>
+            <button id="btnBackSetup" class="btn btn-ghost" title="Back to home and daily quests">← Home</button>
           </div>
         </div>
       </div>
@@ -700,8 +700,10 @@
         <input id="inpTargetLang" class="input" type="text" placeholder="French" value="French">
       </div>
       <div class="field">
-        <label class="field-label" for="inpTargetCode">Speech voice (BCP-47)</label>
+        <label class="field-label" for="inpTargetCode">Speech language code (BCP-47)</label>
         <input id="inpTargetCode" class="input" type="text" placeholder="fr-FR" value="fr-FR">
+        <p class="muted small">The language to speak (for example <code>fr-FR</code>). Pick the actual voice in
+          Settings → Speech.</p>
       </div>
     </div>
     <label class="switch-row"><input id="chkAutoPlay" type="checkbox" checked> Auto-play pronunciation when a word is revealed</label>
@@ -709,6 +711,22 @@
 
   <!-- Speech tab -->
   <div class="tab-pane" data-pane="speech">
+    <h3>Voice on this device</h3>
+    <p class="muted small">Use a French voice already installed on this computer. On Linux, Firefox uses
+      speech-dispatcher; its default eSpeak voice is robotic and can mispronounce words. Choose another voice here
+      if you have one, or use Azure below for a natural voice.</p>
+    <div class="field">
+      <label class="field-label" for="selBrowserVoice">French voice on this device</label>
+      <select id="selBrowserVoice" class="input">
+        <option value="">Automatic — best available French voice</option>
+      </select>
+      <p class="muted small" id="browserVoiceHint">Checking the voices installed in this browser…</p>
+      <div class="input-row">
+        <button id="btnTestBrowserVoice" class="btn btn-subtle" type="button">Test browser voice</button>
+        <button id="btnRefreshBrowserVoices" class="btn btn-ghost btn-sm" type="button">Refresh voices</button>
+      </div>
+    </div>
+    <hr class="sep">
     <p class="muted small"><strong>Azure Speech</strong> gives you a natural French voice in every browser.
       Create a free Azure Speech resource, then paste its key and region here. The free tier includes 500K
       characters of voice and 5 audio hours of speech-to-text per month. Text is sent to Azure for the cloud
@@ -1044,6 +1062,11 @@
         it reports how many browser voices are available. On Linux, Chrome does not use speech-dispatcher; use
         Firefox and restart it after starting speech-dispatcher. If you configured Azure, the same button tests the
         neural voice and opens Settings → Speech with the exact error if the key, region or network is wrong.</li>
+      <li><strong>French sounds robotic or wrong</strong> — Firefox on Linux uses speech-dispatcher's default eSpeak
+        voice, which is robotic and can mispronounce words. Open <strong>Settings → Speech</strong>, choose another
+        installed French voice and press <strong>Test browser voice</strong>. If only eSpeak is listed, install a
+        Piper/RHVoice French voice or add Azure Speech in Settings → Speech for a natural voice. Also make sure the
+        speech language code in Settings → AI is <code>fr-FR</code>, not <code>en-US</code>.</li>
       <li><strong>Azure says the key or region is wrong</strong> — the key and region must belong to the same Azure
         Speech resource. Copy the region from the resource's Keys and Endpoint page (for example
         <code>southeastasia</code>), not the resource group location. A new free F0 resource can take a minute to
