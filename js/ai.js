@@ -769,10 +769,13 @@
     const sides = paraSides(cfg);
     const level = difficultyOf(cfg.difficulty);
     const request = requirementOf(cfg.requirement);
+    const target = cfg.targetLang || 'French';
+    const meaning = cfg.meaningLang || 'Vietnamese';
     const words = (cfg.words || []).map(function (w) { return { term: w.term, meaning: w.meaning }; });
-    const system = 'You are VocabLab, an expert ' + (cfg.targetLang || 'French') + ' tutor. You write short, ' +
-      'natural, classroom-safe texts for a learner whose native language is ' + (cfg.meaningLang || 'Vietnamese') +
-      '. You reply with the requested JSON object only and never add commentary.';
+    const system = 'You are VocabLab, an expert ' + target + ' tutor. You write short, ' +
+      'natural, classroom-safe texts for a learner whose native language is ' + meaning +
+      '. You reply with the requested JSON object only and never add commentary. Never use Markdown in the ' +
+      'paragraph or reference.';
     const user =
       'Write ONE coherent ' + sides.sourceLang + ' paragraph (' + level.para + ') about a ' +
       'single everyday topic (city life, transport, environment, work, health, travel, food…).\n\n' +
@@ -780,15 +783,22 @@
         ? 'TOPIC OR FOCUS REQUESTED BY THE LEARNER (follow it when it does not conflict with the rules below):\n"""' +
           request + '"""\n\n'
         : '') +
-      'VOCABULARY from the learner\'s own sheet (term = ' + (cfg.targetLang || 'French') + ', meaning = ' +
-      (cfg.meaningLang || 'Vietnamese') + '):\n' + JSON.stringify(words, null, 1) + '\n\n' +
+      'VOCABULARY from the learner\'s own sheet (term = ' + target + ', meaning = ' + meaning + '):\n' +
+      JSON.stringify(words, null, 1) + '\n\n' +
       'Rules:\n' +
+      '• The paragraph MUST be written entirely in ' + sides.sourceLang + '. The reference MUST be written ' +
+      'entirely in ' + sides.answerLang + '.\n' +
+      '• Do not use Markdown or formatting in "paragraph" or "reference": no **bold**, no __, no backticks, ' +
+      'no bullet lists, and no parenthetical translations.\n' +
       '• Difficulty: ' + level.label + ' (' + level.cefr + '). ' + level.paraTip + '\n' +
       '• Pick ' + level.keywords + ' words that fit the topic best. The paragraph MUST contain each of them ' +
       (sides.vi2fr
-        ? 'in its ' + (cfg.meaningLang || 'Vietnamese') + ' form (the learner has to produce the ' +
-          (cfg.targetLang || 'French') + ').\n'
-        : 'in its ' + (cfg.targetLang || 'French') + ' form.\n') +
+        ? 'through its `meaning` (the ' + meaning + ' side), never by copying its `term` or adding the ' +
+          target + ' translation in parentheses. Example: the target “subir” with meaning “tăng lên” → write ' +
+          '“chi phí tăng lên”, never “chi phí subir”. The learner has to produce the ' + target + ' term. ' +
+          'The reference must use each chosen `term`.\n'
+        : 'through its `term` (the ' + target + ' side), and must not add its `meaning` translation in ' +
+          'parentheses. The reference must use each chosen `meaning` and must not copy the target terms.\n') +
       '• Use them naturally — an inflected form is fine — and make the text flow with connectors; it must not ' +
       'read like a list of example sentences.\n' +
       '• No names of real people, no numbers that carry meaning, nothing political or unsafe.\n' +
@@ -862,12 +872,23 @@
     return null;
   }
 
-  function normalizeParagraph(raw, words) {
+  /** Plain prose only: models sometimes decorate a paragraph with **markdown**. */
+  function cleanParaText(value) {
+    return String(value || '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/__([^_]+)__/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*([^*\n]+)\*/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeParagraph(raw, words, cfg) {
     if (!raw || typeof raw !== 'object') return null;
-    const text = pickField(raw, ['paragraph', 'text', 'source', 'passage', 'content']);
-    const reference = pickField(raw, ['reference', 'translation', 'answer', 'translated']);
-    if (typeof text !== 'string' || !text.trim()) return null;
-    if (typeof reference !== 'string' || !reference.trim()) return null;
+    const text = cleanParaText(pickField(raw, ['paragraph', 'text', 'source', 'passage', 'content']));
+    const reference = cleanParaText(pickField(raw, ['reference', 'translation', 'answer', 'translated']));
+    if (!text) return null;
+    if (!reference) return null;
     const listed = pickField(raw, ['keywords', 'mustUse', 'must_use', 'words', 'vocabulary']);
     const keywords = [];
     for (const entry of (Array.isArray(listed) ? listed : [])) {
@@ -883,20 +904,79 @@
       if (keywords.length >= 6) break;
     }
     if (keywords.length < 3) return null;
-    return { paragraph: String(text).trim(), reference: String(reference).trim(), keywords: keywords };
+
+    // The source and the reference must be in opposite languages. Models
+    // sometimes put the target terms inside a VI→target source as a gloss;
+    // reject that reply so it is regenerated instead of showing a mixed text.
+    if (cfg && cfg.direction === 'vi2fr') {
+      if (keywords.some(function (k) { return mentionsAnyTerm(text, k.term); })) return null;
+      if (keywords.some(function (k) { return !mentionsAnyForm(reference, k.term); })) return null;
+    } else if (cfg && cfg.direction === 'fr2vi') {
+      if (keywords.some(function (k) { return !mentionsAnyForm(text, k.term); })) return null;
+      if (keywords.some(function (k) { return mentionsMeaning(text, k.meaning); })) return null;
+      if (keywords.some(function (k) { return mentionsAnyTerm(reference, k.term); })) return null;
+    }
+
+    return { paragraph: text, reference: reference, keywords: keywords };
+  }
+
+  /** Treat straight and curly apostrophes as word separators. */
+  function paraNorm(value) {
+    return Util.normalizeForCompare(Util.stripDiacritics(value)).replace(/[’']/g, ' ');
+  }
+
+  /** Exact normalized form, for catching a target term copied into a source text. */
+  function mentionsTerm(text, term) {
+    const hay = paraNorm(text);
+    const needle = paraNorm(term);
+    if (!hay || !needle) return false;
+    return (' ' + hay + ' ').indexOf(' ' + needle + ' ') !== -1;
   }
 
   /** Did the learner use this word (or a simple inflection of it)? */
   function mentionsForm(text, word) {
-    const hay = Util.normalizeForCompare(Util.stripDiacritics(text));
-    const needle = Util.normalizeForCompare(Util.stripDiacritics(word));
+    const hay = paraNorm(text);
+    const needle = paraNorm(word);
     if (!hay || !needle) return false;
     if (hay.indexOf(needle) !== -1) return true;
-    // “constater” → “constate”, “rester” → “restent”: compare the first stem,
-    // long enough not to match an unrelated word that merely starts the same.
+    // “constater” → “constate”, “rester” → “restent”, “subir” → “subissent”:
+    // compare a few stems, long enough not to match an unrelated word.
     const stem = needle.split(' ').filter(function (w) { return w.length >= 5; })[0];
     if (!stem) return false;
-    return hay.indexOf(stem.slice(0, Math.max(5, Math.min(7, stem.length - 1)))) !== -1;
+    const stems = [stem.slice(0, Math.max(5, Math.min(7, stem.length - 1)))];
+    if (/ir$/.test(stem)) stems.push(stem.slice(0, -1));
+    if (/er$/.test(stem)) stems.push(stem.slice(0, -2));
+    if (/re$/.test(stem)) stems.push(stem.slice(0, -2));
+    return stems.some(function (s) { return s.length >= 4 && hay.indexOf(s) !== -1; });
+  }
+
+  /** A sheet term such as “excessif / excessive” or “petit(e)” has several forms. */
+  function termForms(term) {
+    const raw = String(term || '').trim();
+    if (!raw) return [];
+    const parts = raw.split(/[\/,;()]/).map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length >= 2; });
+    const forms = [raw].concat(parts);
+    return forms.filter(function (s, i) { return forms.indexOf(s) === i; });
+  }
+
+  function mentionsAnyForm(text, term) {
+    return termForms(term).some(function (form) { return mentionsForm(text, form); });
+  }
+
+  /** Stricter than mentionsAnyForm: avoid short words matching inside another word. */
+  function mentionsAnyTerm(text, term) {
+    return termForms(term).some(function (form) {
+      return mentionsTerm(text, form) || (form.length >= 6 && mentionsForm(text, form));
+    });
+  }
+
+  /** Long Vietnamese meanings are safe to detect; skip short ones such as “lá”. */
+  function mentionsMeaning(text, meaning) {
+    return termForms(meaning).some(function (form) {
+      return paraNorm(form).length >= 4 &&
+        (mentionsTerm(text, form) || mentionsForm(text, form));
+    });
   }
 
   function normalizeCorrection(raw, keywords, cfg) {
@@ -980,14 +1060,14 @@
     };
   }
 
-  async function askForJson(call, built, accept, modelLabel, shape, what) {
+  async function askForJson(call, built, accept, modelLabel, shape, what, repair) {
     let lastText = '';
     let lastErr = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       let res = null;
       try {
         res = await call({
-          user: attempt ? built.user + repairNote(shape) : built.user,
+          user: attempt ? built.user + (repair || repairNote(shape)) : built.user,
           temperature: attempt ? 0.2 : undefined,
           maxTokens: attempt ? 8192 : undefined
         });
@@ -1022,9 +1102,17 @@
     const words = cfg.words || [];
     if (words.length < 3) throw new Error('Not enough words for a paragraph');
     const built = buildParagraphPrompt(cfg);
+    const reason = cfg.direction === 'vi2fr'
+      ? 'The "paragraph" must be entirely ' + (cfg.meaningLang || 'Vietnamese') + ': use the "meaning" of ' +
+        'every keyword, never the target "term", and never add Markdown or parenthetical translations. ' +
+        'The "reference" must be in ' + (cfg.targetLang || 'French') + ' and use every chosen "term".'
+      : 'The "paragraph" must be entirely ' + (cfg.targetLang || 'French') + ' and contain every chosen ' +
+        'target "term"; the "reference" must be in ' + (cfg.meaningLang || 'Vietnamese') + ' and must not copy ' +
+        'those terms.';
+    const repair = '\n\n' + reason + repairNote(PARA_SHAPE);
     return askForJson(makeCaller(cfg, built), built,
-      function (raw) { return normalizeParagraph(raw, words); },
-      '“' + cfg.model + '”', PARA_SHAPE, 'paragraph');
+      function (raw) { return normalizeParagraph(raw, words, cfg); },
+      '“' + cfg.model + '”', PARA_SHAPE, 'paragraph', repair);
   }
 
   /**

@@ -224,6 +224,12 @@ function startParaProvider() {
       const keywords = picks.map((p, i) => ({
         term: p.term, meaning: p.meaning, note: i === 0 ? 'note for the first word' : ''
       }));
+      // The app now verifies that a FR→VI source really contains every selected
+      // target term. Build a sentence from the terms instead of using a fixed
+      // paragraph that may not include all three.
+      const fakeParagraph = picks.length
+        ? 'Les habitants constatent que ' + picks.map((p) => p.term).join(', ') + ' sont importants cette année.'
+        : 'Les habitants constatent que la pollution augmente chaque année.';
       const isCorrection = promptText.indexOf("LEARNER'S TRANSLATION") !== -1;
       if (isCorrection) corrections++;
       const content = isCorrection
@@ -241,7 +247,7 @@ function startParaProvider() {
           comment: 'All good — the correction is applied.'
         })
         : JSON.stringify({
-          paragraph: 'Les habitants constatent que la pollution augmente chaque année.',
+          paragraph: fakeParagraph,
           reference: 'Người dân nhận thấy ô nhiễm gia tăng mỗi năm.',
           keywords: keywords
         });

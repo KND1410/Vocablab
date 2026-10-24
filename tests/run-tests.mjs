@@ -1410,6 +1410,11 @@ const paraPromptVi = Ai.buildParagraphPrompt({
 });
 ok(/Vietnamese paragraph/.test(paraPromptVi.user), 'VI→FR writes the source in Vietnamese');
 ok(/produce the French/.test(paraPromptVi.user), 'and the learner must produce French');
+ok(/never by copying its `term`/.test(paraPromptVi.user) &&
+  /never “chi phí subir”/.test(paraPromptVi.user),
+  'VI→FR forbids copying the target term into the Vietnamese source');
+ok(/no \*\*bold\*\*/.test(paraPrompt.user) && /no \*\*bold\*\*/.test(paraPromptVi.user),
+  'paragraphs and references forbid Markdown formatting');
 
 const paraEasy = Ai.buildParagraphPrompt({
   direction: 'fr2vi', words: pool.slice(0, 8), targetLang: 'French', meaningLang: 'Vietnamese',
@@ -1477,6 +1482,67 @@ eq(Ai.normalizeParagraph({ paragraph: 'x', reference: '', keywords: [] }, kwWord
 eq(Ai.normalizeParagraph({ paragraph: '', reference: 'y', keywords: [] }, kwWords), null,
   'a paragraph without text is unusable');
 
+const viParaWords = [
+  { term: 'subir', meaning: 'tăng lên' },
+  { term: 'excessif', meaning: 'quá mức' },
+  { term: 'trajectoire', meaning: 'quỹ đạo' }
+];
+const viCfg = { direction: 'vi2fr', targetLang: 'French', meaningLang: 'Vietnamese' };
+const viRaw = {
+  paragraph: 'Chi phí tăng lên và mức độ quá mức đang thay đổi quỹ đạo của thành phố.',
+  reference: 'Les coûts subissent une hausse et le niveau excessif change la trajectoire de la ville.',
+  keywords: [
+    { term: 'subir', meaning: 'tăng lên', note: 'subir une hausse' },
+    { term: 'excessif', meaning: 'quá mức', note: '' },
+    { term: 'trajectoire', meaning: 'quỹ đạo', note: '' }
+  ]
+};
+const viParsed = Ai.normalizeParagraph(viRaw, viParaWords, viCfg);
+ok(viParsed && viParsed.paragraph === viRaw.paragraph, 'VI→FR accepts a fully Vietnamese source');
+eq(Ai.normalizeParagraph({
+  paragraph: 'Chi phí **subir** và mức độ **excessif** đang thay đổi **trajectoire**.',
+  reference: viRaw.reference,
+  keywords: viRaw.keywords
+}, viParaWords, viCfg), null, 'VI→FR rejects target terms copied into the Vietnamese source');
+eq(Ai.normalizeParagraph({
+  paragraph: viRaw.paragraph,
+  reference: 'Les coûts augmentent et le niveau change.',
+  keywords: viRaw.keywords
+}, viParaWords, viCfg), null, 'VI→FR requires the target terms in the French reference');
+eq(Ai.normalizeParagraph({
+  paragraph: 'Chi phí **tăng lên** và mức độ **quá mức** đang thay đổi quỹ đạo.',
+  reference: viRaw.reference,
+  keywords: viRaw.keywords
+}, viParaWords, viCfg).paragraph.indexOf('**'), -1,
+  'markdown around source words is removed');
+
+const frCfg = { direction: 'fr2vi', targetLang: 'French', meaningLang: 'Vietnamese' };
+const frRaw = {
+  paragraph: 'Les habitants constatent que la pollution s’aggrave.',
+  reference: 'Người dân nhận thấy ô nhiễm gia tăng.',
+  keywords: [
+    { term: 'constater', meaning: 'nhận thấy', note: '' },
+    { term: 'la pollution', meaning: 'ô nhiễm', note: '' },
+    { term: 'aggraver', meaning: 'làm trầm trọng', note: '' }
+  ]
+};
+ok(Ai.normalizeParagraph(frRaw, kwWords, frCfg), 'FR→VI accepts French source terms');
+eq(Ai.normalizeParagraph({
+  paragraph: 'Les habitants constatent (nhận thấy) que la pollution s’aggrave.',
+  reference: frRaw.reference,
+  keywords: frRaw.keywords
+}, kwWords, frCfg), null, 'FR→VI rejects Vietnamese glosses in the French source');
+eq(Ai.normalizeParagraph({
+  paragraph: frRaw.paragraph,
+  reference: 'Người dân nhận thấy **constater** ô nhiễm gia tăng.',
+  keywords: frRaw.keywords
+}, kwWords, frCfg), null, 'FR→VI rejects target terms copied into the Vietnamese reference');
+eq(Ai.normalizeParagraph({
+  paragraph: 'Les habitants voient que la pollution augmente.',
+  reference: frRaw.reference,
+  keywords: frRaw.keywords
+}, kwWords, frCfg), null, 'FR→VI requires every target term in the French source');
+
 const parsedFix = Ai.normalizeCorrection({
   score: 84,
   corrected: 'Les habitants constatent que la pollution augmente.',
@@ -1538,7 +1604,7 @@ let paraCalls = 0;
 fetchRoutes = [['/chat/completions', () => {
   paraCalls++;
   return aiObj({
-    paragraph: 'Les habitants constatent que la pollution augmente.',
+    paragraph: 'Les habitants constatent que la pollution s’aggrave.',
     reference: 'Người dân nhận thấy ô nhiễm gia tăng.',
     keywords: [
       { term: 'constater', meaning: 'nhận thấy', note: 'constater que + clause' },
@@ -1554,6 +1620,22 @@ const paraOut = await Ai.generateParagraph({
 ok(paraOut && paraOut.paragraph.indexOf('constatent') !== -1, 'generateParagraph returns the text');
 eq(paraOut.keywords[0].term, 'constater', '…with sheet keywords');
 eq(paraCalls, 1, 'one call when the reply is usable');
+
+let viCalls = 0;
+fetchRoutes = [['/chat/completions', () => {
+  viCalls++;
+  return aiObj(viCalls === 1 ? {
+    paragraph: 'Chi phí **subir** và mức độ **excessif** thay đổi **trajectoire**.',
+    reference: viRaw.reference,
+    keywords: viRaw.keywords
+  } : viRaw);
+}]];
+const viOut = await Ai.generateParagraph({
+  provider: 'openai', baseUrl: 'https://api.groq.com/openai/v1', key: 'gsk_x', model: 'openai/gpt-oss-120b',
+  direction: 'vi2fr', words: viParaWords, targetLang: 'French', meaningLang: 'Vietnamese'
+});
+ok(viOut && viOut.paragraph.indexOf('tăng lên') !== -1, 'VI→FR retries a mixed-language paragraph');
+eq(viCalls, 2, 'the language check triggers one targeted retry');
 
 let fixCalls = 0;
 fetchRoutes = [['/chat/completions', () => {
