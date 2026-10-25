@@ -2157,7 +2157,7 @@ ok(htmlSrc.indexOf('js/grammar-handbook.js') !== -1 &&
   'the handbook data loads before the grammar controller');
 ok(/grammar: \{ el: 'screenGrammar'/.test(appSrc), 'showScreen knows the Grammar screen');
 ok(/Grammar\.init\(/.test(appSrc) && /askTutor: askTutor/.test(appSrc) &&
-  /onExit: function \(\) \{ showScreen\('welcome'\)/.test(appSrc),
+  /onExit: function \(\) \{ showScreen\('lessons'\)/.test(appSrc),
   'app.js gives Grammar its AI transport, progress callback and exit route');
 ok(/Ai\.askTutor\(/.test(appSrc), 'the tutor uses the shared AI transport');
 ok(/grammarProgress/.test(grammarSrc) && /grammarLast/.test(grammarSrc) && /grammarLang/.test(grammarSrc),

@@ -4440,7 +4440,7 @@
         openSettings: function () { openSettings('ai'); },
         onProgress: updateStudyUI,
         onChapterDone: function () { questEvent('grammar1', 1); },
-        onExit: function () { showScreen('welcome'); }
+        onExit: function () { showScreen('lessons'); }
       });
     }
     // Name a provider saved before the list existed, and remember its connection

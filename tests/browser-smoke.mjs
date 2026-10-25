@@ -980,7 +980,7 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '    await wait(40);',
     '    document.querySelector("#screenGrammar [data-action=exit]").click();',
     '    await wait(50);',
-    '    out("grammar exit: welcome=" + screen("Welcome") + " grammar-hidden=" + !screen("Grammar"));',
+    '    out("grammar exit: lessons=" + vis(byId("routeLessons")) + " grammar-hidden=" + !screen("Grammar"));',
     '    byId("btnTestVoice").click();',
     '    await wait(120);',
     '    var speechToasts = document.querySelectorAll("#toasts .toast");',
@@ -1216,8 +1216,8 @@ check(/^grammar tutor: messages=2 last="[^"]*TUTOR-OK[^"]*"/m.test(log),
 check(/^grammar lang: subtitle="The present" on=en/m.test(log),
   'the explanation language can switch between Vietnamese and English',
   (log.match(/^grammar lang: .*/m) || [''])[0]);
-check(/^grammar exit: welcome=true grammar-hidden=true/m.test(log),
-  'the course has a working route back to vocabulary');
+check(/^grammar exit: lessons=true grammar-hidden=true/m.test(log),
+  'the course exits back to the lesson list');
 check(/^speech test: toast="(?:No speech voices found|Playing a French test phrase)/m.test(log),
   'the homepage speaker test reports whether the browser has voices',
   (log.match(/^speech test: .*/m) || [''])[0]);

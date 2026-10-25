@@ -36,7 +36,7 @@ test('the handbook opens its own 12-chapter map and saves progress separately', 
   await page.locator('#screenGrammar [data-action=course]').click();
   await expect(page.locator('#screenGrammar .grammar-lesson-card.is-done')).toHaveCount(1);
   await page.locator('#screenGrammar [data-action=exit]').click();
-  // Exit lands on the home page; the course cards live on Lessons.
+  // Exit lands back on the Lessons listing; the course cards live there.
   await openRoute(page, 'lessons');
   await expect(page.locator('#handbookPct')).toHaveText('1 / 12');
   await expect(page.locator('#studyPct')).toHaveText('0 / 18');

@@ -39,7 +39,7 @@
 
   var T = {
     vi: {
-      backVocab: '← Vocabulary',
+      backVocab: '← Bài học',
       backCourse: '← Course',
       courseKicker: 'HỌC · DELF B2',
       courseTitle: 'Các thì tiếng Pháp',
@@ -91,7 +91,7 @@
       typeAnswer: 'Nhập câu trả lời…'
     },
     en: {
-      backVocab: '← Vocabulary',
+      backVocab: '← Lessons',
       backCourse: '← Course',
       courseKicker: 'STUDY · DELF B2',
       courseTitle: 'French Tenses',
