@@ -89,7 +89,7 @@ code {
 .topbar {
   position: sticky; top: 0; z-index: 40;
   display: flex; align-items: center; justify-content: space-between;
-  gap: 1rem; padding: .65rem 1.25rem;
+  gap: 1rem; padding: .65rem 1.75rem;
   background: color-mix(in srgb, var(--surface) 82%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
@@ -108,7 +108,7 @@ code {
 
 .app-shell {
   display: grid; grid-template-columns: 330px minmax(0, 1fr);
-  gap: 1.25rem; max-width: 1400px; margin: 1.25rem auto; padding: 0 1.25rem 3rem;
+  gap: 1.5rem; max-width: 100%; margin: 0; padding: 1.25rem 1.75rem 3rem;
   align-items: start;
   transition: grid-template-columns .2s ease;
 }
