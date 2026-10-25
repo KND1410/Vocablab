@@ -713,6 +713,20 @@
     '"keywords":[{"term":"...","meaning":"...","note":"..."}]}';
   const FIX_SHAPE = '{"score":82,"verdict":"good","corrected":"...",' +
     '"notes":[{"text":"...","fix":"...","why":"..."}],"used":["..."],"comment":"..."}';
+  const UPGRADE_SHAPE = '{"upgrades":[{"from":"produire","to":"susciter","level":"B2",' +
+    '"scope":"word","meaning":"...","why":"...","example":"..."}]}';
+  const UPGRADE_LIST = '[{"from":"produire","to":"susciter","level":"B2","scope":"word",' +
+    '"meaning":"...","why":"...","example":"..."}]';
+
+  /** The correction reply asks for optional upgrades only in VI → target mode. */
+  function fixShape(cfg) {
+    if (!cfg || cfg.direction !== 'vi2fr') return FIX_SHAPE;
+    return FIX_SHAPE.replace(/\}$/, ',"upgrades":' + UPGRADE_LIST + '}');
+  }
+
+  function uiLangName(cfg) {
+    return langName((cfg && cfg.uiLang) || 'en', 'English');
+  }
 
   function langName(code, fallback) {
     const s = String(code || '').toLowerCase();
@@ -850,9 +864,102 @@
       '• "score": start from 100 and subtract for the genuine sentence errors above, for source ideas that are ' +
       'missing or contradicted, and for required words that are missing. Do not lower it for a different ' +
       'pronoun, tense or synonym. "verdict": "good" (80+), "fair" (60–79) or "weak" (below 60). ' +
-      '"comment": one encouraging English sentence naming the main thing to improve.\n\n' +
-      'Reply with ONE JSON object, no prose, no code fences, exactly this shape:\n' + FIX_SHAPE;
+      '"comment": one encouraging sentence in ' + uiLangName(cfg) + ' naming the main thing to improve.\n' +
+      (sides.vi2fr
+        ? '• "upgrades": up to 12 optional style improvements to the learner\'s own target-language wording. ' +
+          'They are not grammar corrections: never put a spelling/agreement fix here. Suggest only natural, ' +
+          'polite B1/B2 written ' + (cfg.targetLang || 'French') + ', preferring B2 because the learner is ' +
+          'preparing DELF B2. Replace a repeated, vague, basic or informal word/phrase with a more precise one; ' +
+          'or rewrite one whole sentence when that makes it flow better. Keep the learner\'s meaning, facts, ' +
+          'names, numbers, stance and every required word. Do not add new ideas. Do not suggest rare, literary ' +
+          'or C1 vocabulary. Write every replacement in ' + (cfg.targetLang || 'French') +
+          '; never in Vietnamese, which is the source language. ' +
+          'If there is no safe improvement, return [].\n' +
+          '  Each upgrade has: "from" (exact substring of the learner text), "to" (the replacement), ' +
+          '"level" ("B1" or "B2"), "scope" ("word" for a word/phrase or "sentence" for a whole sentence), ' +
+          '"meaning" and "why" in ' + uiLangName(cfg) + ' (short), and "example" in ' +
+          (cfg.targetLang || 'French') + '.\n\n'
+        : '\n') +
+      'Reply with ONE JSON object, no prose, no code fences, exactly this shape:\n' + fixShape(cfg);
     return { system: system, user: user };
+  }
+
+  /**
+   * Optional B1/B2 upgrades for a typed VI → target quiz answer.
+   * The paragraph path gets upgrades from the correction reply; this is the
+   * smaller, cached call used by word/phrase questions.
+   */
+  function buildUpgradePrompt(cfg) {
+    const target = cfg.targetLang || 'French';
+    const source = String(cfg.source || '').trim();
+    const reference = String(cfg.reference || '').trim();
+    const userText = String(cfg.userText || '').trim();
+    const system = 'You are VocabLab, a DELF B2 writing tutor. You improve a learner\'s ' + target +
+      ' wording without changing the idea. Reply with the requested JSON object only.';
+    const user =
+      'The learner answered a Vietnamese → ' + target + ' translation question correctly.\n\n' +
+      'VIETNAMESE PROMPT:\n"""' + source + '"""\n\n' +
+      'EXPECTED ' + target.toUpperCase() + ' ANSWER:\n"""' + reference + '"""\n\n' +
+      'LEARNER\'S CORRECT ANSWER:\n"""' + userText + '"""\n\n' +
+      'Suggest up to 12 optional upgrades at B1/B2 level, preferring B2 because the learner is preparing ' +
+      'DELF B2. A quiz answer may be only a word, so do not invent a sentence. Keep the exact meaning and ' +
+      'the learner\'s register appropriate for polite written ' + target + '. Replace basic, vague, repeated ' +
+      'or informal wording with precise, natural wording; do not suggest C1/literary/rare words. ' +
+      'Every replacement must be written in ' + target + ', never in Vietnamese, which is the source ' +
+      'language the learner is translating from. If there is no safe upgrade, return {"upgrades":[]}.\n' +
+      'Each object: "from" (exact substring of the learner\'s answer), "to" (the replacement), ' +
+      '"level" ("B1" or "B2"), "scope" ("word" or "sentence"), "meaning" and "why" in ' +
+      uiLangName(cfg) + ' (short), "example" in ' + target + '.\n\n' +
+      'Reply with ONE JSON object, no prose, no code fences, exactly this shape:\n' + UPGRADE_SHAPE;
+    return { system: system, user: user };
+  }
+
+  /** Letters used in Vietnamese but not in French or English. */
+  const VIETNAMESE_ONLY = /[\u0103\u0111\u01a1\u01b0\u1ea1\u1ea3\u1ea5\u1ea7\u1ea9\u1eab\u1ead\u1eaf\u1eb1\u1eb3\u1eb5\u1eb7\u1eb9\u1ebb\u1ebd\u1ebf\u1ec1\u1ec3\u1ec5\u1ec7\u1ec9\u1ecb\u1ecd\u1ecf\u1ed1\u1ed3\u1ed5\u1ed7\u1ed9\u1edb\u1edd\u1edf\u1ee1\u1ee3\u1ee5\u1ee7\u1ee9\u1eeb\u1eed\u1eef\u1ef1\u1ef3\u1ef5\u1ef7\u1ef9]/i;
+
+  /** Keep only safe, applicable, B1/B2 suggestions. */
+  function normalizeUpgrades(raw, cfg) {
+    const text = String((cfg && cfg.userText) || '');
+    const list = pickField(raw || {}, ['upgrades', 'suggestions', 'improvements', 'levelUp', 'level_up']);
+    if (!Array.isArray(list)) return [];
+    const flat = function (s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); };
+    const seen = new Set();
+    const out = [];
+    for (const item of list) {
+      if (!item || typeof item !== 'object') continue;
+      const from = flat(item.from || item.original || item.text);
+      const to = flat(item.to || item.replacement || item.fix || item.corrected);
+      if (!from || !to || from === to) continue;
+      if (text && text.indexOf(from) === -1) continue;
+      if (to.indexOf('**') !== -1 || to.indexOf('`') !== -1) continue;
+      // Suggestions are target-language only: never offer a Vietnamese word,
+      // even when the model slips one in. These letters exist in Vietnamese
+      // and not in French or English.
+      if (VIETNAMESE_ONLY.test(to)) continue;
+      const level = flat(item.level || item.cefr).toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (level !== 'B1' && level !== 'B2') continue;
+      const words = from.split(/\s+/).length;
+      const scope = flat(item.scope).toLowerCase() === 'sentence' || words >= 8 ||
+        /[.!?…]$/.test(from) ? 'sentence' : 'word';
+      const key = from + '\u0000' + to;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        from: from,
+        to: to,
+        level: level,
+        scope: scope,
+        meaning: flat(item.meaning || item.gloss || ''),
+        why: flat(item.why || item.reason || item.note || item.explanation || ''),
+        example: flat(item.example || item.exemple || ''),
+        dict: null
+      });
+    }
+    // B2 suggestions are the goal of the exercise, so they come first; the
+    // relative order inside each level stays exactly as the model wrote it.
+    const ranked = out.filter(function (up) { return up.level === 'B2'; })
+      .concat(out.filter(function (up) { return up.level !== 'B2'; }));
+    return ranked.slice(0, 12);
   }
 
   /** The sheet word a model's keyword refers to, by term or by meaning. */
@@ -1039,7 +1146,8 @@
       corrected: String(corrected).trim(),
       notes: notes,
       used: used,
-      comment: String(pickField(raw, ['comment', 'feedback', 'summary']) || '').trim()
+      comment: String(pickField(raw, ['comment', 'feedback', 'summary']) || '').trim(),
+      upgrades: cfg && cfg.direction === 'vi2fr' ? normalizeUpgrades(raw, cfg) : []
     };
   }
 
@@ -1124,7 +1232,18 @@
     const keywords = cfg.keywords || [];
     return askForJson(makeCaller(cfg, built), built,
       function (raw) { return normalizeCorrection(raw, keywords, cfg); },
-      '“' + cfg.model + '”', FIX_SHAPE, 'correction');
+      '“' + cfg.model + '”', fixShape(cfg), 'correction');
+  }
+
+  /**
+   * Optional B1/B2 suggestions for a correct typed VI → target quiz answer.
+   * Returns an array (possibly empty) of normalized upgrades.
+   */
+  async function suggestUpgrades(cfg) {
+    const built = buildUpgradePrompt(cfg);
+    return askForJson(makeCaller(cfg, built), built,
+      function (raw) { return normalizeUpgrades(raw, cfg); },
+      '“' + cfg.model + '”', UPGRADE_SHAPE, 'vocabulary suggestions');
   }
 
   /**
@@ -1838,6 +1957,9 @@
     buildPrompt: buildPrompt,
     generateParagraph: generateParagraph,
     correctParagraph: correctParagraph,
+    suggestUpgrades: suggestUpgrades,
+    buildUpgradePrompt: buildUpgradePrompt,
+    normalizeUpgrades: normalizeUpgrades,
     askTutor: askTutor,
     assessSpeech: assessSpeech,
     buildSpeechPrompt: buildSpeechPrompt,

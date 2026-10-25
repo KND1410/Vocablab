@@ -18,7 +18,7 @@
     sheetMode: 'links', sheetUrl: '', sheetApiKey: '', scriptUrl: '', links: '',
     quizTypes: ['mc', 'blank', 'translate'], direction: 'mixed', count: 20, source: 'auto',
     difficulty: 'standard', requirement: '', practiceMode: 'quiz',
-    paragraphDirection: 'both', paragraphCount: 1,
+    paragraphDirection: 'both', paragraphCount: 1, uiLang: 'en',
     rotation: 0
   };
   const storedSettings = U.lsGet('settings', {}) || {};
@@ -34,6 +34,7 @@
     U.lsSet('settings', settings);
     U.setBrowserVoice(settings.browserVoice);
     if (window.Speech) Speech.configure(settings);
+    if (window.I18n && settings.uiLang && I18n.lang() !== settings.uiLang) I18n.setLang(settings.uiLang);
     if (E.voiceHint) updateVoiceHint();
   }
   // Paragraph translation is its own practice mode now, not a question type.
@@ -72,7 +73,13 @@
 
   const E = {};
   function cacheEls() {
-    const ids = ['btnHome', 'srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnTestVoice', 'voiceHint', 'btnReload', 'srcName', 'srcMeta',
+    const ids = ['btnHome', 'btnNavToggle', 'btnNavBack', 'selUiLang', 'navUserName', 'navUserEmail', 'navAvatar',
+      'navDeckName', 'navStreak', 'navLevel',
+      'routeFiles', 'routeLessons', 'routePractice', 'routeExam', 'routeCommunity', 'routeProgress',
+      'filesSourceSlot', 'filesTopicsSlot', 'filesFormatSlot', 'lessonsStudySlot', 'practiceSetupSlot',
+      'progressStatsSlot', 'btnOpenCourse', 'progressGrammar', 'progressGrammarBar', 'progressStreak',
+      'progressBest', 'progressAccuracy',
+      'btnHome', 'srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnTestVoice', 'voiceHint', 'btnReload', 'srcName', 'srcMeta',
       'btnChangeSource', 'btnAllTopics', 'btnNoTopics', 'topicSearch', 'topicList', 'selectedSummary',
       'typeMc', 'typeBlank', 'typeTranslate', 'selPractice', 'quizSetupPane', 'paraSetupPane', 'shadowingSetupPane',
       'btnStartParagraph', 'paraStartHint', 'btnStartShadowing', 'shadowStartHint', 'btnShadowSavedSetup',
@@ -86,8 +93,9 @@
       'screenQuiz', 'progressBar', 'qProgressText', 'qStreak', 'qScore', 'btnExitQuiz', 'qCard', 'qTypeBadge',
       'qTopicBadge', 'btnSpeakPrompt', 'qPrompt', 'qHintBox', 'qOptions', 'qInputRow', 'qInput', 'btnSubmit',
       'btnDontKnow', 'qFeedback', 'fbIcon', 'fbTitle', 'fbBody', 'fbTerm', 'fbSpeak', 'fbPron', 'fbMeaning',
-      'fbExample', 'btnNext', 'qParagraph', 'paraDir', 'btnParaSpeak', 'paraText', 'paraKeywords',
+      'fbExample', 'fbUpgrades', 'btnNext', 'qParagraph', 'paraDir', 'btnParaSpeak', 'paraText', 'paraKeywords',
       'paraInput', 'paraCount', 'btnParaSubmit', 'btnParaSkip', 'paraFeedback',
+      'paraInspector', 'tabCorrections', 'tabLevelUp', 'corrCount', 'upgradeCount', 'paraHighlights', 'paraLevelUp',
       'screenShadowing', 'shProgressBar', 'shProgressText', 'btnShadowSaved', 'shSavedCount', 'btnShadowExit',
       'shadowCard', 'shSentence', 'btnShadowListen', 'selShadowSpeed', 'btnShadowTranslate', 'shTranslation',
       'shRecordStatus', 'shTimer', 'btnShadowRecord', 'btnShadowStop', 'btnShadowReplay', 'btnShadowSave',
@@ -187,7 +195,7 @@
       const picked = list.find(function (v) { return voiceKey(v) === settings.browserVoice; });
       if (picked) return picked.name || picked.voiceURI || 'selected voice';
     }
-    return 'Automatic';
+    return I18n.t('voice.automatic');
   }
 
   function populateBrowserVoices() {
@@ -197,7 +205,7 @@
     E.selBrowserVoice.textContent = '';
     const auto = document.createElement('option');
     auto.value = '';
-    auto.textContent = 'Automatic — best available French voice';
+    auto.textContent = I18n.t('voice.autoBest');
     E.selBrowserVoice.appendChild(auto);
     list.forEach(function (v) {
       const opt = document.createElement('option');
@@ -245,8 +253,8 @@
     }
     const list = frenchVoices();
     E.voiceHint.textContent = list.length
-      ? 'Browser voice · ' + browserVoiceLabel()
-      : 'No French browser voice — use Azure or install one';
+      ? I18n.t('voice.browser', { name: browserVoiceLabel() })
+      : I18n.t('voice.none');
   }
 
   /** Homepage diagnostic: try Azure first, then explain the browser-voice fallback. */
@@ -308,17 +316,128 @@
   }
   function hideOverlay() { E.overlay.hidden = true; }
 
-  /* ---------- Screens ---------- */
-  function showScreen(name) {
+  /* ---------- Routes / screens ---------- */
+  const VIEWS = {
+    welcome: { el: 'screenWelcome', nav: 'home' },
+    files: { el: 'routeFiles', nav: 'files' },
+    lessons: { el: 'routeLessons', nav: 'lessons' },
+    practice: { el: 'routePractice', nav: 'practice' },
+    exam: { el: 'routeExam', nav: 'exam' },
+    community: { el: 'routeCommunity', nav: 'community' },
+    progress: { el: 'routeProgress', nav: 'progress' },
+    grammar: { el: 'screenGrammar', nav: 'lessons' },
+    quiz: { el: 'screenQuiz', nav: 'practice' },
+    shadowing: { el: 'screenShadowing', nav: 'practice' },
+    results: { el: 'screenResults', nav: 'practice' },
+    flashcards: { el: 'screenFlashcards', nav: 'practice' }
+  };
+  const ROUTE_VIEW = {
+    'home': 'welcome',
+    'files': 'files',
+    'lessons': 'lessons',
+    'lessons/grammar': 'grammar',
+    'practice': 'practice',
+    'practice/quiz': 'quiz',
+    'practice/paragraph': 'quiz',
+    'practice/shadowing': 'shadowing',
+    'practice/results': 'results',
+    'practice/flashcards': 'flashcards',
+    'exam': 'exam',
+    'community': 'community',
+    'progress': 'progress'
+  };
+  const VIEW_ROUTE = {
+    welcome: 'home', files: 'files', lessons: 'lessons', practice: 'practice',
+    exam: 'exam', community: 'community', progress: 'progress', grammar: 'lessons/grammar',
+    quiz: 'practice/quiz', shadowing: 'practice/shadowing',
+    results: 'practice/results', flashcards: 'practice/flashcards'
+  };
+
+  function routeKey() {
+    return String(window.location.hash || '').replace(/^#\/?/, '').replace(/\/+$/, '') || 'home';
+  }
+
+  function routeHash(route) {
+    return '#/' + route;
+  }
+
+  function setHash(route) {
+    const hash = routeHash(route);
+    if (window.location.hash !== hash) {
+      try { window.location.hash = hash; } catch (e) { /* older browsers */ }
+    }
+  }
+
+  function setActiveNav(nav) {
+    U.$$('.nav-item').forEach(function (a) {
+      const active = a.getAttribute('data-route') === nav;
+      a.classList.toggle('is-active', active);
+      if (active) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
+  }
+
+  /** Move the old setup cards into their route pages once, before bindings. */
+  function buildRouteShell() {
+    function cardOf(id) {
+      const el = document.getElementById(id);
+      return el ? el.closest('.card') : null;
+    }
+    function move(targetId, node) {
+      const target = document.getElementById(targetId);
+      if (target && node && node.parentNode !== target) target.appendChild(node);
+    }
+    move('filesSourceSlot', cardOf('srcName'));
+    move('filesTopicsSlot', cardOf('topicList'));
+    move('filesFormatSlot', document.getElementById('sheetFormatCard'));
+    move('lessonsStudySlot', cardOf('btnStudy'));
+    move('practiceSetupSlot', cardOf('segPractice'));
+    move('progressStatsSlot', cardOf('statWords'));
+    const legacy = document.getElementById('legacySidebarCards');
+    if (legacy) legacy.remove();
+  }
+
+  function viewForRoute(route) {
+    const key = route || routeKey();
+    let view = ROUTE_VIEW[key] || 'welcome';
+    // Active-session routes need state; otherwise land on the practice hub.
+    if (view === 'quiz' && !state.session) view = 'practice';
+    if (view === 'shadowing' && !state.shadowing) view = 'practice';
+    if (view === 'results' && !state.session) view = 'practice';
+    if (view === 'flashcards' && !state.flashcards) view = 'practice';
+    return view;
+  }
+
+  function showScreen(name, opts) {
+    opts = opts || {};
+    if (!VIEWS[name]) name = 'welcome';
     state.screen = name;
     document.body.dataset.screen = name;
-    const map = {
-      welcome: E.screenWelcome, grammar: E.screenGrammar,
-      quiz: E.screenQuiz, shadowing: E.screenShadowing, results: E.screenResults, flashcards: E.screenFlashcards
-    };
-    Object.keys(map).forEach(function (k) { map[k].hidden = k !== name; });
+    Object.keys(VIEWS).forEach(function (key) {
+      const el = document.getElementById(VIEWS[key].el);
+      if (el) el.hidden = key !== name;
+    });
+    setActiveNav(VIEWS[name].nav);
     if (name === 'welcome') renderHome();
+    if (name === 'files') updateSourceUI();
+    if (!opts.fromRouter) setHash(VIEW_ROUTE[name] || 'home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function syncFromHash() {
+    if (document.body.classList.contains('auth-locked')) return;
+    const view = viewForRoute();
+    if (state.screen === view) return;
+    if (state.screen === 'quiz' && state.session && !state.answered) {
+      const ok = window.confirm(I18n.t('practice.leaveConfirm'));
+      if (!ok) { setHash(VIEW_ROUTE[state.screen] || 'home'); return; }
+    }
+    if (state.screen === 'shadowing' && state.shadowing) {
+      const ok = window.confirm(I18n.t('practice.leaveConfirm'));
+      if (!ok) { setHash(VIEW_ROUTE[state.screen] || 'home'); return; }
+      exitShadowing(true);
+    }
+    showScreen(view, { fromRouter: true });
   }
 
   /** The logo and the results “Home” button both return to the daily quests. */
@@ -333,9 +452,12 @@
   /* ---------- Account, greeting and daily quests ---------- */
   function localDate() { return Quests.dateKey(new Date()); }
 
+  /** The long date follows the interface language, not the browser locale. */
+  const DATE_LOCALES = { en: 'en-GB', vi: 'vi-VN', fr: 'fr-FR' };
+
   function formatHomeDate() {
     try {
-      return new Date().toLocaleDateString('en-GB', {
+      return new Date().toLocaleDateString(DATE_LOCALES[I18n.lang()] || 'en-GB', {
         weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
       });
     } catch (e) { return localDate(); }
@@ -343,7 +465,8 @@
 
   function greeting() {
     const h = new Date().getHours();
-    return h < 12 ? 'Good morning' : (h < 18 ? 'Good afternoon' : 'Good evening');
+    if (h < 12) return I18n.t('home.goodMorning');
+    return h < 18 ? I18n.t('home.goodAfternoon') : I18n.t('home.goodEvening');
   }
 
   function showAuthMessage(message) {
@@ -546,7 +669,8 @@
       bootApp();
     }
     renderHome();
-    showScreen('welcome');
+    if (window.location.hash && routeKey() !== 'home') syncFromHash();
+    else showScreen('welcome');
     flushQuestQueue();
     if (!state.questClock) {
       state.questClock = setInterval(function () { maybeNewDay(); }, 60000);
@@ -609,6 +733,9 @@
     E.homeDate.textContent = formatHomeDate();
     E.homeGreeting.textContent = greeting() + ',';
     E.homeName.textContent = state.user.name || 'there';
+    if (E.navUserName) E.navUserName.textContent = state.user.name || 'there';
+    if (E.navUserEmail) E.navUserEmail.textContent = state.user.email || '';
+    if (E.navAvatar) E.navAvatar.textContent = String(state.user.name || 'L').trim().charAt(0).toUpperCase() || 'L';
     if (E.accountInfo) {
       E.accountInfo.textContent = 'Signed in as ' + (state.user.name || 'there') +
         (state.user.email ? ' · ' + state.user.email : '');
@@ -616,13 +743,20 @@
     const daily = state.daily && state.daily.date === date ? state.daily : null;
     const completed = !!(daily && daily.completedAt);
     const view = Quests.streakView(state.streak || Quests.defaultStreak(), date, completed);
+    if (E.navStreak) E.navStreak.textContent = '🔥 ' + view.current;
+    if (E.progressStreak) {
+      E.progressStreak.textContent = view.current + (view.current === 1 ? ' day' : ' days');
+    }
+    if (E.progressBest) E.progressBest.textContent = I18n.t('progress.best', { n: view.best || 0 });
 
     E.streakCount.textContent = String(view.current);
     E.streakWarn.hidden = !view.atRisk;
     E.streakChip.classList.toggle('is-at-risk', !!view.atRisk);
     E.streakChip.title = view.atRisk
-      ? 'You missed a day — finish today\'s quests to keep your ' + view.current + '-day streak.'
-      : (view.best > 0 ? 'Best streak: ' + view.best + ' days' : 'Finish every daily quest to start a streak.');
+      ? I18n.t('home.streakAtRisk', { n: view.current })
+      : (view.best > 0
+        ? I18n.t('home.streakBest', { n: view.best })
+        : I18n.t('home.streakStart'));
 
     if (!daily) {
       E.questList.innerHTML = '';
@@ -1044,11 +1178,13 @@
       E.srcBadge.textContent = 'No deck loaded';
       E.srcName.textContent = 'Nothing loaded yet';
       E.srcMeta.textContent = 'Connect a Google Sheet or load the demo deck.';
+      if (E.navDeckName) E.navDeckName.textContent = 'No deck loaded';
       return;
     }
     const d = state.deck;
     E.srcBadge.textContent = d.source.label + ' · ' + d.wordCount + ' words';
     E.srcName.textContent = d.source.label;
+    if (E.navDeckName) E.navDeckName.textContent = d.source.label;
     const when = d.loadedAt ? new Date(d.loadedAt).toLocaleString() : '';
     E.srcMeta.textContent = d.source.detail + ' · ' + d.topics.length +
       (d.topics.length === 1 ? ' topic' : ' topics') + ' · loaded ' + when;
@@ -1057,6 +1193,7 @@
   function updateStatsUI() {
     if (!state.deck) {
       E.statWords.textContent = '0'; E.statMastered.textContent = '0'; E.statAcc.textContent = '–';
+      if (E.progressAccuracy) E.progressAccuracy.textContent = '–';
       return;
     }
     const words = allWords();
@@ -1064,6 +1201,7 @@
     E.statMastered.textContent = String(Quiz.masteredCount(words));
     const stats = Quiz.getStats();
     E.statAcc.textContent = stats.accuracy == null ? '–' : stats.accuracy + '%';
+    if (E.progressAccuracy) E.progressAccuracy.textContent = stats.accuracy == null ? '–' : stats.accuracy + '%';
   }
 
   /** Paragraph practice is written and corrected by AI, independent of the quiz generator. */
@@ -1157,6 +1295,8 @@
     const p = summary || Grammar.progressSummary();
     E.studyPct.textContent = p.done + ' / ' + p.total;
     if (E.studyBar) E.studyBar.style.width = p.pct + '%';
+    if (E.progressGrammar) E.progressGrammar.textContent = p.done + ' / ' + p.total;
+    if (E.progressGrammarBar) E.progressGrammarBar.style.width = p.pct + '%';
     if (E.btnStudy) {
       E.btnStudy.textContent = p.done > 0 ? '📖 Continue grammar course' : '📖 Open grammar course';
     }
@@ -1566,6 +1706,7 @@
 
     E.qFeedback.hidden = true;
     E.qFeedback.className = 'feedback';
+    if (E.fbUpgrades) { E.fbUpgrades.hidden = true; E.fbUpgrades.innerHTML = ''; }
     E.qOptions.innerHTML = '';
     E.qOptions.hidden = true;
     E.qInputRow.hidden = true;
@@ -1687,8 +1828,128 @@
     E.btnDontKnow.hidden = true;
 
     if (settings.autoPlay) U.speak(q.word.term, settings.targetCode);
+    if (correct && q.type === 'translate' && q.direction === 'meaning2term' &&
+      response && String(response).trim()) {
+      loadQuizUpgrades(q, response);
+    }
     setTimeout(function () { E.btnNext.focus(); }, 60);
     updateStatsUI();
+  }
+
+  /* ---------- B1/B2 upgrades for correct typed VI → target answers ---------- */
+  const QUIZ_UPGRADE_KEY = 'quizUpgradeCache';
+  const QUIZ_UPGRADE_TTL = 14 * 24 * 60 * 60 * 1000;
+
+  function quizUpgradeKey(q, response) {
+    return [settings.targetLang || 'French', U.normalize(q.word.term || q.answer || ''),
+      U.normalize(response || '')].join('|');
+  }
+
+  function readQuizUpgradeCache(key) {
+    const all = U.lsGet(QUIZ_UPGRADE_KEY, {}) || {};
+    const hit = all[key];
+    if (!hit || Date.now() - (hit.at || 0) > QUIZ_UPGRADE_TTL) return null;
+    return Array.isArray(hit.list) ? hit.list : null;
+  }
+
+  function writeQuizUpgradeCache(key, list) {
+    const all = U.lsGet(QUIZ_UPGRADE_KEY, {}) || {};
+    all[key] = { at: Date.now(), list: list };
+    const keys = Object.keys(all);
+    if (keys.length > 200) {
+      keys.sort(function (a, b) { return (all[a].at || 0) - (all[b].at || 0); });
+      keys.slice(0, keys.length - 200).forEach(function (k) { delete all[k]; });
+    }
+    U.lsSet(QUIZ_UPGRADE_KEY, all);
+  }
+
+  function renderQuizUpgrades(list, cached) {
+    if (!E.fbUpgrades) return;
+    const upgrades = Array.isArray(list) ? list : [];
+    E.fbUpgrades.hidden = false;
+    E.fbUpgrades.innerHTML = '';
+    const head = paraEl('div', 'fb-upgrades-head');
+    head.appendChild(paraEl('strong', 'fb-upgrades-title', I18n.t('levelUp.title')));
+    head.appendChild(paraEl('span', 'pill pill-accent', String(upgrades.length)));
+    if (cached) head.appendChild(paraEl('span', 'muted tiny', 'cached'));
+    E.fbUpgrades.appendChild(head);
+    E.fbUpgrades.appendChild(paraEl('p', 'muted small', I18n.t('levelUp.sub')));
+    if (!upgrades.length) {
+      E.fbUpgrades.appendChild(paraEl('p', 'muted small', I18n.t('levelUp.empty')));
+      return;
+    }
+    upgrades.forEach(function (up) {
+      const card = paraEl('article', 'upgrade-card compact');
+      const change = paraEl('div', 'upgrade-change');
+      change.appendChild(paraEl('span', 'upgrade-from', up.from));
+      change.appendChild(paraEl('span', 'upgrade-arrow', '→'));
+      change.appendChild(paraEl('span', 'upgrade-to', up.to));
+      change.appendChild(paraEl('span', 'pill pill-accent upgrade-level', up.level));
+      const badge = paraEl('span', 'dict-wrap');
+      badge.innerHTML = dictBadge(up);
+      change.appendChild(badge);
+      card.appendChild(change);
+      if (up.why || up.meaning) {
+        const why = paraEl('p', 'upgrade-why');
+        if (up.why) why.appendChild(document.createTextNode(up.why));
+        if (up.meaning) {
+          if (up.why) why.appendChild(document.createTextNode(' · '));
+          why.appendChild(paraEl('span', 'muted', I18n.t('levelUp.meaning') + ': ' + up.meaning));
+        }
+        card.appendChild(why);
+      }
+      E.fbUpgrades.appendChild(card);
+    });
+  }
+
+  function loadQuizUpgrades(q, response) {
+    if (!E.fbUpgrades) return;
+    E.fbUpgrades.hidden = true;
+    E.fbUpgrades.innerHTML = '';
+    if (!q || q.type !== 'translate' || q.direction !== 'meaning2term') return;
+    if (!response || !String(response).trim()) return;
+    if (!aiReady()) {
+      E.fbUpgrades.hidden = false;
+      E.fbUpgrades.innerHTML = '<p class="muted small">' + U.esc(I18n.t('levelUp.aiNeeded')) + '</p>';
+      return;
+    }
+    const key = quizUpgradeKey(q, response);
+    const cached = readQuizUpgradeCache(key);
+    if (cached) {
+      renderQuizUpgrades(cached, true);
+      return;
+    }
+    E.fbUpgrades.hidden = false;
+    E.fbUpgrades.innerHTML = '<p class="muted small upgrade-loading">' + U.esc(I18n.t('levelUp.loading')) + '</p>';
+    const wanted = q;
+    Ai.suggestUpgrades({
+      provider: activeProvider(), baseUrl: activeBase(), key: activeKey(), model: activeModel(),
+      source: q.prompt, reference: q.answer, userText: response, direction: 'vi2fr',
+      targetLang: settings.targetLang, uiLang: I18n.lang(),
+      onWait: function (ms) {
+        if (currentQuestion() !== wanted || !E.fbUpgrades) return;
+        E.fbUpgrades.innerHTML = '<p class="muted small upgrade-loading">' +
+          U.esc(I18n.t('levelUp.waiting', { s: Math.round(ms / 1000) })) + '</p>';
+      }
+    }).then(function (list) {
+      if (currentQuestion() !== wanted) return;
+      const clean = Array.isArray(list) ? list : [];
+      renderQuizUpgrades(clean, false);
+      if (!clean.length) { writeQuizUpgradeCache(key, clean); return; }
+      if (!window.Dict) { writeQuizUpgradeCache(key, clean); return; }
+      Dict.verifyUpgrades(clean, settings.targetLang).then(function (checked) {
+        writeQuizUpgradeCache(key, checked);
+        if (currentQuestion() === wanted) renderQuizUpgrades(checked, false);
+      }).catch(function () {
+        clean.forEach(function (up) { if (!up.dict) up.dict = { status: 'unavailable' }; });
+        writeQuizUpgradeCache(key, clean);
+        if (currentQuestion() === wanted) renderQuizUpgrades(clean, false);
+      });
+    }).catch(function () {
+      if (currentQuestion() === wanted && E.fbUpgrades) {
+        E.fbUpgrades.innerHTML = '<p class="muted small">' + U.esc(I18n.t('levelUp.error')) + '</p>';
+      }
+    });
   }
 
   /**
@@ -1765,6 +2026,14 @@
     q.paraComplete = false;
     q.paraLastCheck = null;
     q.paraFinalized = false;
+    q.paraUpgrades = [];
+    if (E.paraInspector) E.paraInspector.hidden = false;
+    if (E.paraFeedback) { E.paraFeedback.hidden = true; E.paraFeedback.innerHTML = ''; }
+    if (E.paraLevelUp) { E.paraLevelUp.hidden = true; E.paraLevelUp.innerHTML = ''; }
+    if (E.corrCount) E.corrCount.textContent = '0';
+    if (E.upgradeCount) E.upgradeCount.textContent = '0';
+    setInspectorTab('corrections');
+    syncParaHighlights();
     E.paraInput.focus();
   }
 
@@ -1783,6 +2052,88 @@
     return Number(fb.score) >= 90 && notes.length === 0 && missing.length === 0;
   }
 
+  /** Level-up is stricter: a perfect grammar score, no notes, all words used. */
+  function paragraphIsPerfect(fb) {
+    if (!fb) return false;
+    const notes = fb.notes || [];
+    const missing = (fb.used || []).filter(function (u) { return !u.used; });
+    return Number(fb.score) === 100 && notes.length === 0 && missing.length === 0;
+  }
+
+  function setInspectorTab(tab) {
+    const level = tab === 'level';
+    if (E.tabCorrections) {
+      E.tabCorrections.classList.toggle('is-active', !level);
+      E.tabCorrections.setAttribute('aria-selected', level ? 'false' : 'true');
+    }
+    if (E.tabLevelUp) {
+      E.tabLevelUp.classList.toggle('is-active', level);
+      E.tabLevelUp.setAttribute('aria-selected', level ? 'true' : 'false');
+    }
+    if (E.paraFeedback) {
+      E.paraFeedback.hidden = level || !String(E.paraFeedback.innerHTML || '').trim();
+    }
+    if (E.paraLevelUp) {
+      E.paraLevelUp.hidden = !level || !String(E.paraLevelUp.innerHTML || '').trim();
+    }
+  }
+
+  function syncParaHighlights() {
+    if (!E.paraHighlights || !E.paraInput) return;
+    const text = E.paraInput.value || '';
+    const q = currentQuestion();
+    if (!q || q.type !== 'paragraph' || !text) {
+      E.paraHighlights.innerHTML = U.esc(text);
+      return;
+    }
+    const fb = (q.paraLastCheck && q.paraLastCheck.fb) || null;
+    const ranges = [];
+    if (fb) {
+      (fb.notes || []).forEach(function (n) {
+        if (!n.text) return;
+        const at = text.indexOf(n.text);
+        if (at !== -1) ranges.push({ start: at, end: at + n.text.length, kind: 'correction' });
+      });
+      (fb.upgrades || []).forEach(function (up) {
+        if (!up.from) return;
+        const at = text.indexOf(up.from);
+        if (at !== -1 && !ranges.some(function (r) {
+          return at < r.end && at + up.from.length > r.start;
+        })) ranges.push({ start: at, end: at + up.from.length, kind: 'upgrade' });
+      });
+    }
+    if (!ranges.length) {
+      E.paraHighlights.innerHTML = U.esc(text);
+      return;
+    }
+    ranges.sort(function (a, b) { return a.start - b.start; });
+    let html = '';
+    let cursor = 0;
+    ranges.forEach(function (r) {
+      if (r.start < cursor) return;
+      html += U.esc(text.slice(cursor, r.start));
+      html += '<mark class="hl-' + r.kind + '">' + U.esc(text.slice(r.start, r.end)) + '</mark>';
+      cursor = r.end;
+    });
+    html += U.esc(text.slice(cursor));
+    E.paraHighlights.innerHTML = html;
+  }
+
+  function applyUpgrade(up) {
+    if (!up || !E.paraInput || E.paraInput.disabled) return;
+    const text = E.paraInput.value;
+    const at = text.indexOf(up.from);
+    if (at === -1) {
+      U.toast('That phrase is no longer in your text.', 'warn');
+      return;
+    }
+    E.paraInput.value = text.slice(0, at) + up.to + text.slice(at + up.from.length);
+    E.paraInput.dispatchEvent(new Event('input', { bubbles: true }));
+    E.paraInput.focus();
+    E.paraInput.setSelectionRange(at, at + up.to.length);
+    U.toast('Upgrade applied. Check again when you are ready.', 'ok', 4000);
+  }
+
   async function submitParagraph() {
     const q = currentQuestion();
     if (!q || q.type !== 'paragraph' || state.answered || state.paraBusy) return;
@@ -1792,6 +2143,12 @@
     }
     const text = E.paraInput.value.trim();
     if (!text) { U.toast('Write your translation first.', 'warn'); E.paraInput.focus(); return; }
+    // The learner already reached a good score and may have applied optional
+    // upgrades since: “Complete” records the text as it stands, no extra AI call.
+    if (q.paraComplete && q.paraLastCheck) {
+      finalizeParagraph(q, text, q.paraLastCheck.fb);
+      return;
+    }
     if (!aiReady()) {
       const msg = 'Paragraph translation needs AI — open Settings → AI and use the free model (no key), or paste your own key.';
       U.toast(msg, 'warn');
@@ -1820,6 +2177,7 @@
         provider: activeProvider(), baseUrl: activeBase(), key: activeKey(), model: activeModel(),
         source: q.prompt, reference: q.reference, userText: text, direction: q.direction,
         keywords: q.keywords, targetLang: settings.targetLang, meaningLang: 'Vietnamese',
+        uiLang: I18n.lang(),
         onWait: function (ms) {
           const secs = Math.round(ms / 1000);
           E.btnParaSubmit.textContent = 'Waiting ' + secs + ' s…';
@@ -1860,9 +2218,10 @@
     E.btnParaSubmit.disabled = !good && q.paraChecks >= 3;
     E.btnParaSubmit.textContent = good ? 'Complete'
       : (q.paraChecks >= 3 ? '3 checks used' : 'Check again');
+    // A good paragraph stays editable until the learner presses “Complete”, so
+    // the optional B1/B2 upgrades can still be applied to the finished text.
     renderParaFeedback(text, fb, good);
-    if (good) finalizeParagraph(q, text, fb);
-    else {
+    if (!good) {
       E.paraInput.focus();
       U.toast('Not complete yet — apply the fixes or edit the text, then check again. ' +
         (q.paraChecks >= 3 ? 'You can also finish anyway.' : ''), 'warn', 8000);
@@ -1895,6 +2254,9 @@
   }
 
   function renderParaError(detail) {
+    if (E.paraInspector) E.paraInspector.hidden = false;
+    if (E.paraLevelUp) { E.paraLevelUp.hidden = true; E.paraLevelUp.innerHTML = ''; }
+    setInspectorTab('corrections');
     const box = E.paraFeedback;
     box.innerHTML = '';
     box.hidden = false;
@@ -1907,9 +2269,11 @@
 
   function renderParaFeedback(text, fb, correct) {
     const box = E.paraFeedback;
+    if (E.paraInspector) E.paraInspector.hidden = false;
     box.innerHTML = '';
     box.hidden = false;
     box.className = 'para-feedback ' + (correct ? 'ok' : (fb.score >= 45 ? 'close' : 'bad'));
+    if (E.corrCount) E.corrCount.textContent = String((fb.notes || []).length);
 
     const head = paraEl('div', 'pf-head');
     const score = paraEl('div', 'pf-score', String(fb.score));
@@ -1987,7 +2351,12 @@
       const next = paraEl('button', 'btn btn-primary',
         last ? 'See results' : (state.session && state.session.paragraphOnly ? 'Next paragraph' : 'Next question'));
       next.type = 'button';
-      next.addEventListener('click', nextQuestion);
+      next.addEventListener('click', function () {
+        // The paragraph may still be open so upgrades can be applied: record it
+        // with the current text before moving on.
+        if (!state.answered) finalizeParagraph(q, E.paraInput.value.trim() || text, fb);
+        nextQuestion();
+      });
       actions.appendChild(next);
       next.focus();
     } else if ((q && q.paraChecks) >= 3) {
@@ -2021,6 +2390,9 @@
       again.focus();
     }
     box.appendChild(actions);
+    renderLevelUp(fb, q);
+    setInspectorTab(paragraphIsPerfect(fb) ? 'level' : 'corrections');
+    syncParaHighlights();
   }
 
   function textBlock(title, body, cls) {
@@ -2028,6 +2400,161 @@
     block.appendChild(paraEl('h4', 'pf-h', title));
     block.appendChild(paraEl('p', 'pf-text', body));
     return block;
+  }
+
+  function dictBadge(up) {
+    const status = up.dict && up.dict.status;
+    if (!status || status === 'pending') {
+      return '<span class="dict-badge pending" title="Checking the dictionary">…</span>';
+    }
+    if (status === 'verified') {
+      const source = up.dict.source === 'wiktionary' ? 'Wiktionary' : 'FreeDictionaryAPI';
+      return '<span class="dict-badge ok" title="' + U.esc(source) + '">✓</span>';
+    }
+    if (status === 'ai') {
+      return '<span class="dict-badge ai" title="' + I18n.t('levelUp.aiOnly') + '">AI</span>';
+    }
+    if (status === 'not-found') {
+      return '<span class="dict-badge warn" title="' + I18n.t('levelUp.notFound') + '">!</span>';
+    }
+    return '<span class="dict-badge warn" title="' + I18n.t('levelUp.unavailable') + '">!</span>';
+  }
+
+  function upgradeContext(from) {
+    const text = E.paraInput ? E.paraInput.value : '';
+    const at = text.indexOf(from);
+    if (at === -1) return from;
+    let start = Math.max(text.lastIndexOf('.', at) + 1, text.lastIndexOf('!', at) + 1,
+      text.lastIndexOf('?', at) + 1, text.lastIndexOf('\n', at) + 1);
+    let end = text.length;
+    const stops = ['.', '!', '?', '\n'].map(function (ch) {
+      const i = text.indexOf(ch, at + from.length);
+      return i === -1 ? text.length : i + 1;
+    });
+    end = Math.min.apply(Math, stops);
+    const sentence = text.slice(start, end).trim();
+    return sentence || from;
+  }
+
+  function renderLevelUp(fb, q) {
+    if (!E.paraLevelUp) return;
+    E.paraLevelUp.innerHTML = '';
+    const perfect = paragraphIsPerfect(fb);
+    const list = perfect ? (fb.upgrades || []) : [];
+    if (E.upgradeCount) E.upgradeCount.textContent = String(list.length);
+
+    if (!perfect) {
+      const locked = paraEl('div', 'levelup-locked');
+      locked.appendChild(paraEl('span', 'levelup-lock-ico', '🔒'));
+      locked.appendChild(paraEl('p', 'pf-title', I18n.t('levelUp.locked')));
+      locked.appendChild(paraEl('p', 'muted small', I18n.t('corrections.allGood')));
+      E.paraLevelUp.appendChild(locked);
+      return;
+    }
+
+    const intro = paraEl('div', 'levelup-intro');
+    intro.appendChild(paraEl('p', 'levelup-kicker', 'B1 → B2'));
+    intro.appendChild(paraEl('p', 'muted small', I18n.t('levelUp.sub')));
+    E.paraLevelUp.appendChild(intro);
+
+    if (!list.length) {
+      E.paraLevelUp.appendChild(paraEl('p', 'muted small', I18n.t('levelUp.empty')));
+      return;
+    }
+
+    const applyAll = paraEl('button', 'btn btn-subtle btn-sm levelup-apply-all', I18n.t('levelUp.applyAll'));
+    applyAll.type = 'button';
+    applyAll.addEventListener('click', function () {
+      // Apply non-overlapping word/phrase upgrades from left to right. Sentence
+      // upgrades are applied only when they are the sole selected suggestion,
+      // and a word the dictionary rejected is never applied automatically.
+      let text = E.paraInput.value;
+      let applied = 0;
+      let skipped = 0;
+      list.slice().sort(function (a, b) { return text.indexOf(b.from) - text.indexOf(a.from); })
+        .forEach(function (up) {
+          if (up.scope === 'sentence' || (up.dict && up.dict.status === 'not-found')) {
+            skipped += 1;
+            return;
+          }
+          const at = text.indexOf(up.from);
+          if (at === -1) return;
+          text = text.slice(0, at) + up.to + text.slice(at + up.from.length);
+          applied += 1;
+        });
+      if (!applied) {
+        U.toast('Nothing safe to apply yet — check the badges on each suggestion.', 'warn', 6000);
+        return;
+      }
+      E.paraInput.value = text;
+      E.paraInput.dispatchEvent(new Event('input', { bubbles: true }));
+      U.toast(skipped
+        ? 'Safe upgrades applied. ' + skipped + ' unverified suggestion' + (skipped === 1 ? '' : 's') + ' skipped.'
+        : 'Safe upgrades applied. Check again when you are ready.', 'ok', 4000);
+    });
+    E.paraLevelUp.appendChild(applyAll);
+
+    list.forEach(function (up) {
+      const card = paraEl('article', 'upgrade-card');
+      const context = upgradeContext(up.from);
+      const snippet = paraEl('p', 'upgrade-context');
+      const at = context.indexOf(up.from);
+      if (at === -1) {
+        snippet.textContent = context;
+      } else {
+        snippet.innerHTML = U.esc(context.slice(0, at)) + '<mark>' + U.esc(up.from) + '</mark>' +
+          U.esc(context.slice(at + up.from.length));
+      }
+      card.appendChild(snippet);
+
+      const change = paraEl('div', 'upgrade-change');
+      const from = paraEl('span', 'upgrade-from', up.from);
+      const arrow = paraEl('span', 'upgrade-arrow', '→');
+      const to = paraEl('span', 'upgrade-to', up.to);
+      const level = paraEl('span', 'pill pill-accent upgrade-level', up.level);
+      const badge = paraEl('span', 'dict-wrap');
+      badge.innerHTML = dictBadge(up);
+      change.appendChild(from);
+      change.appendChild(arrow);
+      change.appendChild(to);
+      change.appendChild(level);
+      change.appendChild(badge);
+      card.appendChild(change);
+
+      if (up.why || up.meaning) {
+        const why = paraEl('p', 'upgrade-why');
+        if (up.why) why.appendChild(document.createTextNode(up.why));
+        if (up.meaning) {
+          if (up.why) why.appendChild(document.createTextNode(' · '));
+          why.appendChild(paraEl('span', 'muted', I18n.t('levelUp.meaning') + ': ' + up.meaning));
+        }
+        card.appendChild(why);
+      }
+      if (up.example) card.appendChild(paraEl('p', 'upgrade-example', up.example));
+
+      const apply = paraEl('button', 'btn btn-subtle btn-xs', I18n.t('levelUp.apply'));
+      apply.type = 'button';
+      apply.addEventListener('click', function () { applyUpgrade(up); });
+      card.appendChild(apply);
+      E.paraLevelUp.appendChild(card);
+    });
+
+    // Ask the dictionary in the background; the AI suggestion is still shown
+    // immediately, with a ! when neither provider can answer.
+    if (window.Dict && !q.paraDictChecked) {
+      q.paraDictChecked = true;
+      list.forEach(function (up) { up.dict = { status: 'pending' }; });
+      Dict.verifyUpgrades(list, settings.targetLang).then(function (checked) {
+        checked.forEach(function (up, i) { if (list[i]) list[i].dict = up.dict; });
+        fb.upgrades = list;
+        if (currentQuestion() === q) renderLevelUp(fb, q);
+      }).catch(function () {
+        list.forEach(function (up) {
+          if (!up.dict || up.dict.status === 'pending') up.dict = { status: 'unavailable' };
+        });
+        if (currentQuestion() === q) renderLevelUp(fb, q);
+      });
+    }
   }
 
   /* ---------- Shadowing ---------- */
@@ -3292,6 +3819,43 @@
 
   /* ---------- Events ---------- */
   function bindEvents() {
+    if (E.btnNavToggle) {
+      E.btnNavToggle.addEventListener('click', function () {
+        const open = document.body.classList.toggle('nav-open');
+        E.btnNavToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    }
+    if (E.btnNavBack) {
+      E.btnNavBack.addEventListener('click', function () {
+        if (window.history.length > 1) window.history.back();
+        else goHome();
+      });
+    }
+    U.$$('.nav-item').forEach(function (a) {
+      a.addEventListener('click', function () {
+        document.body.classList.remove('nav-open');
+        if (E.btnNavToggle) E.btnNavToggle.setAttribute('aria-expanded', 'false');
+      });
+    });
+    U.$$('[data-go]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        showScreen(btn.getAttribute('data-go') || 'practice');
+      });
+    });
+    if (E.selUiLang) {
+      E.selUiLang.addEventListener('change', function () {
+        settings.uiLang = I18n.setLang(E.selUiLang.value);
+        saveSettings();
+        renderHome();
+        updateStudyUI();
+        updateStatsUI();
+        updateSourceUI();
+        if (E.settingsDialog && E.settingsDialog.open) syncSettingsUI();
+        U.toast(I18n.t('ui.languageChanged'), 'ok');
+      });
+    }
+    if (E.btnOpenCourse) E.btnOpenCourse.addEventListener('click', function () { openGrammar(); });
+    window.addEventListener('hashchange', syncFromHash);
     E.btnHome.addEventListener('click', goHome);
     E.btnTheme.addEventListener('click', toggleTheme);
     E.btnTestVoice.addEventListener('click', testVoice);
@@ -3419,10 +3983,17 @@
     E.paraInput.addEventListener('input', function () {
       const n = E.paraInput.value.trim() ? E.paraInput.value.trim().split(/\s+/).length : 0;
       E.paraCount.textContent = n + (n === 1 ? ' word' : ' words');
+      syncParaHighlights();
+    });
+    E.paraInput.addEventListener('scroll', function () {
+      if (!E.paraHighlights) return;
+      E.paraHighlights.scrollTop = E.paraInput.scrollTop;
     });
     E.paraInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitParagraph(); }
     });
+    if (E.tabCorrections) E.tabCorrections.addEventListener('click', function () { setInspectorTab('corrections'); });
+    if (E.tabLevelUp) E.tabLevelUp.addEventListener('click', function () { setInspectorTab('level'); });
     E.btnParaSpeak.addEventListener('click', function () {
       const q = currentQuestion();
       if (!q || q.type !== 'paragraph') return;
@@ -3794,6 +4365,11 @@
   /* ---------- Boot ---------- */
   function init() {
     cacheEls();
+    buildRouteShell();
+    if (window.I18n) {
+      settings.uiLang = I18n.setLang(settings.uiLang || 'en');
+      if (E.selUiLang) E.selUiLang.value = settings.uiLang;
+    }
     applyTheme();
     U.setBrowserVoice(settings.browserVoice);
     if (window.Speech) Speech.configure(settings);
@@ -3839,7 +4415,6 @@
     }
     updateDataInfo();
     updateStudyUI();
-    showScreen('welcome');
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

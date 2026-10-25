@@ -900,6 +900,35 @@ const starved = Ai.normalizeQuestions({
 }, aiItems);
 eq(starved.length, 0, 'AI MC rejected when only near-synonyms remain');
 
+/* Level-up suggestions are target-language only, capped at 12 and B2 first. */
+const upgradeCfg = { userText: 'Je vais à la gare avec ma valise.', targetLang: 'French' };
+const viReplacement = Ai.normalizeUpgrades({
+  upgrades: [{ from: 'gare', to: 'đường sắt', level: 'B2' }]
+}, upgradeCfg);
+eq(viReplacement.length, 0, 'a Vietnamese replacement is never suggested');
+const mixedUpgrades = Ai.normalizeUpgrades({
+  upgrades: [
+    { from: 'valise', to: 'bagage à main', level: 'B2' },
+    { from: 'gare', to: 'nhà ga', level: 'B1' },
+    { from: 'gare', to: 'đường sắt', level: 'B1' }
+  ]
+}, upgradeCfg);
+eq(mixedUpgrades.length, 2, 'the unmistakably Vietnamese replacement is filtered out');
+eq(mixedUpgrades[0].to, 'bagage à main', 'the French replacement is kept first (B2 first)');
+ok(!mixedUpgrades.some(function (up) { return /\u0111/.test(up.to); }),
+  'no suggestion keeps a Vietnamese-only letter');
+const manyUpgrades = Ai.normalizeUpgrades({
+  upgrades: Array.from({ length: 15 }, function (_, i) {
+    return { from: 'gare', to: 'gare' + i, level: i === 14 ? 'B2' : 'B1' };
+  })
+}, upgradeCfg);
+eq(manyUpgrades.length, 12, 'upgrades are capped at 12');
+eq(manyUpgrades[0].level, 'B2', 'the B2 upgrade is listed first');
+const c1Upgrade = Ai.normalizeUpgrades({
+  upgrades: [{ from: 'gare', to: 'gare', level: 'C1' }]
+}, upgradeCfg);
+eq(c1Upgrade.length, 0, 'C1 suggestions are dropped');
+
 /* The reported bug: an OpenAI-compatible provider gets “json_object” but no
    schema, so the prompt itself has to state the shape; and a reply that still
    deviates must be understood or retried, not turned into “unexpected shape”. */
@@ -2061,7 +2090,7 @@ ok(htmlSrc.indexOf('js/grammar-data.js') !== -1 && htmlSrc.indexOf('js/grammar.j
   'grammar data and controller load before app.js');
 ok(/function openGrammar\(/.test(appSrc) && /E\.btnStudy\.addEventListener\('click', openGrammar\)/.test(appSrc),
   'the Study card opens the course');
-ok(/grammar: E\.screenGrammar/.test(appSrc), 'showScreen knows the Grammar screen');
+ok(/grammar: \{ el: 'screenGrammar'/.test(appSrc), 'showScreen knows the Grammar screen');
 ok(/Grammar\.init\(/.test(appSrc) && /askTutor: askTutor/.test(appSrc) &&
   /onExit: function \(\) \{ showScreen\('welcome'\)/.test(appSrc),
   'app.js gives Grammar its AI transport, progress callback and exit route');

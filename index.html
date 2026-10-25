@@ -58,12 +58,24 @@
 </section>
 
 <header class="topbar">
-  <button id="btnHome" class="brand brand-home" type="button" title="Back to home" aria-label="Back to home">
-    <span class="brand-logo" aria-hidden="true">📚</span>
-    <span class="brand-name">VocabLab</span>
-  </button>
+  <div class="topbar-left">
+    <button id="btnNavToggle" class="icon-btn nav-toggle" type="button" title="Open navigation" aria-label="Open navigation" aria-controls="sideNav" aria-expanded="false">☰</button>
+    <button id="btnHome" class="brand brand-home" type="button" title="Back to home" aria-label="Back to home">
+      <span class="brand-logo" aria-hidden="true">📚</span>
+      <span class="brand-name">VocabLab</span>
+      <span class="brand-sub" data-i18n="brand.tagline">DELF B2 studio</span>
+    </button>
+  </div>
   <div class="top-actions">
     <span id="srcBadge" class="pill pill-muted" title="Current vocabulary source">No deck loaded</span>
+    <label class="ui-lang-wrap" title="Interface language">
+      <span class="ui-lang-ico" aria-hidden="true">⌘</span>
+      <select id="selUiLang" class="ui-lang" aria-label="Interface language">
+        <option value="en">EN</option>
+        <option value="vi">VI</option>
+        <option value="fr">FR</option>
+      </select>
+    </label>
     <button id="btnHelp" class="icon-btn" title="Help &amp; setup guide" aria-label="Help">?</button>
     <button id="btnTheme" class="icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme">🌙</button>
     <button id="btnSettings" class="icon-btn" title="Settings" aria-label="Settings">⚙️</button>
@@ -73,7 +85,37 @@
 
 <div class="app-shell">
   <!-- ======================= SIDEBAR ======================= -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sideNav">
+    <div class="side-nav-head">
+      <button id="btnNavBack" class="icon-btn side-back" type="button" title="Back" aria-label="Back">←</button>
+      <div class="side-learner">
+        <span id="navAvatar" class="side-avatar" aria-hidden="true">K</span>
+        <div class="side-learner-text">
+          <strong id="navUserName">Learner</strong>
+          <span id="navUserEmail" class="muted tiny"></span>
+        </div>
+      </div>
+    </div>
+    <nav class="side-nav" aria-label="Main navigation">
+      <a class="nav-item" href="#/home" data-route="home"><span class="nav-ico" aria-hidden="true">⌂</span><span data-i18n="nav.home">Home</span></a>
+      <a class="nav-item" href="#/files" data-route="files"><span class="nav-ico" aria-hidden="true">▤</span><span data-i18n="nav.files">Class files</span></a>
+      <a class="nav-item" href="#/lessons" data-route="lessons"><span class="nav-ico" aria-hidden="true">▥</span><span data-i18n="nav.lessons">Lessons</span></a>
+      <a class="nav-item" href="#/practice" data-route="practice"><span class="nav-ico" aria-hidden="true">◈</span><span data-i18n="nav.practice">Practice</span></a>
+      <a class="nav-item" href="#/exam" data-route="exam"><span class="nav-ico" aria-hidden="true">◇</span><span data-i18n="nav.exam">Exam room</span></a>
+      <a class="nav-item" href="#/community" data-route="community"><span class="nav-ico" aria-hidden="true">◌</span><span data-i18n="nav.community">Community</span></a>
+      <a class="nav-item" href="#/progress" data-route="progress"><span class="nav-ico" aria-hidden="true">◔</span><span data-i18n="nav.progress">My progress</span></a>
+    </nav>
+    <div class="side-nav-foot">
+      <div class="side-mini">
+        <span class="muted tiny" data-i18n="nav.deck">Current deck</span>
+        <strong id="navDeckName">No deck</strong>
+      </div>
+      <div class="side-mini-row">
+        <span id="navStreak" class="pill pill-accent">🔥 0</span>
+        <span id="navLevel" class="pill pill-muted">B1/B2</span>
+      </div>
+    </div>
+    <div id="legacySidebarCards" hidden>
     <section class="card">
       <div class="card-head">
         <h2>Source</h2>
@@ -246,10 +288,122 @@
       <div class="stat"><span id="statMastered" class="stat-num">0</span><span class="stat-label">mastered</span></div>
       <div class="stat"><span id="statAcc" class="stat-num">–</span><span class="stat-label">accuracy</span></div>
     </section>
+    </div>
   </aside>
 
   <!-- ======================= MAIN ======================= -->
   <main class="main">
+
+    <!-- Files -->
+    <section id="routeFiles" class="route-page" hidden>
+      <div class="page-head">
+        <div>
+          <p class="page-kicker" data-i18n="files.kicker">Your material</p>
+          <h1 data-i18n="files.title">Class files</h1>
+          <p class="muted" data-i18n="files.sub">Choose the vocabulary deck and the topics you want to practise.</p>
+        </div>
+        <button class="btn btn-subtle btn-sm" type="button" data-go="practice" data-i18n="files.start">Go to practice</button>
+      </div>
+      <div class="route-grid-2">
+        <div id="filesSourceSlot"></div>
+        <div id="filesTopicsSlot"></div>
+      </div>
+      <div id="filesFormatSlot"></div>
+    </section>
+
+    <!-- Lessons -->
+    <section id="routeLessons" class="route-page" hidden>
+      <div class="page-head">
+        <div>
+          <p class="page-kicker" data-i18n="lessons.kicker">Grammar</p>
+          <h1 data-i18n="lessons.title">Lessons</h1>
+          <p class="muted" data-i18n="lessons.sub">Build the grammar you need for clear, confident B1/B2 writing.</p>
+        </div>
+      </div>
+      <div class="route-grid-2 lessons-grid">
+        <div id="lessonsStudySlot"></div>
+        <section class="card feature-card">
+          <span class="feature-ico">▥</span>
+          <h2 data-i18n="lessons.courseTitle">French tenses · DELF B2</h2>
+          <p class="muted small" data-i18n="lessons.courseBody">An 18-chapter course with bilingual explanations, conjugation tables, examples and short exercises. Your progress is saved in this browser.</p>
+          <button class="btn btn-subtle btn-sm" type="button" id="btnOpenCourse" data-i18n="lessons.open">Open the course</button>
+        </section>
+      </div>
+    </section>
+
+    <!-- Practice -->
+    <section id="routePractice" class="route-page" hidden>
+      <div class="page-head">
+        <div>
+          <p class="page-kicker" data-i18n="practice.kicker">Daily practice</p>
+          <h1 data-i18n="practice.title">Practice</h1>
+          <p class="muted" data-i18n="practice.sub">Quiz, translate a paragraph, or shadow a sentence. Pick what you need today.</p>
+        </div>
+      </div>
+      <div class="practice-layout">
+        <div id="practiceSetupSlot"></div>
+        <aside class="practice-side">
+          <section class="card feature-card">
+            <span class="feature-ico">✦</span>
+            <h2 data-i18n="practice.tipTitle">A small daily win</h2>
+            <p class="muted small" data-i18n="practice.tipBody">Fifteen focused minutes beat an hour of scrolling. Finish one quiz and one production task, then stop while it still feels easy.</p>
+          </section>
+          <section class="card feature-card">
+            <span class="feature-ico">B2</span>
+            <h2 data-i18n="practice.b2Title">Built for DELF B2</h2>
+            <p class="muted small" data-i18n="practice.b2Body">After a perfect VI → target paragraph, you get optional B1/B2 vocabulary and sentence upgrades — always optional, never a rewrite of your ideas.</p>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Exam -->
+    <section id="routeExam" class="route-page" hidden>
+      <div class="empty-page">
+        <span class="empty-ico">◇</span>
+        <h1 data-i18n="exam.title">Exam room</h1>
+        <p class="muted" data-i18n="exam.body">A focused DELF B2 exam space is next. For now, use Practice for timed paragraphs and quizzes.</p>
+        <a class="btn btn-primary" href="#/practice" data-i18n="exam.cta">Go to practice</a>
+      </div>
+    </section>
+
+    <!-- Community -->
+    <section id="routeCommunity" class="route-page" hidden>
+      <div class="empty-page">
+        <span class="empty-ico">◌</span>
+        <h1 data-i18n="community.title">Community</h1>
+        <p class="muted" data-i18n="community.body">Share progress and practise with other learners. This space is coming next.</p>
+      </div>
+    </section>
+
+    <!-- Progress -->
+    <section id="routeProgress" class="route-page" hidden>
+      <div class="page-head">
+        <div>
+          <p class="page-kicker" data-i18n="progress.kicker">Your journey</p>
+          <h1 data-i18n="progress.title">My progress</h1>
+          <p class="muted" data-i18n="progress.sub">A clear view of your vocabulary, grammar and streak.</p>
+        </div>
+      </div>
+      <div id="progressStatsSlot"></div>
+      <div class="route-grid-3">
+        <section class="card metric-card">
+          <span class="metric-label" data-i18n="progress.grammar">Grammar course</span>
+          <strong id="progressGrammar" class="metric-value">0 / 18</strong>
+          <div class="progress"><div id="progressGrammarBar" class="progress-fill" style="width:0%"></div></div>
+        </section>
+        <section class="card metric-card">
+          <span class="metric-label" data-i18n="progress.streak">Current streak</span>
+          <strong id="progressStreak" class="metric-value">0 days</strong>
+          <p id="progressBest" class="muted tiny" data-i18n="progress.best">Best streak: 0 days</p>
+        </section>
+        <section class="card metric-card">
+          <span class="metric-label" data-i18n="progress.accuracy">Accuracy</span>
+          <strong id="progressAccuracy" class="metric-value">–</strong>
+          <p class="muted tiny" data-i18n="progress.accuracyHint">Across all answered questions.</p>
+        </section>
+      </div>
+    </section>
 
     <!-- Welcome -->
     <section id="screenWelcome" class="screen">
@@ -313,7 +467,7 @@
         </button>
       </div>
 
-      <details class="card details-card" open>
+      <details class="card details-card" id="sheetFormatCard" open>
         <summary>Google Sheet format (what VocabLab reads)</summary>
         <table class="fmt-table">
           <thead><tr><th>A</th><th>B</th><th>C <span class="muted">(optional)</span></th><th>D <span class="muted">(optional)</span></th></tr></thead>
@@ -359,36 +513,54 @@
         <p id="qHintBox" class="qhint" hidden></p>
 
         <div id="qParagraph" class="para" hidden>
-          <div class="para-grid">
-            <div class="para-source">
-              <div class="para-top">
-                <span id="paraDir" class="pill pill-accent">French → Vietnamese</span>
-                <button id="btnParaSpeak" class="icon-btn icon-btn-sm" title="Listen to the paragraph" type="button">🔊</button>
+          <div class="para-layout">
+            <div class="para-main">
+              <div class="para-grid">
+                <div class="para-source">
+                  <div class="para-top">
+                    <span id="paraDir" class="pill pill-accent">French → Vietnamese</span>
+                    <button id="btnParaSpeak" class="icon-btn icon-btn-sm" title="Listen to the paragraph" type="button">🔊</button>
+                  </div>
+                  <p id="paraText" class="para-text"></p>
+                </div>
+                <aside class="para-words">
+                  <h3 class="para-words-title">Use these words</h3>
+                  <ol id="paraKeywords" class="para-wordlist"></ol>
+                  <p class="muted small para-words-note">Every one of them must appear in your translation.</p>
+                </aside>
               </div>
-              <p id="paraText" class="para-text"></p>
+
+              <div class="para-write">
+                <label class="field-label" for="paraInput">Your translation</label>
+                <div class="editor-stack">
+                  <div id="paraHighlights" class="para-highlights" aria-hidden="true"></div>
+                  <textarea id="paraInput" class="input para-input" rows="7" spellcheck="true"
+                    placeholder="Write your translation…"></textarea>
+                </div>
+                <div class="para-actions">
+                  <span id="paraCount" class="muted small">0 words</span>
+                  <span class="para-btns">
+                    <button id="btnParaSkip" class="btn btn-ghost btn-sm" type="button">Skip</button>
+                    <button id="btnParaSubmit" class="btn btn-primary" type="button">Check with AI</button>
+                  </span>
+                </div>
+                <p class="muted small para-tip">Ctrl/⌘ + Enter checks · the AI keeps your wording and only fixes real errors — your own pronoun and tense are fine.</p>
+              </div>
             </div>
-            <aside class="para-words">
-              <h3 class="para-words-title">Use these words</h3>
-              <ol id="paraKeywords" class="para-wordlist"></ol>
-              <p class="muted small para-words-note">Every one of them must appear in your translation.</p>
+
+            <aside id="paraInspector" class="para-inspector" hidden>
+              <div class="inspector-tabs" role="tablist" aria-label="Paragraph feedback">
+                <button id="tabCorrections" class="inspector-tab is-active" type="button" role="tab" aria-selected="true">
+                  <span data-i18n="corrections.title">Corrections</span> <span id="corrCount" class="tab-count">0</span>
+                </button>
+                <button id="tabLevelUp" class="inspector-tab" type="button" role="tab" aria-selected="false">
+                  <span data-i18n="levelUp.title">Level up</span> <span id="upgradeCount" class="tab-count">0</span>
+                </button>
+              </div>
+              <div id="paraFeedback" class="para-feedback" hidden></div>
+              <div id="paraLevelUp" class="para-levelup" hidden></div>
             </aside>
           </div>
-
-          <div class="para-write">
-            <label class="field-label" for="paraInput">Your translation</label>
-            <textarea id="paraInput" class="input para-input" rows="6" spellcheck="true"
-              placeholder="Write your translation…"></textarea>
-            <div class="para-actions">
-              <span id="paraCount" class="muted small">0 words</span>
-              <span class="para-btns">
-                <button id="btnParaSkip" class="btn btn-ghost btn-sm" type="button">Skip</button>
-                <button id="btnParaSubmit" class="btn btn-primary" type="button">Check with AI</button>
-              </span>
-            </div>
-            <p class="muted small para-tip">Ctrl/⌘ + Enter checks · the AI keeps your wording and only fixes real errors — your own pronoun and tense are fine.</p>
-          </div>
-
-          <div id="paraFeedback" class="para-feedback" hidden></div>
         </div>
 
         <div id="qOptions" class="options" hidden></div>
@@ -416,6 +588,7 @@
             <div id="fbMeaning" class="wordbox-meaning"></div>
             <div id="fbExample" class="wordbox-example muted small" hidden></div>
           </div>
+          <div id="fbUpgrades" class="fb-upgrades" hidden></div>
           <button id="btnNext" class="btn btn-primary btn-block">Next question <span class="kbd-hint">Enter ↵</span></button>
         </div>
       </div>
@@ -1098,9 +1271,13 @@
 <div id="toasts" class="toasts" aria-live="polite"></div>
 
 <script src="js/util.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/i18n-strings-vi.js"></script>
+<script src="js/i18n-strings-fr.js"></script>
 <script src="js/demo.js"></script>
 <script src="js/sources.js"></script>
 <script src="js/ai.js"></script>
+<script src="js/dict.js"></script>
 <script src="js/generator.js"></script>
 <script src="js/quiz.js"></script>
 <script src="js/speech.js"></script>
