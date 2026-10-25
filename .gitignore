@@ -16,5 +16,13 @@ _diag.html
 Thumbs.db
 *.log
 
-# Source PDF for the grammar course — kept local, never published.
-Cac_thi_tieng_Phap.pdf
+# Source PDFs for the grammar course — kept local, never published.
+*.pdf
+
+# Agent guidance — kept local, never committed.
+AGENTS.md
+
+# Playwright output
+test-results/
+playwright-report/
+blob-report/

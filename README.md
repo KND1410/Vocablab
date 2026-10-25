@@ -27,6 +27,22 @@ out of the box), but works with any language.
   bilingual Vietnamese/English explanations, conjugation tables, short exercises,
   saved progress and a lesson-aware AI tutor. The source PDF stays local; the
   lessons live in `js/grammar-data.js`.
+- **Seven full-screen pages** behind hash routes — `#/home`, `#/files`, `#/lessons`,
+  `#/practice`, `#/exam`, `#/community`, `#/progress`. Every existing feature lives
+  on one of them; Exam and Community are finished placeholders until they are
+  defined. A deep link survives a reload, and the sidebar marks the current page.
+- **Interface language**: English (default), Vietnamese or French, from the sidebar
+  selector. Every string — navigation, settings, dialogs and the whole Help guide —
+  follows it, and the choice is saved in your browser. Lesson and deck content stays
+  in its own language.
+- **Level up (B1/B2)**: after a *perfect* Vietnamese → target paragraph, or a correct
+  typed Vietnamese → target quiz answer, VocabLab offers up to 12 optional B1/B2
+  upgrades, B2 first. Each one shows the original wording highlighted in your own
+  text next to the suggested replacement, so nothing is rewritten behind your back:
+  apply one, or **Apply all safe**. Single words are checked against
+  [FreeDictionaryAPI](https://freedictionaryapi.com/) and then Wiktionary (data
+  licensed CC BY-SA 4.0); a phrase or sentence is labelled as an AI suggestion.
+  Nothing is ever applied automatically.
 - No build step: static files plus Vercel serverless functions. The optional Azure
   Speech SDK is loaded from a pinned CDN only when you use the cloud voice or Azure
   pronunciation scoring; Gemini scoring uses your existing AI key.
@@ -46,14 +62,18 @@ language/
 ├── js/speech.js        Azure neural TTS, pronunciation assessment, local recordings
 ├── js/grammar-data.js  18-chapter French tenses course (bilingual data)
 ├── js/grammar.js       course map, lessons, exercises, progress, AI tutor
-├── js/app.js           UI wiring, dashboard, quest hooks
+├── js/i18n.js          UI language catalogues (EN/VI/FR) + static text mapping
+├── js/i18n-strings-vi.js / -fr.js  translated markup and Help text
+├── js/dict.js          dictionary client: FreeDictionaryAPI → Wiktionary → AI
+├── js/app.js           UI wiring, routes, dashboard, quest hooks
 ├── api/                Vercel functions: auth, home, progress, profile
 ├── lib/                Mongo client, scrypt/session helpers, daily/streak logic
 ├── scripts/init-db.mjs creates the Atlas indexes
 ├── my-sheet.txt.example  template for your own link list (copy to my-sheet.txt)
 ├── sample-sheet.csv    example of the sheet format
 ├── tests/run-tests.mjs logic + API tests (node tests/run-tests.mjs)
-└── tests/browser-smoke.mjs real-UI test in headless Chrome
+├── tests/browser-smoke.mjs real-UI test in headless Chrome
+└── tests/e2e/          Playwright suite (npm run test:e2e) + its in-memory server
 ```
 
 ---
@@ -496,6 +516,7 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 ```bash
 node tests/run-tests.mjs          # logic (no browser needed)
 node tests/browser-smoke.mjs      # drives the real UI in headless Chrome
+npm run test:e2e                  # Playwright: routes, i18n, dictionary, upgrades
 node tests/browser-smoke.mjs --live       # …and loads your sheet from my-sheet.txt
 node tests/browser-smoke.mjs --discover   # …and pastes only the sheet link (auto-detects tabs)
 ```
@@ -533,6 +554,20 @@ rendering Azure-style scores and reaching its summary, flashcards flipping, the
 Grammar course opening with all 18 chapters, a lesson exercise being graded and
 saved, the AI tutor rendering a reply, the VI/EN toggle working and the course
 returning to vocabulary — and that no JavaScript error is thrown.
+
+The Playwright suite (`npm run test:e2e`) is the browser-level contract for the
+routes and the level-up feature. It starts `tests/e2e/server.mjs` (static files plus
+an in-memory `/api` and fake AI/dictionary providers, so no key or database is
+needed), signs in through that API and checks: all seven pages open, mark their nav
+item and survive a deep-link reload; Exam and Community are usable placeholders; the
+interface language switch reaches every visible string on every page plus the
+Settings and Help dialogs; French course content is never translated by that switch;
+the dictionary chain answers from FreeDictionaryAPI, then Wiktionary, then reports a
+missing word, an unavailable service and a non-headword phrase correctly; and
+upgrades appear only when the paragraph gate is met (score 100, no notes, every
+required word used) or for a correct typed VI → target answer, never for
+Target → VI, multiple choice, fill-in-the-blank or a wrong answer, capped at 12 and
+never applied on their own.
 
 ---
 
