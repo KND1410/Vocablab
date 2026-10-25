@@ -3907,6 +3907,10 @@
       E.selUiLang.addEventListener('change', function () {
         settings.uiLang = I18n.setLang(E.selUiLang.value);
         saveSettings();
+        // The grammar screen follows the interface language.
+        if (window.Grammar && Grammar.setLang) {
+          Grammar.setLang(settings.uiLang === 'vi' ? 'vi' : 'en');
+        }
         renderHome();
         updateStudyUI();
         updateStatsUI();

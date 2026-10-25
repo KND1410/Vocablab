@@ -1177,8 +1177,11 @@
   function init(opts) {
     state.opts = opts || {};
     state.root = state.opts.screen || document.getElementById('screenGrammar');
-    var saved = U.lsGet ? U.lsGet('grammarLang', 'vi') : 'vi';
-    state.lang = saved === 'en' ? 'en' : 'vi';
+    // No saved choice: start in the interface language (FR falls back to EN).
+    var saved = U.lsGet ? U.lsGet('grammarLang', '') : '';
+    var ui = (global.I18n && typeof global.I18n.lang === 'function') ? global.I18n.lang() : 'vi';
+    if (saved === 'en' || saved === 'vi') state.lang = saved;
+    else state.lang = ui === 'vi' ? 'vi' : 'en';
     if (state.root) {
       state.root.addEventListener('click', onClick);
       state.root.addEventListener('keydown', onKeyDown);
@@ -1194,6 +1197,7 @@
     courseSummary: courseSummary,
     openCourseById: openCourseById,
     init: init,
+    setLang: setLang,
     openCourse: openCourse,
     openLesson: openLesson,
     openNextLesson: openNextLesson,

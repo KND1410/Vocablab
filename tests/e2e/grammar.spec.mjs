@@ -51,6 +51,18 @@ test('the handbook opens its own 12-chapter map and saves progress separately', 
   expect(keys.tenses).toBeNull();
 });
 
+test('an English interface opens the course in English by default', async ({ page }) => {
+  await seedApp(page, { settings: { uiLang: 'en' }, overwrite: true });
+  await openRoute(page, 'lessons');
+
+  await expect(page.locator('.study-card h2')).toHaveText('Tense Atlas');
+  await page.locator('#btnStudy').click();
+  await expect(page.locator('body')).toHaveAttribute('data-screen', 'grammar');
+  await expect(page.locator('#screenGrammar .grammar-title')).toHaveText('Tense Atlas');
+  await expect(page.locator('#screenGrammar .grammar-part').first()).toContainText('Getting started');
+  await expect(page.locator('#screenGrammar [data-action=exit]').first()).toContainText('Lessons');
+});
+
 test('the atlas still opens its 18 chapters after visiting the handbook', async ({ page }) => {
   await openRoute(page, 'lessons');
   await page.locator('#btnOpenHandbook').click();

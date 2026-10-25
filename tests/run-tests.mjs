@@ -2162,6 +2162,11 @@ ok(/Grammar\.init\(/.test(appSrc) && /askTutor: askTutor/.test(appSrc) &&
 ok(/Ai\.askTutor\(/.test(appSrc), 'the tutor uses the shared AI transport');
 ok(/grammarProgress/.test(grammarSrc) && /grammarLast/.test(grammarSrc) && /grammarLang/.test(grammarSrc),
   'lesson progress, resume point and explanation language are saved locally');
+ok(/I18n\.lang\(\)/.test(grammarSrc) && /state\.lang = ui === 'vi' \? 'vi' : 'en'/.test(grammarSrc) &&
+  /setLang: setLang/.test(grammarSrc),
+  'without a saved choice the grammar screen opens in the interface language');
+ok(/Grammar\.setLang\(settings\.uiLang === 'vi' \? 'vi' : 'en'\)/.test(appSrc),
+  'changing the interface language switches the grammar screen language too');
 ok(/\.grammar-hero \{/.test(cssSrc) && /\.lesson-layout \{/.test(cssSrc) &&
   /body\[data-screen="grammar"\] \.sidebar/.test(cssSrc) && /\.tutor-msg/.test(cssSrc),
   'the course map, lesson reader and tutor have responsive styles');
