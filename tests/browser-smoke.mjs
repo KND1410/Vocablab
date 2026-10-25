@@ -292,8 +292,15 @@ function buildProbe(deadPort, blockedPort, paraPort) {
         '    await waitFor(function () { return /Loaded|Error/.test(byId("sheetStatus").textContent); }, 60000, "sheet deck");'
       ].join('\n')
     : [
-        '    byId("btnDemo").click();',
-        '    await waitFor(function () { return /Loaded/.test(byId("sheetStatus").textContent); }, 10000, "demo deck");'
+        // The home page no longer has a demo shortcut: load it from
+        // Settings → Google Sheet → Demo deck, like a user would now.
+        '    byId("btnSettings").click();',
+        '    document.querySelector(\'[data-tab="sheet"]\').click();',
+        '    var demoRadio = document.querySelector(\'input[name="sheetMode"][value="demo"]\');',
+        '    if (demoRadio) demoRadio.click();',
+        '    byId("btnLoadDemo").click();',
+        '    await waitFor(function () { return /Loaded/.test(byId("sheetStatus").textContent); }, 10000, "demo deck");',
+        '    byId("settingsDialog").close();'
       ].join('\n');
 
   const driver = [

@@ -89,7 +89,6 @@
       'btnStart', 'btnFlashcards',
       'statWords', 'statMastered', 'statAcc', 'screenWelcome', 'screenGrammar',
       'studyPct', 'studyBar', 'btnStudy',
-      'btnDemo', 'btnQuickSheet', 'btnQuickAi',
       'screenQuiz', 'progressBar', 'qProgressText', 'qStreak', 'qScore', 'btnExitQuiz', 'qCard', 'qTypeBadge',
       'qTopicBadge', 'btnSpeakPrompt', 'qPrompt', 'qHintBox', 'qOptions', 'qInputRow', 'qInput', 'btnSubmit',
       'btnDontKnow', 'qFeedback', 'fbIcon', 'fbTitle', 'fbBody', 'fbTerm', 'fbSpeak', 'fbPron', 'fbMeaning',
@@ -353,6 +352,9 @@
     results: 'practice/results', flashcards: 'practice/flashcards'
   };
 
+  // Assigned once the shell is built: moves the class file to the active page.
+  let placeClassFile = function () {};
+
   function routeKey() {
     return String(window.location.hash || '').replace(/^#\/?/, '').replace(/\/+$/, '') || 'home';
   }
@@ -377,7 +379,11 @@
     });
   }
 
-  /** Move the old setup cards into their route pages once, before bindings. */
+  /**
+   * Move the old setup cards into their route pages once, before bindings.
+   * The class file (Source + Topics) belongs to the home page; the Files route
+   * has no sidebar entry but still opens, and borrows those same cards then.
+   */
   function buildRouteShell() {
     function cardOf(id) {
       const el = document.getElementById(id);
@@ -387,14 +393,24 @@
       const target = document.getElementById(targetId);
       if (target && node && node.parentNode !== target) target.appendChild(node);
     }
-    move('filesSourceSlot', cardOf('srcName'));
-    move('filesTopicsSlot', cardOf('topicList'));
+    const sourceCard = cardOf('srcName');
+    const topicsCard = cardOf('topicList');
     move('filesFormatSlot', document.getElementById('sheetFormatCard'));
     move('lessonsStudySlot', cardOf('btnStudy'));
     move('practiceSetupSlot', cardOf('segPractice'));
     move('progressStatsSlot', cardOf('statWords'));
     const legacy = document.getElementById('legacySidebarCards');
     if (legacy) legacy.remove();
+
+    return function placeClassFile(view) {
+      const home = document.getElementById('homeFilesSlot');
+      const host = view === 'files'
+        ? [document.getElementById('filesSourceSlot'), document.getElementById('filesTopicsSlot')]
+        : [home, home];
+      if (!host[0] || !host[1]) return;
+      if (sourceCard && sourceCard.parentNode !== host[0]) host[0].appendChild(sourceCard);
+      if (topicsCard && topicsCard.parentNode !== host[1]) host[1].appendChild(topicsCard);
+    };
   }
 
   function viewForRoute(route) {
@@ -418,6 +434,7 @@
       if (el) el.hidden = key !== name;
     });
     setActiveNav(VIEWS[name].nav);
+    if (name === 'welcome' || name === 'files') placeClassFile(name);
     if (name === 'welcome') renderHome();
     if (name === 'files') updateSourceUI();
     if (!opts.fromRouter) setHash(VIEW_ROUTE[name] || 'home');
@@ -1168,9 +1185,10 @@
 
   function updateSelected() {
     const words = selectedWords().length;
-    E.selectedSummary.textContent = state.selected.length
-      ? state.selected.length + ' topic' + (state.selected.length === 1 ? '' : 's') + ' selected · ' + words + ' words'
-      : 'No topics selected';
+    const count = state.selected.length;
+    E.selectedSummary.textContent = count
+      ? I18n.t(count === 1 ? 'files.selectedOne' : 'files.selectedMany', { n: count, w: words })
+      : I18n.t('files.noTopics');
   }
 
   function updateSourceUI() {
@@ -1182,12 +1200,14 @@
       return;
     }
     const d = state.deck;
-    E.srcBadge.textContent = d.source.label + ' · ' + d.wordCount + ' words';
+    E.srcBadge.textContent = d.source.label + ' · ' +
+      I18n.t(d.wordCount === 1 ? 'files.wordOne' : 'files.wordMany', { n: d.wordCount });
     E.srcName.textContent = d.source.label;
     if (E.navDeckName) E.navDeckName.textContent = d.source.label;
     const when = d.loadedAt ? new Date(d.loadedAt).toLocaleString() : '';
-    E.srcMeta.textContent = d.source.detail + ' · ' + d.topics.length +
-      (d.topics.length === 1 ? ' topic' : ' topics') + ' · loaded ' + when;
+    E.srcMeta.textContent = d.source.detail + ' · ' +
+      I18n.t(d.topics.length === 1 ? 'files.topicOne' : 'files.topicMany', { n: d.topics.length }) +
+      ' · ' + (when ? I18n.t('files.loadedAt', { when: when }) : I18n.t('files.loaded'));
   }
 
   function updateStatsUI() {
@@ -3850,6 +3870,7 @@
         updateStudyUI();
         updateStatsUI();
         updateSourceUI();
+        updateSelected();
         if (E.settingsDialog && E.settingsDialog.open) syncSettingsUI();
         U.toast(I18n.t('ui.languageChanged'), 'ok');
       });
@@ -3884,8 +3905,6 @@
     E.btnSettings.addEventListener('click', function () { openSettings('ai'); });
     E.btnChangeSource.addEventListener('click', function () { openSettings('sheet'); });
     E.btnHelp.addEventListener('click', function () { E.helpDialog.showModal(); });
-    E.btnQuickSheet.addEventListener('click', function () { openSettings('sheet'); });
-    E.btnQuickAi.addEventListener('click', function () { openSettings('ai'); });
     if (E.btnStudy) E.btnStudy.addEventListener('click', openGrammar);
     E.lnkShowScript.addEventListener('click', function (e) {
       e.preventDefault();
@@ -4261,11 +4280,6 @@
       saveSettings();
       loadDeck({ mode: 'demo' });
     });
-    E.btnDemo.addEventListener('click', function () {
-      settings.sheetMode = 'demo';
-      saveSettings();
-      loadDeck({ mode: 'demo' });
-    });
 
     // Settings — Data tab
     E.btnClearDeck.addEventListener('click', function () {
@@ -4365,7 +4379,7 @@
   /* ---------- Boot ---------- */
   function init() {
     cacheEls();
-    buildRouteShell();
+    placeClassFile = buildRouteShell();
     if (window.I18n) {
       settings.uiLang = I18n.setLang(settings.uiLang || 'en');
       if (E.selUiLang) E.selUiLang.value = settings.uiLang;

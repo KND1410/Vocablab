@@ -98,7 +98,6 @@
     </div>
     <nav class="side-nav" aria-label="Main navigation">
       <a class="nav-item" href="#/home" data-route="home"><span class="nav-ico" aria-hidden="true">⌂</span><span data-i18n="nav.home">Home</span></a>
-      <a class="nav-item" href="#/files" data-route="files"><span class="nav-ico" aria-hidden="true">▤</span><span data-i18n="nav.files">Class files</span></a>
       <a class="nav-item" href="#/lessons" data-route="lessons"><span class="nav-ico" aria-hidden="true">▥</span><span data-i18n="nav.lessons">Lessons</span></a>
       <a class="nav-item" href="#/practice" data-route="practice"><span class="nav-ico" aria-hidden="true">◈</span><span data-i18n="nav.practice">Practice</span></a>
       <a class="nav-item" href="#/exam" data-route="exam"><span class="nav-ico" aria-hidden="true">◇</span><span data-i18n="nav.exam">Exam room</span></a>
@@ -449,23 +448,9 @@
         <span id="voiceHint" class="muted tiny">Uses your browser's system voices</span>
       </div>
 
-      <div class="quick-cards">
-        <button class="quick-card" id="btnDemo">
-          <span class="qc-ico">🎁</span>
-          <strong>Try the demo deck</strong>
-          <span class="muted small">3 topics × 12 words — works instantly, no setup.</span>
-        </button>
-        <button class="quick-card" id="btnQuickSheet">
-          <span class="qc-ico">📊</span>
-          <strong>Connect my Google Sheet</strong>
-          <span class="muted small">Just paste the sheet link — every tab becomes a topic, no key needed.</span>
-        </button>
-        <button class="quick-card" id="btnQuickAi">
-          <span class="qc-ico">✨</span>
-          <strong>Use free AI — no key</strong>
-          <span class="muted small">Just pick a model in Settings → AI. Have a key from Gemini, Groq or another provider? Switch to Advanced instead.</span>
-        </button>
-      </div>
+      <!-- The class file itself: the Source and Topics cards live here,
+           and the Files route borrows them when it is opened by URL. -->
+      <div id="homeFilesSlot" class="route-grid-2 home-files"></div>
 
       <details class="card details-card" id="sheetFormatCard" open>
         <summary>Google Sheet format (what VocabLab reads)</summary>

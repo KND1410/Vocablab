@@ -26,11 +26,13 @@ out of the box), but works with any language.
 - **Grammar → French Tenses**: an 18-chapter DELF B2 course with a course map,
   bilingual Vietnamese/English explanations, conjugation tables, short exercises,
   saved progress and a lesson-aware AI tutor. The source PDF stays local; the
-  lessons live in `js/grammar-data.js`.
-- **Seven full-screen pages** behind hash routes — `#/home`, `#/files`, `#/lessons`,
+  lessons live in `js/grammar-data.js`.- **Full-screen pages** behind hash routes — `#/home`, `#/files`, `#/lessons`,
   `#/practice`, `#/exam`, `#/community`, `#/progress`. Every existing feature lives
   on one of them; Exam and Community are finished placeholders until they are
   defined. A deep link survives a reload, and the sidebar marks the current page.
+  The class file itself (source, reload, topics) is shown straight on the home page,
+  so there is no separate Files entry in the sidebar — `#/files` still opens the same
+  cards in their own page.
 - **Interface language**: English (default), Vietnamese or French, from the sidebar
   selector. Every string — navigation, settings, dialogs and the whole Help guide —
   follows it, and the choice is saved in your browser. Lesson and deck content stays

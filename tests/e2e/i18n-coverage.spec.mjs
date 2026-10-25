@@ -1,23 +1,62 @@
 /* Every UI string must follow the interface language.
-   This walks all seven routes plus the Settings and Help dialogs in English,
-   then again in Vietnamese and French, and fails if a visible string is still
+   This walks all routes and the Settings and Help dialogs in English, then in
+   Vietnamese and French, failing if a visible string in a given view is still
    byte-identical to English. Values that are data, not UI copy (the brand, a
-   seeded deck name, a learner's own name/email, sample placeholders, language
-   codes and URLs) are allow-listed below. */
+   seeded deck or topic name, a learner's own name/email, sample placeholders,
+   language codes and URLs) are allow-listed below. */
 import { test, expect } from '@playwright/test';
 import { signIn, seedApp, openRoute } from './helpers.mjs';
 
 const ROUTES = ['home', 'files', 'lessons', 'practice', 'exam', 'community', 'progress'];
+const DIALOGS = [
+  { id: 'settingsDialog', opener: '#btnSettings' },
+  { id: 'helpDialog', opener: '#btnHelp' }
+];
 
 /* Strings that are correctly the same in every language. */
 const ALLOWED = [
   'VocabLab',
   'B1/B2',
   'DELF B2',
+  'Source',
+  // Product and method names stay as they are in every language.
+  'Shadowing',
+  '(AI)',
+  '✨ AI',
+  '📊 Google Sheet',
+  'Google Gemini',
+  'Groq',
+  'console.groq.com/keys',
+  'Cerebras',
+  'OpenRouter',
+  'Mistral',
+  'DeepSeek',
+  'Ollama',
+  'Azure Speech',
+  // A menu path inside Google Sheets, whose own UI language is not ours.
+  'Extensions → Apps Script',
+  // Keyboard keys and the VI/EN example of the explanation language.
+  'VI / EN',
+  'Enter',
+  'Ctrl',
+  'Space',
+  // Column aliases from the sheet: the same list in every language.
+  'Vocab / Français / French',
+  'Vietnamese / Tiếng Việt / Nghĩa / Vietnamien',
+  'Vocab / Từ vựng / Word',
+  'Vietnamese / Nghĩa / Meaning',
+  'Pronunciation / Phát âm / Pinyin',
+  'Example / Ví dụ',
+  // French words that are spelled exactly like their English label.
+  'Quiz',
+  'Questions',
+  'Standard',
+  'Simple',
   'E2E Learner',
   'e2e@local.test',
   'E2E deck (French)',
   'E2E deck (French) · 6 words',
+  'E2E topic',
   'Khoi',
   'you@example.com',
   'XXXXX-XXXXX',
@@ -34,7 +73,8 @@ const ALLOWED_PATTERNS = [
   /^(https?|wss?):\/\//,
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   /^(AIza|gsk_|sk-|sk-or-|xai-)[….]/,
-  /^[a-z]{2}(-[A-Z]{2})?$/
+  /^[a-z]{2}(-[A-Z]{2})?$/,
+  /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i
 ];
 
 function allowed(text) {
@@ -44,7 +84,9 @@ function allowed(text) {
 /** Visible leaf text plus placeholder/title/aria-label values, deduplicated. */
 function collect(page) {
   return page.evaluate(function () {
-    const skip = 'script, style, textarea, code, pre, #selUiLang, [data-i18n-skip], .code-block, #toasts, #scriptCode';
+    // The sheet-format card documents the multilingual column aliases and shows
+    // sample French/Vietnamese words: content, not UI copy.
+    const skip = 'script, style, textarea, code, pre, #selUiLang, [data-i18n-skip], .code-block, #toasts, #scriptCode, #sheetFormatCard table';
     const seen = new Set();
     const out = [];
     function push(raw) {
@@ -67,6 +109,24 @@ function collect(page) {
   });
 }
 
+async function open(page, view) {
+  if (view.route) { await openRoute(page, view.route); return; }
+  await page.locator(view.opener).click();
+  await page.locator('#' + view.id).waitFor({ state: 'visible' });
+}
+
+async function close(page, view) {
+  if (!view.id) return;
+  await page.locator('#' + view.id + ' button[value="close"]').click();
+}
+
+const VIEWS = ROUTES.map(function (route) { return { route: route }; })
+  .concat(DIALOGS.map(function (d) { return { id: d.id, opener: d.opener }; }));
+
+function label(view) {
+  return view.route ? 'route:' + view.route : 'dialog:' + view.id;
+}
+
 test.beforeEach(async ({ page, request }) => {
   await request.post('/__e2e__/reset');
   await signIn(request);
@@ -75,30 +135,24 @@ test.beforeEach(async ({ page, request }) => {
 
 for (const lang of ['vi', 'fr']) {
   test('every visible UI string follows the ' + lang + ' interface language', async ({ page }) => {
-    const views = [];
-    for (const route of ROUTES) {
-      await openRoute(page, route);
-      views.push(['route:' + route, await collect(page)]);
-    }
-    await openRoute(page, 'home');
-    for (const dialog of ['settingsDialog', 'helpDialog']) {
-      await page.locator(dialog === 'helpDialog' ? '#btnHelp' : '#btnSettings').click();
-      await page.locator('#' + dialog).waitFor({ state: 'visible' });
-      views.push(['dialog:' + dialog, await collect(page)]);
-      await page.locator('#' + dialog + ' button[value="close"]').click();
+    const english = {};
+    for (const view of VIEWS) {
+      await open(page, view);
+      english[label(view)] = await collect(page);
+      await close(page, view);
     }
 
     await page.locator('#selUiLang').selectOption(lang);
     await expect(page.locator('html')).toHaveAttribute('lang', lang);
 
     const leftovers = [];
-    for (const [label, english] of views) {
+    for (const view of VIEWS) {
+      await open(page, view);
       const now = new Set(await collect(page));
-      for (const text of english) {
-        if (now.has(text) && !allowed(text) && leftovers.indexOf(label + ' :: ' + text) === -1) {
-          leftovers.push(label + ' :: ' + text);
-        }
+      for (const text of english[label(view)] || []) {
+        if (now.has(text) && !allowed(text)) leftovers.push(label(view) + ' :: ' + text);
       }
+      await close(page, view);
     }
     expect(leftovers).toEqual([]);
   });

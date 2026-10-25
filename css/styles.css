@@ -331,17 +331,8 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .hero p { max-width: 68ch; }
 .hero-test { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; margin-top: .8rem; }
 
-.quick-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: .9rem; margin: 1rem 0; }
-@media (max-width: 780px) { .quick-cards { grid-template-columns: 1fr; } }
-.quick-card {
-  display: flex; flex-direction: column; gap: .3rem; text-align: left;
-  padding: 1.05rem 1.1rem; border-radius: var(--radius); cursor: pointer;
-  border: 1px solid var(--border); background: var(--surface); color: var(--text);
-  font: inherit; box-shadow: var(--shadow);
-  transition: transform .15s ease, border-color .15s ease;
-}
-.quick-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--primary) 45%, var(--border)); }
-.qc-ico { font-size: 1.5rem; }
+/* The class file shown on the home page (Source + Topics cards). */
+.home-files { margin: 1rem 0 0; }
 
 .details-card summary { cursor: pointer; font-weight: 600; }
 .fmt-table { width: 100%; border-collapse: collapse; margin: .7rem 0 .4rem; font-size: .84rem; }
