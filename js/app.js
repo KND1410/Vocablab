@@ -73,14 +73,14 @@
 
   const E = {};
   function cacheEls() {
-    const ids = ['btnHome', 'btnNavToggle', 'btnNavBack', 'selUiLang', 'navUserName', 'navUserEmail', 'navAvatar',
+    const ids = ['btnHome', 'btnNavToggle', 'selUiLang', 'navUserName', 'navUserEmail', 'navAvatar',
       'navDeckName', 'navStreak', 'navLevel',
       'routeFiles', 'routeLessons', 'routePractice', 'routeExam', 'routeCommunity', 'routeProgress',
       'filesSourceSlot', 'filesTopicsSlot', 'filesFormatSlot', 'lessonsStudySlot', 'practiceSetupSlot',
       'progressStatsSlot', 'btnOpenHandbook', 'handbookPct', 'handbookBar',
       'progressGrammar', 'progressGrammarBar', 'progressStreak',
       'progressBest', 'progressAccuracy',
-      'btnHome', 'srcBadge', 'btnHelp', 'btnTheme', 'btnFullscreen', 'btnSettings', 'btnTestVoice', 'voiceHint', 'btnReload', 'srcName', 'srcMeta',
+      'btnHome', 'srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnTestVoice', 'voiceHint', 'btnReload', 'srcName', 'srcMeta',
       'btnChangeSource', 'btnAllTopics', 'btnNoTopics', 'topicSearch', 'topicList', 'selectedSummary',
       'typeMc', 'typeBlank', 'typeTranslate', 'selPractice', 'quizSetupPane', 'paraSetupPane', 'shadowingSetupPane',
       'btnStartParagraph', 'paraStartHint', 'btnStartShadowing', 'shadowStartHint', 'btnShadowSavedSetup',
@@ -3859,35 +3859,38 @@
       }
     } catch (e) {}
     if (E.btnNavToggle) {
+      const syncCollapseUi = function () {
+        const collapsed = document.body.classList.contains('sidebar-collapsed');
+        const title = collapsed ? 'Expand navigation' : 'Collapse navigation';
+        [E.btnNavToggle, document.getElementById('btnSidebarToggle')].forEach(function (btn) {
+          if (!btn) return;
+          btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+          btn.setAttribute('title', title);
+          btn.setAttribute('aria-label', title);
+        });
+      };
+      const toggleCollapse = function () {
+        const collapsed = document.body.classList.toggle('sidebar-collapsed');
+        try {
+          localStorage.setItem('vocablab.sidebarCollapsed', collapsed ? '1' : '0');
+        } catch (e) {}
+        syncCollapseUi();
+      };
       E.btnNavToggle.addEventListener('click', function () {
         const isDesktop = window.matchMedia('(min-width: 921px)').matches;
         if (isDesktop) {
-          const collapsed = document.body.classList.toggle('sidebar-collapsed');
-          try {
-            localStorage.setItem('vocablab.sidebarCollapsed', collapsed ? '1' : '0');
-          } catch (e) {}
-          E.btnNavToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-          E.btnNavToggle.setAttribute('title', collapsed ? 'Expand navigation' : 'Collapse navigation');
-          E.btnNavToggle.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
+          toggleCollapse();
         } else {
           const open = document.body.classList.toggle('nav-open');
           E.btnNavToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
         }
       });
-      // Set initial aria-expanded based on state
-      const isDesktop = window.matchMedia('(min-width: 921px)').matches;
-      if (isDesktop) {
-        const collapsed = document.body.classList.contains('sidebar-collapsed');
-        E.btnNavToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-        E.btnNavToggle.setAttribute('title', collapsed ? 'Expand navigation' : 'Collapse navigation');
-        E.btnNavToggle.setAttribute('aria-label', collapsed ? 'Expand navigation' : 'Collapse navigation');
+      const btnSidebarToggle = document.getElementById('btnSidebarToggle');
+      if (btnSidebarToggle) {
+        btnSidebarToggle.addEventListener('click', toggleCollapse);
       }
-    }
-    if (E.btnNavBack) {
-      E.btnNavBack.addEventListener('click', function () {
-        if (window.history.length > 1) window.history.back();
-        else goHome();
-      });
+      // Set initial aria-expanded based on state
+      if (window.matchMedia('(min-width: 921px)').matches) syncCollapseUi();
     }
     U.$$('.nav-item').forEach(function (a) {
       a.addEventListener('click', function () {
@@ -3919,21 +3922,6 @@
     window.addEventListener('hashchange', syncFromHash);
     E.btnHome.addEventListener('click', goHome);
     E.btnTheme.addEventListener('click', toggleTheme);
-    if (E.btnFullscreen) {
-      E.btnFullscreen.addEventListener('click', function () {
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen().catch(function () {});
-        } else {
-          document.exitFullscreen().catch(function () {});
-        }
-      });
-      document.addEventListener('fullscreenchange', function () {
-        if (E.btnFullscreen) {
-          E.btnFullscreen.textContent = document.fullscreenElement ? '🗗' : '⛶';
-          E.btnFullscreen.setAttribute('title', document.fullscreenElement ? 'Exit fullscreen' : 'Toggle fullscreen');
-        }
-      });
-    }
     E.btnTestVoice.addEventListener('click', testVoice);
     if (E.selBrowserVoice) {
       E.selBrowserVoice.addEventListener('change', function () {
