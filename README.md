@@ -24,11 +24,11 @@ out of the box), but works with any language.
   quests and streak sync to **your own MongoDB Atlas database** through `/api`;
   the deck, mastery, grammar progress, settings and recordings stay local.
 - **Grammar → two courses**: **Tense Atlas**, an 18-chapter DELF B2 tenses course
-  (`js/grammar-data.js`), and **Grammar Handbook A2–B2**, a 12-chapter companion on
-  nouns, pronouns, prepositions, relative pronouns, connectives and B2 writing
-  (`js/grammar-handbook.js`). Each has a course map, bilingual Vietnamese/English
-  explanations, tables, short exercises and a lesson-aware AI tutor, and each keeps
-  its own progress in this browser. The source PDFs stay local.- **Full-screen pages** behind hash routes — `#/home`, `#/files`, `#/lessons`,
+  (`js/grammar-data.js`), and **Grammaire progressive du français**, the 52 teaching
+  chapters of the *Grammaire progressive du français, niveau intermédiaire (3e
+  édition)* (`js/grammar-handbook.js`). Each has a course map, bilingual
+  Vietnamese/English explanations, tables, short exercises and a lesson-aware AI
+  tutor, and each keeps its own progress in this browser. The source PDFs stay local.- **Full-screen pages** behind hash routes — `#/home`, `#/files`, `#/lessons`,
   `#/practice`, `#/exam`, `#/community`, `#/progress`. Every existing feature lives
   on one of them; Exam and Community are finished placeholders until they are
   defined. A deep link survives a reload, and the sidebar marks the current page.
@@ -65,7 +65,7 @@ language/
 ├── js/account.js       auth client, local home cache, offline progress queue
 ├── js/speech.js        Azure neural TTS, pronunciation assessment, local recordings
 ├── js/grammar-data.js  18-chapter Tense Atlas course (bilingual data)
-├── js/grammar-handbook.js 12-chapter A2 → B2 grammar handbook course
+├── js/grammar-handbook.js 52-chapter Grammaire progressive course (book lessons)
 ├── js/grammar.js       course map, lessons, exercises, progress, AI tutor
 ├── js/i18n.js          UI language catalogues (EN/VI/FR) + static text mapping
 ├── js/i18n-strings-vi.js / -fr.js  translated markup and Help text
@@ -384,6 +384,24 @@ on the DELF B2 tenses handbook:
 - **Progress**: the Study card and the course map show completed chapters; your
   place in the course and the VI/EN choice are remembered. Progress is local to this
   browser. The source PDF is git-ignored and is not included in the deployment.
+
+### Grammaire progressive du français (Grammar)
+
+The second course card on **Lessons** opens the 52 chapters of the book's teaching
+pages, in the book's order and six parts (first steps, the world around you, degree
+and space, pronouns and sentences, verbs through time, hypothesis and formal French):
+
+- **One chapter per lesson point** — « être », adjectives, the noun and its article,
+  possessives, time and numbers, then the verb groups, pronouns, the past and future
+  tenses, the subjunctive and the logical connectors of B2 writing.
+- **Teaching only**: the book's exercise pages are deliberately not reproduced; each
+  chapter ends with three to five short checks of our own (fill in the blank, multiple
+  choice, translation) that grade and save as in the tenses course.
+- **Same reading rhythm as the Tense Atlas**: a Vietnamese/English summary first, then
+  short paragraphs, tables and bullet lists, French examples with translations, a tip
+  or trap callout, and the AI tutor with the chapter context.
+- **Explanations are bilingual, examples stay French**. Switch **VI / EN** at the top of
+  a lesson; the choice and the per-chapter progress are remembered in this browser.
 
 ### Vocabulary practice
 

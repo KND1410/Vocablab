@@ -518,7 +518,7 @@
         FILL('Je {{1}} (ne pas manger).', ['n’ai pas mangé', "n'ai pas mangé"],
           'Phủ định: ne + trợ động từ + pas + participe passé → je n’ai pas mangé.',
           'Negation: ne + auxiliary + pas + past participle → je n’ai pas mangé.'),
-        CHOICE('La lettre que j’ai {{1}} hier.', 'The letter that I ___ yesterday.',
+        CHOICE('Điền dạng đúng: « La lettre que j’ai ___ hier. »', 'Fill in: “La lettre que j’ai ___ hier.”',
           ['écrite', 'écrit', 'écrits'], 0,
           'COD “la lettre” đứng trước avoir nên participe passé hòa hợp: écrite.',
           'The direct object “la lettre” comes before avoir, so the participle agrees: écrite.'),
@@ -667,9 +667,7 @@
           '“Chaque été” là thói quen lặp lại → imparfait: allions.',
           '“Chaque été” is a repeated habit → imparfait: allions.')
       ]
-    }
-
-    ,
+    },
 
     /* -----------------------------------------------------
        7. Plus-que-parfait
@@ -1106,9 +1104,7 @@
           'être, ngôi vous ở impératif: Soyez !',
           'être, vous imperative: Soyez !')
       ]
-    }
-
-    ,
+    },
 
     /* -----------------------------------------------------
        13. Gérondif, participe présent, infinitif passé
@@ -1225,7 +1221,7 @@
           'The backshift rule is similar to English: He said he was tired = Il a dit qu’il était fatigué.')
       ],
       exercises: [
-        FILL('« Je suis fatigué », a-t-il dit. → Il a dit qu’il {{1}}.', ['était fatigué', "était fatigué."],
+        FILL('« Je suis fatigué », a-t-il dit. → Il a dit qu’il {{1}}.',          ['était fatigué'],
           'présent → imparfait: il était fatigué.',
           'Present → imparfait: il était fatigué.'),
         FILL('« J’ai fini », a-t-elle dit. → Elle a dit qu’elle {{1}}.', ['avait fini'],
@@ -1522,7 +1518,7 @@
         /* 22 */ FILL('Il chante {{1}} (travailler).', ['en travaillant'],
           'Gérondif: en travaillant.',
           'Gérondif: en travaillant.'),
-        /* 23 */ FILL('« Je suis fatigué », a-t-il dit. → Il a dit qu’il {{1}}.', ['était fatigué', "était fatigué."],
+        /* 23 */ FILL('« Je suis fatigué », a-t-il dit. → Il a dit qu’il {{1}}.',          ['était fatigué'],
           'présent → imparfait: était fatigué.',
           'Present → imparfait: était fatigué.'),
         /* 24 */ FILL('« J’ai fini », a-t-elle dit. → Elle a dit qu’elle {{1}}.', ['avait fini'],
@@ -1541,4 +1537,16 @@
       ]
     }
   ];
+
+  /* Options are authored with the right answer first for readability. Rotate
+     them per chapter and exercise so the first option is not always correct. */
+  GD.chapters.forEach(function (chapter) {
+    chapter.exercises.forEach(function (ex, index) {
+      if (ex.type !== 'choice' || !Array.isArray(ex.options) || ex.options.length < 2) return;
+      var shift = (chapter.num + index) % ex.options.length;
+      if (!shift) return;
+      ex.options = ex.options.slice(shift).concat(ex.options.slice(0, shift));
+      ex.answer = (ex.answer - shift + ex.options.length) % ex.options.length;
+    });
+  });
 })(typeof window !== 'undefined' ? window : globalThis);

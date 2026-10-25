@@ -951,7 +951,7 @@
       }
     });
     return 'You are a patient French grammar tutor inside VocabLab. ' +
-      'The learner is studying chapter ' + chapter.num + ' of a DELF B2 French tenses handbook: "' + chapter.title + '" (' + langText(chapter.subtitle) + '). ' +
+      'The learner is studying chapter ' + chapter.num + ' of a B1–B2 French grammar course: "' + chapter.title + '" (' + langText(chapter.subtitle) + '). ' +
       'Lesson summary: ' + langText(chapter.summary) + ' ' +
       (examples.length ? 'Useful examples: ' + examples.join(' | ') + '. ' : '') +
       'Answer in ' + language + '. Use plain text, not Markdown or headings. ' +

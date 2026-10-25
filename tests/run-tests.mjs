@@ -2016,16 +2016,16 @@ function auditCourse(data) {
 
 const hbAudit = auditCourse(GrammarHandbook);
 const hbIds = GrammarHandbook.chapters.map((c) => c.id);
-eq(GrammarHandbook.chapters.length, 12, 'the handbook has twelve chapters');
-eq(GrammarHandbook.parts.length, 5, 'the handbook map has five parts');
+eq(GrammarHandbook.chapters.length, 52, 'the handbook covers all 52 book chapters');
+eq(GrammarHandbook.parts.length, 6, 'the handbook map has six parts');
 eq(hbIds.length, new Set(hbIds).size, 'handbook chapter ids are unique');
 ok(hbIds.every((id) => grammarIds.indexOf(id) === -1), 'handbook ids never collide with the atlas');
 ok(GrammarHandbook.chapters.every((c) => c.blocks.some((b) => b.type === 'table' || b.type === 'list')),
   'every handbook chapter carries a table or a list');
-ok(GrammarHandbook.chapters.reduce((n, c) => n + c.exercises.length, 0) >= 40,
-  'the handbook has at least 40 exercises');
+ok(GrammarHandbook.chapters.reduce((n, c) => n + c.exercises.length, 0) >= 150,
+  'the handbook has at least 150 exercises');
 eq(hbAudit, [], 'every handbook chapter, block and exercise is complete and bilingual');
-eq(GrammarHandbook.title.vi, 'Cẩm nang ngữ pháp A2–B2', 'the handbook has its own unique name');
+eq(GrammarHandbook.title.vi, 'Ngữ pháp tiếng Pháp từng bước', 'the handbook has its own unique name');
 eq(GrammarData.title.en, 'Tense Atlas', 'the tenses course is named the Tense Atlas');
 ok(Grammar.courses && Grammar.courses.tenses === GrammarData && Grammar.courses.handbook === GrammarHandbook,
   'the grammar controller knows both courses');
