@@ -83,6 +83,14 @@ function serveApi(req, res, pathname) {
   loaded[file](req, res);
 }
 
+/** Never serve secrets or local-only material: .env*, .data/, .git/, my-sheet*,
+ *  the source PDFs, node_modules, and the local agent guidance file. */
+export function isBlocked(rel) {
+  return rel.split('/').some(function (part) { return part.startsWith('.'); }) ||
+    /^node_modules(\/|$)/.test(rel) || /^my-sheet/.test(rel) || /\.pdf$/i.test(rel) ||
+    rel === 'AGENTS.md';
+}
+
 function serveStatic(res, pathname) {
   const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname).replace(/^\/+/, '');
   const file = path.resolve(root, rel);
@@ -91,12 +99,7 @@ function serveStatic(res, pathname) {
     sendJson(res, 403, { error: 'Forbidden.' });
     return;
   }
-  // Never serve secrets or local-only material: .env*, .data/, .git/,
-  // my-sheet.txt, the source PDFs, node_modules.
-  const blocked = rel.split('/').some(function (part) { return part.startsWith('.'); }) ||
-    /^node_modules(\/|$)/.test(rel) || /^my-sheet/.test(rel) || /\.pdf$/i.test(rel) ||
-    rel === 'AGENTS.md';
-  if (blocked) {
+  if (isBlocked(rel)) {
     sendJson(res, 404, { error: 'Not found.' });
     return;
   }
@@ -109,20 +112,28 @@ function serveStatic(res, pathname) {
   send(res, 200, fs.readFileSync(target), TYPES[path.extname(target)] || 'application/octet-stream');
 }
 
-const server = http.createServer(function (req, res) {
-  const pathname = String(req.url || '/').split('?')[0];
-  try {
-    if (pathname.startsWith('/api/')) serveApi(req, res, pathname);
-    else serveStatic(res, pathname);
-  } catch (err) {
-    console.error('[dev-server]', err);
-    if (!res.headersSent) sendJson(res, 500, { error: 'Server error.' });
-  }
-});
+/* Only listen when executed directly, so tests can import isBlocked(). */
+const startedDirectly = process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-server.listen(port, '127.0.0.1', function () {
-  const local = process.env.MONGODB_URI && process.env.VOCABLAB_DB_MODE !== 'local'
-    ? 'mongodb' : 'local file store';
-  const bound = server.address().port;
-  console.log('VocabLab on http://localhost:' + bound + '  (accounts: ' + local + ')');
-});
+if (startedDirectly) {
+  const server = http.createServer(function (req, res) {
+    const pathname = String(req.url || '/').split('?')[0];
+    try {
+      if (pathname.startsWith('/api/')) serveApi(req, res, pathname);
+      else serveStatic(res, pathname);
+    } catch (err) {
+      console.error('[dev-server]', err);
+      if (!res.headersSent) sendJson(res, 500, { error: 'Server error.' });
+    }
+  });
+
+  server.listen(port, '127.0.0.1', function () {
+    const local = process.env.MONGODB_URI && process.env.VOCABLAB_DB_MODE !== 'local'
+      ? 'mongodb' : 'local file store';
+    const bound = server.address().port;
+    console.log('VocabLab on http://localhost:' + bound + '  (accounts: ' + local + ')');
+  });
+}
+
+export { HANDLERS, TYPES, serveApi, serveStatic };

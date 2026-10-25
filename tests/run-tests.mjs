@@ -2625,6 +2625,41 @@ localApiFiles.forEach(function (file) { delete require.cache[require.resolve(fil
 try { fs.rmSync(localFile, { force: true }); } catch (e) { /* ignore */ }
 delete process.env.VOCABLAB_LOCAL_DB;
 
+section('Local dev server (app + api, no Vercel)');
+
+const devServer = await import('../scripts/dev-server.mjs');
+ok(typeof devServer.isBlocked === 'function', 'the dev server exposes its path filter');
+[
+  '.env.local', '.env', '.data/local-db.json', '.git/config', 'my-sheet.txt',
+  'my-sheet.txt.example', 'Cam_nang_ngu_phap_tieng_Phap_A2_B2.pdf',
+  'Cac_thi_tieng_Phap.pdf', 'AGENTS.md', 'node_modules/mongodb/index.js'
+].forEach(function (p) {
+  ok(devServer.isBlocked(p), 'the dev server refuses to serve ' + p);
+});
+[
+  'index.html', 'css/styles.css', 'js/app.js', 'api/health.js', 'lib/db.js',
+  'README.md', 'package.json', 'scripts/dev-server.mjs'
+].forEach(function (p) {
+  ok(!devServer.isBlocked(p), 'the dev server still serves ' + p);
+});
+
+function walkApi(dir) {
+  return fs.readdirSync(path.join(root, dir), { withFileTypes: true }).reduce(function (acc, entry) {
+    const rel = dir + '/' + entry.name;
+    if (entry.isDirectory()) return acc.concat(walkApi(rel));
+    if (entry.name.endsWith('.js')) acc.push(rel);
+    return acc;
+  }, []);
+}
+const missingRoutes = walkApi('api').filter(function (file) {
+  const route = '/api/' + file.replace(/^api\//, '').replace(/\.js$/, '');
+  return !devServer.HANDLERS[route];
+});
+eq(missingRoutes, [], 'every serverless function has a route in the local dev server');
+ok(fs.existsSync(path.join(root, 'package.json')) &&
+  /"dev:local": "node scripts\/dev-server\.mjs"/.test(fs.readFileSync(path.join(root, 'package.json'), 'utf8')),
+  'npm run dev:local points at the local server');
+
 section('Offline quest queue');
 
 const queueStore = new Map();
