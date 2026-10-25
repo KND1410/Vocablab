@@ -128,6 +128,16 @@ if (startedDirectly) {
     }
   });
 
+  server.on('error', function (err) {
+    if (err && err.code === 'EADDRINUSE') {
+      const alt = port === 3000 ? 4300 : 3000;
+      console.error('Port ' + port + ' is already in use. Try another port:\n' +
+        '  PORT=' + alt + ' npm run dev:local');
+      process.exit(1);
+    }
+    throw err;
+  });
+
   server.listen(port, '127.0.0.1', function () {
     const local = process.env.MONGODB_URI && process.env.VOCABLAB_DB_MODE !== 'local'
       ? 'mongodb' : 'local file store';
