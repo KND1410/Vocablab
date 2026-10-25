@@ -505,6 +505,8 @@
     "Working…": "Đang xử lý…",
     "At least 8 characters": "Ít nhất 8 ký tự",
     "Open navigation": "Mở điều hướng",
+    "Collapse navigation": "Thu gọn điều hướng",
+    "Expand navigation": "Mở rộng điều hướng",
     "Back to home": "Về trang chủ",
     "Current vocabulary source": "Nguồn từ vựng hiện tại",
     "Interface language": "Ngôn ngữ giao diện",
