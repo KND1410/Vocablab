@@ -8,7 +8,8 @@
     "smoke": "node tests/browser-smoke.mjs",
     "test:e2e": "playwright test",
     "db:init": "node scripts/init-db.mjs",
-    "dev": "npx vercel dev"
+    "dev": "npx vercel dev",
+    "dev:local": "node scripts/dev-server.mjs"
   },
   "engines": {
     "node": ">=20"

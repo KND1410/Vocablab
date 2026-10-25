@@ -26,13 +26,18 @@ module.exports = H.wrap(async function (req, res) {
 
   const out = {
     configured: Boolean(process.env.MONGODB_URI),
+    mode: process.env.MONGODB_URI ? 'mongodb' : 'local',
     database: process.env.MONGODB_DB || 'vocablab',
     connected: false
   };
 
   if (!out.configured) {
-    out.reason = 'not-configured';
-    return H.json(res, 503, out);
+    // No connection string: accounts live in the local file store, so the
+    // account service itself is working and sign-in is available.
+    out.connected = true;
+    out.local = true;
+    out.reason = 'no-mongodb-uri';
+    return H.json(res, 200, out);
   }
 
   try {

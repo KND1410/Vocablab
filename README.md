@@ -74,6 +74,7 @@ language/
 ├── api/                Vercel functions: auth, home, progress, profile
 ├── lib/                Mongo client, scrypt/session helpers, daily/streak logic
 ├── scripts/init-db.mjs creates the Atlas indexes
+├── scripts/dev-server.mjs local app + api server (no Vercel, no MongoDB)
 ├── my-sheet.txt.example  template for your own link list (copy to my-sheet.txt)
 ├── sample-sheet.csv    example of the sheet format
 ├── tests/run-tests.mjs logic + API tests (node tests/run-tests.mjs)
@@ -92,6 +93,25 @@ the `/api` functions. The account data goes to the MongoDB Atlas database set in
 The app now needs its API for login. A static-only host (GitHub Pages, Netlify
 Drop, Cloudflare Pages, `python3 -m http.server`) can still show the interface,
 but the sign-in screen will report that the account server is unreachable.
+
+### Locally, with no database (fastest)
+
+```bash
+npm install
+npm run dev:local      # open http://localhost:3000
+```
+
+`scripts/dev-server.mjs` is a small Node server that serves the app **and** the
+same `api/` handlers Vercel runs — no Vercel login required. When `MONGODB_URI`
+is not set, accounts, daily quests and streaks live in `.data/local-db.json`
+(git-ignored, scrypt-hashed), so sign-up and sign-in work without MongoDB Atlas.
+Use `PORT=4000` to pick another port.
+
+- `VOCABLAB_DB_MODE=local` forces the local file store **even when a
+  `MONGODB_URI` is configured** — useful when Atlas is unreachable from this
+  machine.
+- Putting `MONGODB_URI` in `.env.local` switches you back to MongoDB on the next
+  run. The two stores never share data.
 
 ### Locally (full app)
 
@@ -501,7 +521,7 @@ different language — the AI prompt, RTL-free UI text and the TTS voice follow 
 | A renamed tab shows up twice | Only happens with a manual tab-name list: Google serves the *first* tab for an unknown name. Delete/rename that line, or use the link-only mode for auto-detection |
 | New words/tabs don't show up | Press **↻ Reload** in the header |
 | “Network error…” when opened as `file://` | Chrome/Edge block requests to Google from double-clicked pages. VocabLab asks the public `r.jina.ai` reader for the tab list (no key, nothing to type), falls back to the remembered list, and only then says “first tab only” in one message (kept in Settings → Google Sheet). To drop the third party, serve the folder (`python3 -m http.server 8080` → `http://localhost:8080`) |
-| Sign-in says “server is not reachable” | The page needs the `/api` functions. Run `npx vercel dev` (not `python3 -m http.server`) or use the deployed site, and check that `MONGODB_URI` is set. |
+| Sign-in says “server is not reachable” | The page needs the `/api` functions. Run `npm run dev:local` (plain Node, works without a database) or `npx vercel dev` (not `python3 -m http.server`), or use the deployed site. With `MONGODB_URI` set but unreachable, add `VOCABLAB_DB_MODE=local` to fall back to the local account store. |
 | `npm run db:init` cannot connect | Check the Atlas database user's password, the cluster hostname in `MONGODB_URI`, and Atlas **Network Access** for your current IP. A pasted password should be rotated. |
 | I lost my recovery code | There is no email reset by design. Create a new account; only the name, daily quests and streak are lost — the local deck, mastery, grammar progress and recordings stay in this browser. |
 | The flame shows **!** | You missed one day. Finish all three quests today and the streak continues; a second missed day resets it (the best streak is kept). |

@@ -2533,6 +2533,98 @@ const duplicate = await apiCall(signupApi, 'POST', '/api/auth/signup', {
 });
 eq(duplicate.status, 409, 'one account per email address');
 
+section('Local account store (no MongoDB)');
+
+ok(!process.env.MONGODB_URI, 'the logic suite runs without a MongoDB connection string');
+
+const localFile = path.join(root, '.data', 'test-local-db-' + process.pid + '.json');
+process.env.VOCABLAB_LOCAL_DB = localFile;
+const localDbPath = require.resolve('../lib/local-db.js');
+delete require.cache[localDbPath];
+const localStore = require('../lib/local-db.js');
+
+/* Load the real lib/db.js with MONGODB_URI unset, and reload the handlers
+   against it, so this exercises the exact code path a machine with no
+   database uses — including the fallback itself. */
+const fakeDbExports = require.cache[dbPath].exports;
+delete require.cache[dbPath];
+const realDbModule = require('../lib/db.js');
+ok(realDbModule.isLocal(), 'lib/db.js reports local mode when MONGODB_URI is missing');
+eq(localStore.file, localFile, 'the local store writes to the configured file');
+require.cache[dbPath] = {
+  id: dbPath, filename: dbPath, loaded: true, children: [], paths: [],
+  exports: realDbModule
+};
+const localApiFiles = [
+  '../api/auth/signup.js', '../api/auth/login.js', '../api/auth/logout.js',
+  '../api/auth/me.js', '../api/home.js', '../api/daily/progress.js', '../api/health.js'
+];
+localApiFiles.forEach(function (file) { delete require.cache[require.resolve(file)]; });
+const lSignup = require('../api/auth/signup.js');
+const lLogin = require('../api/auth/login.js');
+const lLogout = require('../api/auth/logout.js');
+const lMe = require('../api/auth/me.js');
+const lHome = require('../api/home.js');
+const lProgress = require('../api/daily/progress.js');
+const lHealth = require('../api/health.js');
+
+const localEmail = 'local-test-' + Date.now() + '@example.com';
+const localDate = Quests.dateKey(new Date());
+const localSignup = await apiCall(lSignup, 'POST', '/api/auth/signup', {
+  body: { name: 'Local Learner', email: localEmail, password: 'longpassword' }
+});
+eq(localSignup.status, 201, 'signup works with no MongoDB configured');
+const localCookie = String(localSignup.headers['set-cookie'] || '').split(';')[0];
+ok(/vl_session=/.test(localCookie), 'a session cookie is set in local mode');
+
+const localMe = await apiCall(lMe, 'GET', '/api/auth/me', { headers: { cookie: localCookie } });
+eq(localMe.status, 200, 'the cookie identifies the local account');
+eq(localMe.data.user.email, localEmail, 'me returns the local account');
+
+const localHome = await apiCall(lHome, 'GET', '/api/home?date=' + localDate, { headers: { cookie: localCookie } });
+eq(localHome.status, 200, 'home loads from the local store');
+eq(localHome.data.daily.quests.length, 3, 'a local account gets three daily quests');
+
+let localLast = null;
+for (const quest of localHome.data.daily.quests) {
+  localLast = await apiCall(lProgress, 'POST', '/api/daily/progress', {
+    headers: { cookie: localCookie },
+    body: { date: localDate, questId: quest.id, progress: quest.target }
+  });
+  eq(localLast.status, 200, 'local progress is accepted for ' + quest.id);
+}
+eq(localLast.data.completedNow, true, 'the local store records a completed day');
+eq(localLast.data.streak.current, 1, 'the local store advances the streak');
+
+const localLogin = await apiCall(lLogin, 'POST', '/api/auth/login', {
+  body: { email: localEmail, password: 'longpassword' }
+});
+eq(localLogin.status, 200, 'the account signs in again from disk');
+const localLogout = await apiCall(lLogout, 'POST', '/api/auth/logout', { headers: { cookie: localCookie } });
+eq(localLogout.status, 200, 'logout works in local mode');
+
+const localHealth = await apiCall(lHealth, 'GET', '/api/health');
+eq(localHealth.status, 200, 'health reports the account service as usable without MongoDB');
+eq(localHealth.data.mode, 'local', 'health names the local mode');
+eq(localHealth.data.connected, true, 'the local store counts as connected');
+
+ok(fs.existsSync(localFile), 'accounts are written to a local file');
+const localRaw = fs.readFileSync(localFile, 'utf8');
+ok(localRaw.indexOf(localEmail) !== -1, 'the signed-up account is stored on disk');
+eq((localRaw.match(/"emailNorm"/g) || []).length, 1, 'exactly one account exists locally');
+const dupSignup = await apiCall(lSignup, 'POST', '/api/auth/signup', {
+  body: { name: 'Copy', email: localEmail, password: 'longpassword' }
+});
+eq(dupSignup.status, 409, 'the unique email rule is enforced in local mode too');
+
+/* Back on the injected fake db for everything that follows. */
+require.cache[dbPath] = {
+  id: dbPath, filename: dbPath, loaded: true, children: [], paths: [], exports: fakeDbExports
+};
+localApiFiles.forEach(function (file) { delete require.cache[require.resolve(file)]; });
+try { fs.rmSync(localFile, { force: true }); } catch (e) { /* ignore */ }
+delete process.env.VOCABLAB_LOCAL_DB;
+
 section('Offline quest queue');
 
 const queueStore = new Map();

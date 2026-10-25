@@ -26,3 +26,6 @@ AGENTS.md
 test-results/
 playwright-report/
 blob-report/
+
+# Local account store (no MONGODB_URI)
+.data/
