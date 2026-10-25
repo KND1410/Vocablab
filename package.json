@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node tests/run-tests.mjs",
     "smoke": "node tests/browser-smoke.mjs",
+    "test:e2e": "playwright test",
     "db:init": "node scripts/init-db.mjs",
     "dev": "npx vercel dev"
   },
@@ -14,5 +15,8 @@
   },
   "dependencies": {
     "mongodb": "^6.21.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
   }
 }
