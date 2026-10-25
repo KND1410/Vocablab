@@ -23,10 +23,12 @@ out of the box), but works with any language.
   email service needed). The whole app is behind the login screen. Name, daily
   quests and streak sync to **your own MongoDB Atlas database** through `/api`;
   the deck, mastery, grammar progress, settings and recordings stay local.
-- **Grammar → French Tenses**: an 18-chapter DELF B2 course with a course map,
-  bilingual Vietnamese/English explanations, conjugation tables, short exercises,
-  saved progress and a lesson-aware AI tutor. The source PDF stays local; the
-  lessons live in `js/grammar-data.js`.- **Full-screen pages** behind hash routes — `#/home`, `#/files`, `#/lessons`,
+- **Grammar → two courses**: **Tense Atlas**, an 18-chapter DELF B2 tenses course
+  (`js/grammar-data.js`), and **Grammar Handbook A2–B2**, a 12-chapter companion on
+  nouns, pronouns, prepositions, relative pronouns, connectives and B2 writing
+  (`js/grammar-handbook.js`). Each has a course map, bilingual Vietnamese/English
+  explanations, tables, short exercises and a lesson-aware AI tutor, and each keeps
+  its own progress in this browser. The source PDFs stay local.- **Full-screen pages** behind hash routes — `#/home`, `#/files`, `#/lessons`,
   `#/practice`, `#/exam`, `#/community`, `#/progress`. Every existing feature lives
   on one of them; Exam and Community are finished placeholders until they are
   defined. A deep link survives a reload, and the sidebar marks the current page.
@@ -62,7 +64,8 @@ language/
 ├── js/quests.js        shared quest definitions, daily picker, progress, streak
 ├── js/account.js       auth client, local home cache, offline progress queue
 ├── js/speech.js        Azure neural TTS, pronunciation assessment, local recordings
-├── js/grammar-data.js  18-chapter French tenses course (bilingual data)
+├── js/grammar-data.js  18-chapter Tense Atlas course (bilingual data)
+├── js/grammar-handbook.js 12-chapter A2 → B2 grammar handbook course
 ├── js/grammar.js       course map, lessons, exercises, progress, AI tutor
 ├── js/i18n.js          UI language catalogues (EN/VI/FR) + static text mapping
 ├── js/i18n-strings-vi.js / -fr.js  translated markup and Help text

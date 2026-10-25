@@ -127,12 +127,12 @@
 
     <section class="card study-card">
       <div class="card-head">
-        <h2>Study</h2>
+        <h2 data-i18n="lessons.atlasTitle">Tense Atlas</h2>
         <span id="studyPct" class="pill pill-accent">0 / 18</span>
       </div>
-      <p class="muted small">French tenses · DELF B2</p>
+      <p class="muted small" data-i18n="lessons.atlasSub">French tenses · DELF B2</p>
       <div class="progress study-progress" aria-hidden="true"><div id="studyBar" class="progress-fill" style="width:0%"></div></div>
-      <button id="btnStudy" class="btn btn-subtle btn-block study-btn">📖 Open grammar course</button>
+      <button id="btnStudy" class="btn btn-subtle btn-block study-btn">📖 Open the atlas</button>
     </section>
 
     <section class="card">
@@ -321,11 +321,15 @@
       </div>
       <div class="route-grid-2 lessons-grid">
         <div id="lessonsStudySlot"></div>
-        <section class="card feature-card">
+        <section class="card feature-card" id="handbookCard">
           <span class="feature-ico">▥</span>
-          <h2 data-i18n="lessons.courseTitle">French tenses · DELF B2</h2>
-          <p class="muted small" data-i18n="lessons.courseBody">An 18-chapter course with bilingual explanations, conjugation tables, examples and short exercises. Your progress is saved in this browser.</p>
-          <button class="btn btn-subtle btn-sm" type="button" id="btnOpenCourse" data-i18n="lessons.open">Open the course</button>
+          <div class="card-head">
+            <h2 data-i18n="lessons.handbookTitle">Grammar Handbook A2–B2</h2>
+            <span id="handbookPct" class="pill pill-accent">0 / 12</span>
+          </div>
+          <p class="muted small" data-i18n="lessons.handbookBody">Twelve chapters on nouns, pronouns, prepositions, connectives and B2 writing, with examples, exercises and the AI tutor.</p>
+          <div class="progress" aria-hidden="true"><div id="handbookBar" class="progress-fill" style="width:0%"></div></div>
+          <button class="btn btn-subtle btn-sm" type="button" id="btnOpenHandbook">📖 Open the handbook</button>
         </section>
       </div>
     </section>
@@ -1269,6 +1273,7 @@
 <script src="js/quests.js"></script>
 <script src="js/account.js"></script>
 <script src="js/grammar-data.js"></script>
+<script src="js/grammar-handbook.js"></script>
 <script src="js/grammar.js"></script>
 <script src="js/app.js"></script>
 </body>

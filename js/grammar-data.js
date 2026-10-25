@@ -7,7 +7,7 @@
   'use strict';
 
   var GD = global.GrammarData = {
-    title: { vi: 'Các thì tiếng Pháp', en: 'French Tenses' },
+    title: { vi: 'Bản đồ các thì', en: 'Tense Atlas' },
     subtitle: { vi: 'Cẩm nang DELF B2 · 18 chương', en: 'DELF B2 handbook · 18 chapters' },
     intro: {
       vi: 'Học từ bản đồ tổng thể đến từng thì, rồi luyện bằng bài tập ngắn và hỏi gia sư AI khi cần.',

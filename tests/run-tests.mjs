@@ -99,10 +99,10 @@ sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
 for (const f of ['js/util.js', 'js/demo.js', 'js/sources.js', 'js/ai.js', 'js/generator.js', 'js/quiz.js',
-  'js/speech.js', 'js/quests.js', 'js/grammar-data.js', 'js/grammar.js']) {
+  'js/speech.js', 'js/quests.js', 'js/grammar-data.js', 'js/grammar-handbook.js', 'js/grammar.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sandbox, { filename: f });
 }
-const { Util, Sources, Gen, Quiz, Ai, DemoDeck, Speech, Quests, GrammarData, Grammar } = sandbox;
+const { Util, Sources, Gen, Quiz, Ai, DemoDeck, Speech, Quests, GrammarData, GrammarHandbook, Grammar } = sandbox;
 
 /* ---------- tiny test harness ---------- */
 let passed = 0, failed = 0;
@@ -1970,6 +1970,66 @@ GrammarData.chapters.forEach((chapter) => {
 });
 eq(badExercises, [], 'every exercise has valid blanks, options, answers and bilingual feedback');
 
+/* ---------- The A2 → B2 grammar handbook (second course) ---------- */
+function auditCourse(data) {
+  const problems = [];
+  const kinds = ['p', 'h', 'list', 'table', 'formula', 'callout', 'examples'];
+  data.chapters.forEach((chapter, index) => {
+    const where = chapter.id;
+    if (chapter.num !== index + 1) problems.push(where + ' num');
+    if (!chapter.title || !chapter.subtitle || !chapter.subtitle.vi || !chapter.subtitle.en) problems.push(where + ' title');
+    if (!chapter.summary || !chapter.summary.vi || !chapter.summary.en) problems.push(where + ' summary');
+    if (!chapter.blocks.length) problems.push(where + ' blocks');
+    if (!chapter.exercises.length) problems.push(where + ' exercises');
+    if (!data.parts.some((part) => part.id === chapter.part)) problems.push(where + ' part');
+    chapter.blocks.forEach((block, i) => {
+      const at = where + ' block ' + (i + 1);
+      if (kinds.indexOf(block.type) === -1) problems.push(at + ' type');
+      if (block.type !== 'examples' && block.type !== 'table' && (!block.vi || !block.en)) problems.push(at + ' bilingual');
+      if (block.type === 'table') {
+        block.head.concat.apply(block.head, block.rows).forEach((cell) => {
+          if (!cell || !cell.vi || !cell.en) problems.push(at + ' cell');
+        });
+      }
+      if (block.type === 'examples') {
+        block.items.forEach((item) => { if (!item.fr || !item.vi || !item.en) problems.push(at + ' example'); });
+      }
+    });
+    chapter.exercises.forEach((ex, i) => {
+      const at = where + ' ex ' + (i + 1);
+      if (!ex.explain || !ex.explain.vi || !ex.explain.en) problems.push(at + ' explain');
+      if (ex.type === 'fill') {
+        const blanks = (String(ex.text).match(/\{\{\d+\}\}/g) || []).length;
+        if (!blanks || blanks !== ex.answers.length) problems.push(at + ' blanks');
+      } else if (ex.type === 'choice') {
+        if (!Array.isArray(ex.options) || ex.options.length < 2 || !ex.question ||
+          !Number.isInteger(ex.answer) || ex.answer < 0 || ex.answer >= ex.options.length) problems.push(at + ' choice');
+      } else if (ex.type === 'translate') {
+        if (!ex.source || !ex.source.vi || !ex.source.en || !ex.answers || !ex.answers.length) problems.push(at + ' translate');
+      } else {
+        problems.push(at + ' unknown type');
+      }
+    });
+  });
+  return problems;
+}
+
+const hbAudit = auditCourse(GrammarHandbook);
+const hbIds = GrammarHandbook.chapters.map((c) => c.id);
+eq(GrammarHandbook.chapters.length, 12, 'the handbook has twelve chapters');
+eq(GrammarHandbook.parts.length, 5, 'the handbook map has five parts');
+eq(hbIds.length, new Set(hbIds).size, 'handbook chapter ids are unique');
+ok(hbIds.every((id) => grammarIds.indexOf(id) === -1), 'handbook ids never collide with the atlas');
+ok(GrammarHandbook.chapters.every((c) => c.blocks.some((b) => b.type === 'table' || b.type === 'list')),
+  'every handbook chapter carries a table or a list');
+ok(GrammarHandbook.chapters.reduce((n, c) => n + c.exercises.length, 0) >= 40,
+  'the handbook has at least 40 exercises');
+eq(hbAudit, [], 'every handbook chapter, block and exercise is complete and bilingual');
+eq(GrammarHandbook.title.vi, 'Cẩm nang ngữ pháp A2–B2', 'the handbook has its own unique name');
+eq(GrammarData.title.en, 'Tense Atlas', 'the tenses course is named the Tense Atlas');
+ok(Grammar.courses && Grammar.courses.tenses === GrammarData && Grammar.courses.handbook === GrammarHandbook,
+  'the grammar controller knows both courses');
+
 const allTableCells = [];
 GrammarData.chapters.forEach((chapter) => {
   chapter.blocks.forEach((block) => {
@@ -2088,8 +2148,13 @@ ok(htmlSrc.indexOf('js/grammar-data.js') !== -1 && htmlSrc.indexOf('js/grammar.j
   htmlSrc.indexOf('js/grammar-data.js') < htmlSrc.indexOf('js/grammar.js') &&
   htmlSrc.indexOf('js/grammar.js') < htmlSrc.indexOf('js/app.js'),
   'grammar data and controller load before app.js');
-ok(/function openGrammar\(/.test(appSrc) && /E\.btnStudy\.addEventListener\('click', openGrammar\)/.test(appSrc),
-  'the Study card opens the course');
+ok(/function openGrammar\(/.test(appSrc) && /E\.btnStudy\.addEventListener\('click', function \(\) \{ openGrammar\(false, 'tenses'\)/.test(appSrc),
+  'the Tense Atlas card opens the tenses course');
+ok(/id="btnOpenHandbook"/.test(htmlSrc) && /openGrammar\(false, 'handbook'\)/.test(appSrc),
+  'the Grammar Handbook card opens its own course');
+ok(htmlSrc.indexOf('js/grammar-handbook.js') !== -1 &&
+  htmlSrc.indexOf('js/grammar-handbook.js') < htmlSrc.indexOf('js/grammar.js'),
+  'the handbook data loads before the grammar controller');
 ok(/grammar: \{ el: 'screenGrammar'/.test(appSrc), 'showScreen knows the Grammar screen');
 ok(/Grammar\.init\(/.test(appSrc) && /askTutor: askTutor/.test(appSrc) &&
   /onExit: function \(\) \{ showScreen\('welcome'\)/.test(appSrc),

@@ -6,9 +6,27 @@
 (function (global) {
   'use strict';
 
-  var DATA = global.GrammarData;
+  /* Two courses ship with the app: the tenses atlas and the A2–B2 grammar
+     handbook. Only the active one is rendered; progress is kept per course so
+     finishing a chapter in one course never marks anything in the other. */
+  var COURSES = {};
+  if (global.GrammarData) COURSES.tenses = global.GrammarData;
+  if (global.GrammarHandbook) COURSES.handbook = global.GrammarHandbook;
+  var courseId = COURSES.tenses ? 'tenses' : Object.keys(COURSES)[0];
+  var DATA = COURSES[courseId];
   if (!DATA) return;
   var U = global.Util || {};
+
+  /* The tenses course keeps the original storage keys so progress saved before
+     the handbook existed is not lost. */
+  function progressKeyFor(id) {
+    return id === 'tenses' ? 'grammarProgress' : 'grammarProgress:' + id;
+  }
+  function lastKeyFor(id) {
+    return id === 'tenses' ? 'grammarLast' : 'grammarLast:' + id;
+  }
+  function progressKey() { return progressKeyFor(courseId); }
+  function lastKey() { return lastKeyFor(courseId); }
 
   var state = {
     root: null,
@@ -173,32 +191,39 @@
   }
 
   function readProgress() {
-    var value = U.lsGet ? U.lsGet('grammarProgress', {}) : {};
+    var value = U.lsGet ? U.lsGet(progressKey(), {}) : {};
     return value && typeof value === 'object' ? value : {};
   }
 
   function writeProgress(value) {
-    if (U.lsSet) U.lsSet('grammarProgress', value);
+    if (U.lsSet) U.lsSet(progressKey(), value);
+  }
+
+  /* Read-only: never switches the active course, so opening a course or
+     checking an exercise cannot collide with a summary lookup. */
+  function summaryFor(data, id) {
+    var progress = U.lsGet ? U.lsGet(progressKeyFor(id), {}) : {};
+    if (!progress || typeof progress !== 'object') progress = {};
+    var done = 0;
+    var next = null;
+    for (var i = 0; i < data.chapters.length; i++) {
+      var rec = progress[data.chapters[i].id];
+      if (rec && rec.done) done++;
+      else if (!next) next = data.chapters[i];
+    }
+    // If every chapter is done, "continue" points at the review chapter.
+    if (!next) next = data.chapters[data.chapters.length - 1];
+    return {
+      done: done,
+      total: data.chapters.length,
+      pct: Math.round((done / data.chapters.length) * 100),
+      next: next,
+      last: U.lsGet ? U.lsGet(lastKeyFor(id), '') : ''
+    };
   }
 
   function progressSummary() {
-    var progress = readProgress();
-    var done = 0;
-    var next = null;
-    for (var i = 0; i < DATA.chapters.length; i++) {
-      var rec = progress[DATA.chapters[i].id];
-      if (rec && rec.done) done++;
-      else if (!next) next = DATA.chapters[i];
-    }
-    // If every chapter is done, "continue" points at the review chapter.
-    if (!next) next = DATA.chapters[DATA.chapters.length - 1];
-    return {
-      done: done,
-      total: DATA.chapters.length,
-      pct: Math.round((done / DATA.chapters.length) * 100),
-      next: next,
-      last: U.lsGet ? U.lsGet('grammarLast', '') : ''
-    };
+    return summaryFor(DATA, courseId);
   }
 
   function chapterRecord(chapterId) {
@@ -1052,7 +1077,7 @@
     state.tutor.generation++;
     state.tutor.messages = [];
     state.tutor.busy = false;
-    if (U.lsSet) U.lsSet('grammarLast', id);
+    if (U.lsSet) U.lsSet(lastKey(), id);
     renderLesson();
     scrollTop();
     notifyProgress();
@@ -1127,6 +1152,28 @@
     }
   }
 
+  function useCourse(id) {
+    if (!id || !COURSES[id]) return false;
+    if (id !== courseId) {
+      courseId = id;
+      DATA = COURSES[id];
+      state.chapterId = null;
+      state.view = 'course';
+    }
+    return true;
+  }
+
+  /** Another course's progress, without touching the course on screen. */
+  function courseSummary(id) {
+    return COURSES[id] ? summaryFor(COURSES[id], id) : null;
+  }
+
+  function openCourseById(id) {
+    if (!useCourse(id)) return false;
+    openCourse();
+    return true;
+  }
+
   function init(opts) {
     state.opts = opts || {};
     state.root = state.opts.screen || document.getElementById('screenGrammar');
@@ -1141,6 +1188,11 @@
   global.Grammar = {
     data: DATA,
     chapters: DATA.chapters,
+    courses: COURSES,
+    courseId: function () { return courseId; },
+    useCourse: useCourse,
+    courseSummary: courseSummary,
+    openCourseById: openCourseById,
     init: init,
     openCourse: openCourse,
     openLesson: openLesson,

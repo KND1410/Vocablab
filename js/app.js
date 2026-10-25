@@ -77,7 +77,8 @@
       'navDeckName', 'navStreak', 'navLevel',
       'routeFiles', 'routeLessons', 'routePractice', 'routeExam', 'routeCommunity', 'routeProgress',
       'filesSourceSlot', 'filesTopicsSlot', 'filesFormatSlot', 'lessonsStudySlot', 'practiceSetupSlot',
-      'progressStatsSlot', 'btnOpenCourse', 'progressGrammar', 'progressGrammarBar', 'progressStreak',
+      'progressStatsSlot', 'btnOpenHandbook', 'handbookPct', 'handbookBar',
+      'progressGrammar', 'progressGrammarBar', 'progressStreak',
       'progressBest', 'progressAccuracy',
       'btnHome', 'srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnTestVoice', 'voiceHint', 'btnReload', 'srcName', 'srcMeta',
       'btnChangeSource', 'btnAllTopics', 'btnNoTopics', 'topicSearch', 'topicList', 'selectedSummary',
@@ -1310,23 +1311,35 @@
   }
 
   /* ---------- Grammar study area ---------- */
-  function updateStudyUI(summary) {
+  /** Both courses keep their own progress; each card shows its own count. */
+  function updateStudyUI() {
     if (!window.Grammar || !E.studyPct) return;
-    const p = summary || Grammar.progressSummary();
+    // Each card always shows its own course, whichever one is open.
+    const p = Grammar.courseSummary ? Grammar.courseSummary('tenses') : Grammar.progressSummary();
     E.studyPct.textContent = p.done + ' / ' + p.total;
     if (E.studyBar) E.studyBar.style.width = p.pct + '%';
     if (E.progressGrammar) E.progressGrammar.textContent = p.done + ' / ' + p.total;
     if (E.progressGrammarBar) E.progressGrammarBar.style.width = p.pct + '%';
     if (E.btnStudy) {
-      E.btnStudy.textContent = p.done > 0 ? '📖 Continue grammar course' : '📖 Open grammar course';
+      E.btnStudy.textContent = p.done > 0 ? I18n.t('lessons.continueAtlas') : I18n.t('lessons.openAtlas');
+    }
+    const hb = Grammar.courseSummary ? Grammar.courseSummary('handbook') : null;
+    if (!hb) return;
+    if (E.handbookPct) E.handbookPct.textContent = hb.done + ' / ' + hb.total;
+    if (E.handbookBar) E.handbookBar.style.width = hb.pct + '%';
+    if (E.btnOpenHandbook) {
+      E.btnOpenHandbook.textContent = hb.done > 0
+        ? I18n.t('lessons.continueHandbook')
+        : I18n.t('lessons.openHandbook');
     }
   }
 
-  function openGrammar(startLesson) {
+  function openGrammar(startLesson, courseId) {
     if (!window.Grammar) {
       U.toast('The grammar course could not be loaded.', 'bad');
       return;
     }
+    if (courseId && Grammar.useCourse) Grammar.useCourse(courseId);
     if (startLesson === true && Grammar.openNextLesson) Grammar.openNextLesson();
     else Grammar.openCourse();
     showScreen('grammar');
@@ -3875,7 +3888,9 @@
         U.toast(I18n.t('ui.languageChanged'), 'ok');
       });
     }
-    if (E.btnOpenCourse) E.btnOpenCourse.addEventListener('click', function () { openGrammar(); });
+    if (E.btnOpenHandbook) {
+      E.btnOpenHandbook.addEventListener('click', function () { openGrammar(false, 'handbook'); });
+    }
     window.addEventListener('hashchange', syncFromHash);
     E.btnHome.addEventListener('click', goHome);
     E.btnTheme.addEventListener('click', toggleTheme);
@@ -3905,7 +3920,7 @@
     E.btnSettings.addEventListener('click', function () { openSettings('ai'); });
     E.btnChangeSource.addEventListener('click', function () { openSettings('sheet'); });
     E.btnHelp.addEventListener('click', function () { E.helpDialog.showModal(); });
-    if (E.btnStudy) E.btnStudy.addEventListener('click', openGrammar);
+    if (E.btnStudy) E.btnStudy.addEventListener('click', function () { openGrammar(false, 'tenses'); });
     E.lnkShowScript.addEventListener('click', function (e) {
       e.preventDefault();
       E.settingsDialog.close();
