@@ -2025,8 +2025,8 @@ ok(GrammarHandbook.chapters.every((c) => c.blocks.some((b) => b.type === 'table'
 ok(GrammarHandbook.chapters.reduce((n, c) => n + c.exercises.length, 0) >= 150,
   'the handbook has at least 150 exercises');
 eq(hbAudit, [], 'every handbook chapter, block and exercise is complete and bilingual');
-eq(GrammarHandbook.title.vi, 'Ngữ pháp tiếng Pháp từng bước', 'the handbook has its own unique name');
-eq(GrammarData.title.en, 'Tense Atlas', 'the tenses course is named the Tense Atlas');
+eq(GrammarHandbook.title.vi, 'Grammaire progressive du français', 'the handbook keeps the book name untranslated');
+eq(GrammarData.title.en, 'French Tenses Atlas', 'the tenses course names its language');
 ok(Grammar.courses && Grammar.courses.tenses === GrammarData && Grammar.courses.handbook === GrammarHandbook,
   'the grammar controller knows both courses');
 

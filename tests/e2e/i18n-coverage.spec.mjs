@@ -21,6 +21,8 @@ const ALLOWED = [
   'Source',
   // Product and method names stay as they are in every language.
   'Shadowing',
+  // The grammar course keeps its book title untranslated in every language.
+  'Grammaire progressive du français',
   '(AI)',
   '✨ AI',
   '📊 Google Sheet',

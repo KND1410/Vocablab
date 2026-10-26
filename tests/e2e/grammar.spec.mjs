@@ -10,9 +10,9 @@ test.beforeEach(async ({ page, request }) => {
 test('the lessons page shows both courses with their own progress', async ({ page }) => {
   await openRoute(page, 'lessons');
 
-  await expect(page.locator('.study-card h2')).toHaveText('Bản đồ các thì');
-  await expect(page.locator('#handbookCard h2')).toHaveText('Ngữ pháp tiếng Pháp từng bước');
-  await expect(page.locator('#btnStudy')).toContainText('Mở bản đồ các thì');
+  await expect(page.locator('.study-card h2')).toHaveText('Bản đồ thì tiếng Pháp');
+  await expect(page.locator('#handbookCard h2')).toHaveText('Grammaire progressive du français');
+  await expect(page.locator('#btnStudy')).toContainText('Mở bản đồ thì tiếng Pháp');
   await expect(page.locator('#btnOpenHandbook')).toContainText('Mở khoá ngữ pháp');
   await expect(page.locator('#studyPct')).toHaveText('0 / 18');
   await expect(page.locator('#handbookPct')).toHaveText('0 / 52');
@@ -23,7 +23,7 @@ test('the handbook opens its own 52-chapter map and saves progress separately', 
   await page.locator('#btnOpenHandbook').click();
 
   await expect(page.locator('body')).toHaveAttribute('data-screen', 'grammar');
-  await expect(page.locator('#screenGrammar .grammar-title')).toHaveText('Ngữ pháp tiếng Pháp từng bước');
+  await expect(page.locator('#screenGrammar .grammar-title')).toHaveText('Grammaire progressive du français');
   await expect(page.locator('#screenGrammar .grammar-lesson-card')).toHaveCount(52);
 
   // Open the first chapter and complete it.
@@ -55,10 +55,10 @@ test('an English interface opens the course in English by default', async ({ pag
   await seedApp(page, { settings: { uiLang: 'en' }, overwrite: true });
   await openRoute(page, 'lessons');
 
-  await expect(page.locator('.study-card h2')).toHaveText('Tense Atlas');
+  await expect(page.locator('.study-card h2')).toHaveText('French Tenses Atlas');
   await page.locator('#btnStudy').click();
   await expect(page.locator('body')).toHaveAttribute('data-screen', 'grammar');
-  await expect(page.locator('#screenGrammar .grammar-title')).toHaveText('Tense Atlas');
+  await expect(page.locator('#screenGrammar .grammar-title')).toHaveText('French Tenses Atlas');
   await expect(page.locator('#screenGrammar .grammar-part').first()).toContainText('Getting started');
   await expect(page.locator('#screenGrammar [data-action=exit]').first()).toContainText('Lessons');
 });
@@ -71,6 +71,6 @@ test('the atlas still opens its 18 chapters after visiting the handbook', async 
 
   await openRoute(page, 'lessons');
   await page.locator('#btnStudy').click();
-  await expect(page.locator('#screenGrammar .grammar-title')).toHaveText('Bản đồ các thì');
+  await expect(page.locator('#screenGrammar .grammar-title')).toHaveText('Bản đồ thì tiếng Pháp');
   await expect(page.locator('#screenGrammar .grammar-lesson-card')).toHaveCount(18);
 });

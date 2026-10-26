@@ -12,7 +12,7 @@
     aiMode: 'simple', aiProvider: 'gemini', geminiKey: '', geminiModel: '',
     oaiBase: 'https://api.groq.com/openai/v1', oaiKey: '', oaiModel: '', aiConns: {},
     simpleModel: 'openai-fast', simpleModels: [],
-    targetLang: 'French', targetCode: 'fr-FR', autoPlay: true,
+    targetLang: 'French', targetCode: 'fr-FR',
     azureKey: '', azureRegion: 'southeastasia', azureVoice: 'fr-FR-DeniseNeural', cloudVoice: true,
     browserVoice: '', scoreEngine: 'auto',
     sheetMode: 'links', sheetUrl: '', sheetApiKey: '', scriptUrl: '', links: '',
@@ -83,6 +83,7 @@
       'btnHome', 'srcBadge', 'btnHelp', 'btnTheme', 'btnSettings', 'btnTestVoice', 'voiceHint', 'btnReload', 'srcName', 'srcMeta',
       'btnChangeSource', 'btnAllTopics', 'btnNoTopics', 'topicSearch', 'topicList', 'selectedSummary',
       'typeMc', 'typeBlank', 'typeTranslate', 'selPractice', 'quizSetupPane', 'paraSetupPane', 'shadowingSetupPane',
+      'practiceTopics', 'practiceTopicChips', 'practiceTopicCount',
       'btnStartParagraph', 'paraStartHint', 'btnStartShadowing', 'shadowStartHint', 'btnShadowSavedSetup',
       'selParaDir', 'selParaCount',
       'selDirection', 'selCount', 'selSource', 'selDifficulty', 'difficultyHint',
@@ -112,8 +113,9 @@
       'paneOai', 'inpOaiBase', 'inpOaiKey', 'btnToggleOaiKey',
       'modeSimple', 'modeAdvanced', 'paneSimple', 'aiAdvanced', 'selSimpleModel', 'btnTestSimple',
       'btnTestKey', 'inpModel', 'modelList', 'btnRefreshModels',
-      'aiStatus', 'aiIssue', 'usageToday', 'cachedCount', 'btnClearQCache', 'inpTargetLang', 'inpTargetCode', 'chkAutoPlay',
-      'inpAzureKey', 'btnToggleAzureKey', 'inpAzureRegion', 'selAzureVoice', 'chkCloudVoice', 'btnTestAzure', 'speechStatus',
+      'aiStatus', 'aiIssue', 'usageToday', 'cachedCount', 'btnClearQCache', 'inpTargetLang', 'inpTargetCode',
+      'inpAzureKey', 'btnToggleAzureKey', 'inpAzureRegion', 'selAzureVoice', 'azureVoiceField', 'azureVoiceNote', 'chkCloudVoice', 'btnTestAzure', 'speechStatus',
+      'browserVoiceLabel', 'browserVoiceIntro', 'azureVoiceIntro', 'speechLimitNote',
       'selBrowserVoice', 'browserVoiceHint', 'btnTestBrowserVoice', 'btnRefreshBrowserVoices',
       'selScoreEngine', 'scoreStatus', 'btnScoreAiSettings',
       'inpSheetUrl', 'inpSheetApiKey', 'btnLoadApi', 'inpScriptUrl', 'btnLoadScript', 'inpLinks', 'btnLoadLinks',
@@ -173,10 +175,42 @@
     return 'Add a free Gemini key in Settings → AI, or an Azure Speech key in Settings → Speech.';
   }
 
-  function frenchVoices() {
+  /** The language being learned — every language-dependent label reads this. */
+  function targetLangName() {
+    return settings.targetLang || 'French';
+  }
+  function targetLangRoot() {
+    return String(settings.targetCode || 'fr-FR').slice(0, 2).toLowerCase();
+  }
+  /** A greeting to test the voice in the language being learned. */
+  function targetTestPhrase() {
+    const phrases = {
+      fr: 'Bonjour ! Ceci est un test de la voix.',
+      en: 'Hello! This is a voice test.',
+      ja: 'こんにちは。これは音声のテストです。',
+      es: '¡Hola! Esta es una prueba de voz.',
+      de: 'Hallo! Dies ist ein Stimmentest.',
+      it: 'Ciao! Questa è una prova della voce.',
+      pt: 'Olá! Este é um teste de voz.',
+      ko: '안녕하세요. 음성 테스트입니다.',
+      zh: '你好！这是语音测试。',
+      vi: 'Xin chào! Đây là bài kiểm tra giọng nói.',
+      ru: 'Здравствуйте! Это проверка голоса.',
+      ar: 'مرحبًا! هذا اختبار للصوت.',
+      nl: 'Hallo! Dit is een stemtest.',
+      tr: 'Merhaba! Bu bir ses testi.',
+      pl: 'Cześć! To test głosu.',
+      th: 'สวัสดี! นี่คือการทดสอบเสียง'
+    };
+    return phrases[targetLangRoot()] || 'Hello! This is a voice test.';
+  }
+
+  /** Voices installed for the language being learned, not just French. */
+  function targetVoices() {
     if (typeof window.speechSynthesis === 'undefined') return [];
+    const root = targetLangRoot();
     return (window.speechSynthesis.getVoices() || []).filter(function (v) {
-      return /^fr/i.test(v.lang || '');
+      return String(v.lang || '').toLowerCase().indexOf(root) === 0;
     });
   }
 
@@ -189,7 +223,7 @@
   }
 
   function browserVoiceLabel() {
-    const list = frenchVoices();
+    const list = targetVoices();
     if (!list.length) return '';
     if (settings.browserVoice) {
       const picked = list.find(function (v) { return voiceKey(v) === settings.browserVoice; });
@@ -200,31 +234,34 @@
 
   function populateBrowserVoices() {
     if (!E.selBrowserVoice) return;
-    const list = frenchVoices();
+    const list = targetVoices();
     const current = settings.browserVoice || '';
     E.selBrowserVoice.textContent = '';
     const auto = document.createElement('option');
     auto.value = '';
-    auto.textContent = I18n.t('voice.autoBest');
+    auto.textContent = I18n.t('voice.autoBest', { lang: targetLangName() });
     E.selBrowserVoice.appendChild(auto);
     list.forEach(function (v) {
       const opt = document.createElement('option');
       opt.value = voiceKey(v);
-      opt.textContent = (v.name || v.voiceURI || 'French voice') + ' — ' + (v.lang || 'fr');
+      opt.textContent = (v.name || v.voiceURI || targetLangName() + ' voice') + ' — ' + (v.lang || targetLangRoot());
       E.selBrowserVoice.appendChild(opt);
     });
     const has = current && list.some(function (v) { return voiceKey(v) === current; });
     E.selBrowserVoice.value = has ? current : '';
     if (!E.browserVoiceHint) return;
+    const lang = targetLangName();
     if (!list.length) {
-      E.browserVoiceHint.textContent = 'No French browser voice was found. Install a French voice in your system, or use Azure Speech below; otherwise the browser may read French with an English voice.';
+      E.browserVoiceHint.textContent = 'No ' + lang + ' browser voice was found. Install a ' + lang +
+        ' voice in your system, or use Azure Speech below; otherwise the browser may read ' + lang +
+        ' with a different voice.';
       return;
     }
     const picked = has ? list.find(function (v) { return voiceKey(v) === current; }) : null;
     const robotic = picked ? voiceIsRobotic(picked) : list.every(voiceIsRobotic);
-    E.browserVoiceHint.textContent = list.length + ' French voice' + (list.length === 1 ? '' : 's') + ' found. ' +
+    E.browserVoiceHint.textContent = list.length + ' ' + lang + ' voice' + (list.length === 1 ? '' : 's') + ' found. ' +
       (robotic
-        ? 'This is the Linux system voice (eSpeak) — it is robotic and can mispronounce French. Azure below is much more natural.'
+        ? 'This is the Linux system voice (eSpeak) — it is robotic and can mispronounce ' + lang + '. Azure below is much more natural.'
         : 'Pick the one that sounds best, then press Test browser voice.');
   }
 
@@ -234,11 +271,11 @@
       U.toast('This browser cannot use local voices. Add Azure Speech below instead.', 'bad', 9000);
       return;
     }
-    if (!frenchVoices().length) {
-      U.toast('No French browser voice found. Install one or add Azure Speech below.', 'warn', 9000);
+    if (!targetVoices().length) {
+      U.toast('No ' + targetLangName() + ' browser voice found. Install one or add Azure Speech below.', 'warn', 9000);
       return;
     }
-    if (!U.browserSpeak('Bonjour ! Ceci est un test de la voix française.', 'fr-FR', 0.95)) {
+    if (!U.browserSpeak(targetTestPhrase(), settings.targetCode, 0.95)) {
       U.toast('The browser could not start speech. Check the volume and output.', 'warn', 9000);
       return;
     }
@@ -248,26 +285,29 @@
   function updateVoiceHint() {
     if (!E.voiceHint) return;
     if (Speech.enabled()) {
-      E.voiceHint.textContent = 'Azure neural voice · ' + (settings.azureVoice || 'fr-FR-DeniseNeural');
+      E.voiceHint.textContent = 'Azure neural voice · ' +
+        (targetLangRoot() === 'fr' ? (settings.azureVoice || 'fr-FR-DeniseNeural') : targetLangName());
       return;
     }
-    const list = frenchVoices();
+    const list = targetVoices();
     E.voiceHint.textContent = list.length
       ? I18n.t('voice.browser', { name: browserVoiceLabel() })
-      : I18n.t('voice.none');
+      : I18n.t('voice.none', { lang: targetLangName() });
   }
 
   /** Homepage diagnostic: try Azure first, then explain the browser-voice fallback. */
   function testVoice() {
-    const phrase = 'Bonjour ! Ceci est un test de la voix française.';
+    const phrase = targetTestPhrase();
+    const code = settings.targetCode || 'fr-FR';
     if (Speech.enabled()) {
       E.btnTestVoice.disabled = true;
       U.toast('Testing the Azure voice…', 'ok', 4000);
-      Speech.speak(phrase, 'fr-FR', 0.95, {
+      Speech.speak(phrase, code, 0.95, {
         noFallback: true,
         onStart: function () {
           E.btnTestVoice.disabled = false;
-          U.toast('Azure voice is working — ' + (settings.azureVoice || 'French neural voice') + '.', 'ok', 6000);
+          U.toast('Azure voice is working — ' +
+            (targetLangRoot() === 'fr' ? (settings.azureVoice || 'French neural voice') : targetLangName()) + '.', 'ok', 6000);
         },
         onError: function (err) {
           E.btnTestVoice.disabled = false;
@@ -292,14 +332,14 @@
         'Restart the browser after starting speech-dispatcher. Azure Speech avoids this entirely.', 'bad', 12000);
       return;
     }
-    const french = voices.filter(function (v) { return /^fr/i.test(v.lang || ''); });
-    if (!U.speak(phrase, 'fr-FR')) {
+    const local = targetVoices();
+    if (!U.speak(phrase, code)) {
       U.toast('The browser could not start speech. Check its audio output and volume.', 'warn', 9000);
       return;
     }
-    U.toast('Playing a French test phrase — ' + voices.length + ' voice' +
+    U.toast('Playing a ' + targetLangName() + ' test phrase — ' + voices.length + ' voice' +
       (voices.length === 1 ? '' : 's') + ' available' +
-      (french.length ? '.' : '; no French voice — open Settings → Speech to pick one or add Azure.'), 'ok', 6000);
+      (local.length ? '.' : '; no ' + targetLangName() + ' voice — open Settings → Speech to pick one or add Azure.'), 'ok', 6000);
   }
 
   /* ---------- Overlay ---------- */
@@ -1192,6 +1232,40 @@
       : I18n.t('files.noTopics');
   }
 
+  /**
+   * The Practice page repeats the chosen topics next to Start. What you pick on
+   * the class file must be visible right before you begin, without switching pages.
+   */
+  function renderPracticeTopics() {
+    const chips = E.practiceTopicChips;
+    if (!chips) return;
+    chips.innerHTML = '';
+    const topics = [];
+    if (state.deck) {
+      state.deck.topics.forEach(function (topic) {
+        if (state.selected.indexOf(topic.id) !== -1) topics.push(topic);
+      });
+    }
+    topics.forEach(function (topic) {
+      const chip = document.createElement('span');
+      chip.className = 'topic-chip';
+      chip.textContent = topic.name;
+      chips.appendChild(chip);
+    });
+    if (!E.practiceTopicCount) return;
+    if (!topics.length) {
+      E.practiceTopicCount.textContent = state.deck
+        ? I18n.t('files.noTopics') + ' — ' + I18n.t('practice.pickTopics')
+        : I18n.t('practice.noDeck');
+      E.practiceTopicCount.classList.add('is-empty');
+      return;
+    }
+    E.practiceTopicCount.classList.remove('is-empty');
+    E.practiceTopicCount.textContent = I18n.t(
+      topics.length === 1 ? 'files.selectedOne' : 'files.selectedMany',
+      { n: topics.length, w: selectedWords().length });
+  }
+
   function updateSourceUI() {
     if (!state.deck) {
       E.srcBadge.textContent = 'No deck loaded';
@@ -1308,6 +1382,7 @@
       const alwaysAi = mode === 'paragraph' || mode === 'shadowing';
       E.setupAiBadge.hidden = alwaysAi ? !aiOk : (builtin || !aiOk);
     }
+    renderPracticeTopics();
   }
 
   /* ---------- Grammar study area ---------- */
@@ -1755,6 +1830,13 @@
       renderParagraph(q);
     } else if (q.type === 'mc') {
       E.qOptions.hidden = false;
+      // A cached question is stored with one fixed option order, so replaying it
+      // felt like the same choices every time. Reshuffle per render: every
+      // question gets its own random order, and the answer is not always in the
+      // same slot. Overlap with the previous question is fine — it is random.
+      if (Array.isArray(q.options) && q.options.length > 1) {
+        q.options = U.shuffle(q.options.slice());
+      }
       q.options.forEach(function (option, i) {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -1860,7 +1942,6 @@
     E.fbExample.textContent = q.word.example || '';
     E.btnDontKnow.hidden = true;
 
-    if (settings.autoPlay) U.speak(q.word.term, settings.targetCode);
     if (correct && q.type === 'translate' && q.direction === 'meaning2term' &&
       response && String(response).trim()) {
       loadQuizUpgrades(q, response);
@@ -2018,9 +2099,10 @@
     E.qHintBox.hidden = true;
     E.btnDontKnow.hidden = true;
 
-    E.paraDir.textContent = fr2vi ? 'French → Vietnamese' : 'Vietnamese → French';
+    const target = targetLangName();
+    E.paraDir.textContent = fr2vi ? target + ' → Vietnamese' : 'Vietnamese → ' + target;
     E.paraText.textContent = q.prompt;
-    E.paraText.lang = fr2vi ? 'fr' : 'vi';
+    E.paraText.lang = fr2vi ? targetLangRoot() : 'vi';
     E.btnParaSpeak.hidden = false;
 
     // The word the learner must produce is the main line: the Vietnamese
@@ -2047,8 +2129,10 @@
     });
 
     E.paraInput.value = '';
-    E.paraInput.lang = fr2vi ? 'vi' : 'fr';
-    E.paraInput.placeholder = fr2vi ? 'Write the Vietnamese translation…' : 'Write the French translation…';
+    E.paraInput.lang = fr2vi ? 'vi' : targetLangRoot();
+    E.paraInput.placeholder = fr2vi
+      ? 'Write the Vietnamese translation…'
+      : 'Write the ' + target + ' translation…';
     E.paraInput.disabled = false;
     E.paraCount.textContent = '0 words';
     E.btnParaSubmit.textContent = 'Check with AI';
@@ -2711,7 +2795,9 @@
     const pool = paraWords.length >= 4 ? paraWords : allWords();
     state.controller = new AbortController();
     showOverlay('Writing a shadowing paragraph…',
-      aiMode() === 'simple' ? 'Asking the free AI for a short French text…' : 'Asking the AI for a short French text…');
+      aiMode() === 'simple'
+        ? 'Asking the free AI for a short ' + targetLangName() + ' text…'
+        : 'Asking the AI for a short ' + targetLangName() + ' text…');
     try {
       const result = await Quiz.buildPool({
         items: items,
@@ -3134,7 +3220,7 @@
         const worst = (res.words || []).filter(function (w) { return w.accuracy != null && w.accuracy < 85; })
           .slice(0, 5).map(function (w) { return w.word + ' (' + w.accuracy + ')'; }).join(', ');
         const ai = await askTutor(
-          'The learner shadowed this French sentence:\n“' + s.sentences[s.index] + '”\n\n' +
+          'The learner shadowed this ' + targetLangName() + ' sentence:\n“' + s.sentences[s.index] + '”\n\n' +
           'Azure Pronunciation Assessment returned:\n' +
           'Overall ' + res.score + '/100, accuracy ' + res.accuracy + ', fluency ' + res.fluency +
           ', completeness ' + res.completeness + '.\n' +
@@ -3142,7 +3228,7 @@
           'Words needing work: ' + (worst || 'none clearly below 85') + '.\n\n' +
           'Give 2 short, concrete pieces of pronunciation advice in English. Mention at most three words. ' +
           'Do not rescore and do not use markdown.',
-          { system: 'You are VocabLab’s concise French pronunciation coach. You explain Azure Speech scores and give actionable practice tips. Be encouraging and specific.', maxTokens: 220 }
+          { system: 'You are VocabLab’s concise ' + targetLangName() + ' pronunciation coach. You explain Azure Speech scores and give actionable practice tips. Be encouraging and specific.', maxTokens: 220 }
         );
         if (ai && ai.text && state.shadowing === s && s.index === assessedIndex && s.current === current) {
           E.shTips.textContent = ai.text.trim();
@@ -3432,9 +3518,16 @@
   /* ---------- Settings dialog ---------- */
   function syncSettingsUI() {
     E.inpGeminiKey.value = settings.geminiKey || '';
-    E.inpTargetLang.value = settings.targetLang || 'English';
+    // A value saved before this became a list (or typed by hand) still shows.
+    const targetLang = settings.targetLang || 'English';
+    if (!Array.from(E.inpTargetLang.options).some(function (o) { return o.value === targetLang; })) {
+      const custom = document.createElement('option');
+      custom.value = targetLang;
+      custom.textContent = targetLang;
+      E.inpTargetLang.appendChild(custom);
+    }
+    E.inpTargetLang.value = targetLang;
     E.inpTargetCode.value = settings.targetCode || 'en-US';
-    E.chkAutoPlay.checked = !!settings.autoPlay;
     E.inpSheetUrl.value = settings.sheetUrl || '';
     E.inpSheetApiKey.value = settings.sheetApiKey || '';
     E.inpScriptUrl.value = settings.scriptUrl || '';
@@ -3470,6 +3563,19 @@
     E.inpAzureRegion.value = settings.azureRegion || 'southeastasia';
     E.selAzureVoice.value = settings.azureVoice || 'fr-FR-DeniseNeural';
     E.chkCloudVoice.checked = settings.cloudVoice !== false;
+    const learnLang = targetLangName();
+    if (E.browserVoiceLabel) E.browserVoiceLabel.textContent = I18n.t('voice.deviceLabel', { lang: learnLang });
+    if (E.browserVoiceIntro) E.browserVoiceIntro.textContent = I18n.t('voice.deviceIntro', { lang: learnLang });
+    if (E.azureVoiceIntro) E.azureVoiceIntro.innerHTML = I18n.t('voice.azureIntro', { lang: learnLang });
+    if (E.speechLimitNote) E.speechLimitNote.textContent = I18n.t('voice.limitNote', { lang: learnLang });
+    // The listed Azure voices are French; Azure picks a native voice for any
+    // other language from the speech code, so hide the French picker there.
+    const frenchTarget = targetLangRoot() === 'fr';
+    if (E.azureVoiceField) E.azureVoiceField.hidden = !frenchTarget;
+    if (E.azureVoiceNote) {
+      E.azureVoiceNote.hidden = frenchTarget;
+      E.azureVoiceNote.textContent = 'Azure picks a native ' + targetLangName() + ' voice automatically.';
+    }
     populateBrowserVoices();
     E.speechStatus.textContent = speechReady()
       ? 'Azure is configured. Use “Test Azure voice” to verify the key and region.'
@@ -4205,9 +4311,29 @@
     });
     E.inpModel.addEventListener('change', function () { setActiveModel(E.inpModel.value.trim()); });
     E.inpModel.addEventListener('input', function () { setActiveModel(E.inpModel.value.trim()); });
-    E.inpTargetLang.addEventListener('change', function () { settings.targetLang = E.inpTargetLang.value.trim() || 'English'; saveSettings(); });
+    /** Speech code that belongs to a language in the list ('' when unknown). */
+    function defaultCodeFor(name) {
+      const option = Array.from(E.inpTargetLang.options).find(function (o) { return o.value === name; });
+      return option ? (option.getAttribute('data-code') || '') : '';
+    }
+    E.inpTargetLang.addEventListener('change', function () {
+      const next = E.inpTargetLang.value || 'English';
+      const previousCode = defaultCodeFor(settings.targetLang);
+      settings.targetLang = next;
+      const code = defaultCodeFor(next);
+      // Follow the language with its usual code unless the learner typed their
+      // own variant (fr-CA, en-GB…), which must survive the switch.
+      if (code && (!E.inpTargetCode.value.trim() || E.inpTargetCode.value.trim() === previousCode)) {
+        settings.targetCode = code;
+        E.inpTargetCode.value = code;
+      }
+      saveSettings();
+      // Voices and the paragraph/label copy follow the chosen language.
+      if (window.Speech) syncSpeechUI();
+      updateVoiceHint();
+      updateControls();
+    });
     E.inpTargetCode.addEventListener('change', function () { settings.targetCode = E.inpTargetCode.value.trim() || 'en-US'; saveSettings(); });
-    E.chkAutoPlay.addEventListener('change', function () { settings.autoPlay = E.chkAutoPlay.checked; saveSettings(); });
 
     // Settings — Speech tab
     E.inpAzureKey.addEventListener('input', function () {
@@ -4267,7 +4393,7 @@
       Speech.configure(settings);
       E.btnTestAzure.disabled = true;
       E.speechStatus.textContent = 'Contacting Azure…';
-      Speech.speak('Bonjour ! La voix Azure fonctionne.', 'fr-FR', 0.95, {
+      Speech.speak(targetTestPhrase(), settings.targetCode || 'fr-FR', 0.95, {
         noFallback: true,
         onStart: function () {
           E.btnTestAzure.disabled = false;
@@ -4420,6 +4546,13 @@
     });
     E.qInput.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); if (!state.answered) submitTyped(false); }
+    });
+
+    // Text we build in JS is not covered by data-i18n, so refresh it on a language change.
+    document.addEventListener('vocablab:language', function () {
+      renderPracticeTopics();
+      updateSelected();
+      if (window.Speech) syncSpeechUI();
     });
   }
 

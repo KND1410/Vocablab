@@ -59,6 +59,48 @@ test('the files page still opens by URL and borrows the class file', async ({ pa
   await expect(page.locator('#homeFilesSlot #srcName')).toBeVisible();
 });
 
+test('the practice page repeats the chosen topics before Start', async ({ page }) => {
+  await openRoute(page, 'practice');
+  await expect(page.locator('#practiceTopicChips .topic-chip')).toHaveText(['E2E topic']);
+  await expect(page.locator('#practiceTopicCount')).toHaveText('1 topic selected · 6 words');
+  await expect(page.locator('#btnStart')).toBeEnabled();
+
+  // Changing the topics really changes this block, not just the class file.
+  await page.locator('#practiceTopics a[href="#/home"]').click();
+  await expect(page.locator('body')).toHaveAttribute('data-screen', 'welcome');
+  await page.locator('#homeFilesSlot #topicList .topic-item').click();
+  await expect(page.locator('#selectedSummary')).toHaveText('No topics selected');
+
+  await openRoute(page, 'practice');
+  await expect(page.locator('#practiceTopicChips .topic-chip')).toHaveCount(0);
+  await expect(page.locator('#practiceTopicCount')).toContainText('pick at least one to start');
+  await expect(page.locator('#btnStart')).toBeDisabled();
+});
+
+test('the learning language is a list that also sets the speech code', async ({ page }) => {
+  await openRoute(page, 'practice');
+  await page.locator('#btnSettings').click();
+  await expect(page.locator('#settingsDialog')).toBeVisible();
+
+  await expect(page.locator('#inpTargetLang')).toHaveValue('French');
+  await expect(page.locator('#inpTargetLang option')).toHaveCount(16);
+  await page.locator('#inpTargetLang').selectOption('Japanese');
+
+  await expect(page.locator('#inpTargetCode')).toHaveValue('ja-JP');
+  // The Azure voice list is French-only, so its field is hidden for Japanese.
+  expect(await page.locator('#azureVoiceField').getAttribute('hidden')).not.toBeNull();
+  await expect(page.locator('#azureVoiceNote')).toContainText('native Japanese voice');
+
+  const saved = await page.evaluate(function () { return JSON.parse(localStorage.getItem('vocablab.settings')); });
+  expect(saved.targetLang).toBe('Japanese');
+  expect(saved.targetCode).toBe('ja-JP');
+
+  // Back to French: the French Azure voice picker returns.
+  await page.locator('#inpTargetLang').selectOption('French');
+  await expect(page.locator('#inpTargetCode')).toHaveValue('fr-FR');
+  expect(await page.locator('#azureVoiceField').getAttribute('hidden')).toBeNull();
+});
+
 test('a deep link survives a reload', async ({ page }) => {
   await openRoute(page, 'progress');
   await expect(page.locator('#routeProgress')).toBeVisible();

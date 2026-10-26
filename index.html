@@ -134,8 +134,8 @@
         <span id="studyPct" class="pill pill-accent">0 / 18</span>
       </div>
       <div class="course-body">
-        <h2 data-i18n="lessons.atlasTitle">Tense Atlas</h2>
-        <p class="muted small" data-i18n="lessons.atlasSub">French tenses · DELF B2</p>
+        <h2 data-i18n="lessons.atlasTitle">French Tenses Atlas</h2>
+        <p class="muted small" data-i18n="lessons.atlasSub">18 chapters · A2 to B2</p>
         <div class="progress study-progress" aria-hidden="true"><div id="studyBar" class="progress-fill" style="width:0%"></div></div>
         <button id="btnStudy" class="btn btn-primary btn-block study-btn">Open the atlas</button>
       </div>
@@ -170,6 +170,15 @@
         <option value="paragraph">Paragraph</option>
         <option value="shadowing">Shadowing</option>
       </select>
+
+      <div class="chosen-topics" id="practiceTopics">
+        <div class="chosen-topics-head">
+          <span class="field-label" data-i18n="practice.topics">Topics</span>
+          <a class="btn btn-ghost btn-xs" href="#/home" data-i18n="practice.changeTopics">Change</a>
+        </div>
+        <div id="practiceTopicChips" class="chosen-topics-chips"></div>
+        <p id="practiceTopicCount" class="chosen-topics-count"></p>
+      </div>
 
       <div class="field">
         <div class="label-row">
@@ -867,7 +876,24 @@
     <div class="field-row">
       <div class="field">
         <label class="field-label" for="inpTargetLang">Language you are learning</label>
-        <input id="inpTargetLang" class="input" type="text" placeholder="French" value="French">
+        <select id="inpTargetLang" class="input" data-i18n-skip>
+          <option value="French" data-code="fr-FR" selected>Français</option>
+          <option value="English" data-code="en-US">English</option>
+          <option value="Japanese" data-code="ja-JP">日本語</option>
+          <option value="Spanish" data-code="es-ES">Español</option>
+          <option value="German" data-code="de-DE">Deutsch</option>
+          <option value="Italian" data-code="it-IT">Italiano</option>
+          <option value="Portuguese" data-code="pt-PT">Português</option>
+          <option value="Korean" data-code="ko-KR">한국어</option>
+          <option value="Chinese" data-code="zh-CN">中文</option>
+          <option value="Vietnamese" data-code="vi-VN">Tiếng Việt</option>
+          <option value="Russian" data-code="ru-RU">Русский</option>
+          <option value="Arabic" data-code="ar-SA">العربية</option>
+          <option value="Dutch" data-code="nl-NL">Nederlands</option>
+          <option value="Turkish" data-code="tr-TR">Türkçe</option>
+          <option value="Polish" data-code="pl-PL">Polski</option>
+          <option value="Thai" data-code="th-TH">ไทย</option>
+        </select>
       </div>
       <div class="field">
         <label class="field-label" for="inpTargetCode">Speech language code (BCP-47)</label>
@@ -876,17 +902,16 @@
           Settings → Speech.</p>
       </div>
     </div>
-    <label class="switch-row"><input id="chkAutoPlay" type="checkbox" checked> Auto-play pronunciation when a word is revealed</label>
   </div>
 
   <!-- Speech tab -->
   <div class="tab-pane" data-pane="speech">
     <h3>Voice on this device</h3>
-    <p class="muted small">Use a French voice already installed on this computer. On Linux, Firefox uses
+    <p class="muted small" id="browserVoiceIntro">Use a French voice already installed on this computer. On Linux, Firefox uses
       speech-dispatcher; its default eSpeak voice is robotic and can mispronounce words. Choose another voice here
       if you have one, or use Azure below for a natural voice.</p>
     <div class="field">
-      <label class="field-label" for="selBrowserVoice">French voice on this device</label>
+      <label class="field-label" for="selBrowserVoice" id="browserVoiceLabel">French voice on this device</label>
       <select id="selBrowserVoice" class="input">
         <option value="">Automatic — best available French voice</option>
       </select>
@@ -897,7 +922,7 @@
       </div>
     </div>
     <hr class="sep">
-    <p class="muted small"><strong>Azure Speech</strong> gives you a natural French voice in every browser.
+    <p class="muted small" id="azureVoiceIntro"><strong>Azure Speech</strong> gives you a natural French voice in every browser.
       Create a free Azure Speech resource, then paste its key and region here. The free tier includes 500K
       characters of voice and 5 audio hours of speech-to-text per month. Text is sent to Azure for the cloud
       voice; VocabLab itself never uploads or stores your audio.</p>
@@ -916,7 +941,7 @@
         <label class="field-label" for="inpAzureRegion">Region</label>
         <input id="inpAzureRegion" class="input" type="text" placeholder="southeastasia" autocomplete="off" spellcheck="false">
       </div>
-      <div class="field">
+      <div class="field" id="azureVoiceField">
         <label class="field-label" for="selAzureVoice">French voice</label>
         <select id="selAzureVoice" class="input">
           <option value="fr-FR-DeniseNeural">Denise — France, female</option>
@@ -924,6 +949,7 @@
           <option value="fr-FR-EloiseNeural">Eloise — France, young</option>
           <option value="fr-FR-VivienneMultilingualNeural">Vivienne — multilingual</option>
         </select>
+        <p class="muted small" id="azureVoiceNote" hidden></p>
       </div>
     </div>
     <label class="switch-row"><input id="chkCloudVoice" type="checkbox" checked> Use the Azure voice for every speaker icon</label>

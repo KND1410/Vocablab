@@ -41,8 +41,8 @@
     vi: {
       backVocab: '← Bài học',
       backCourse: '← Course',
-      courseKicker: 'HỌC · DELF B2',
-      courseTitle: 'Các thì tiếng Pháp',
+      courseKicker: 'HỌC',
+      courseTitle: 'Bản đồ thì tiếng Pháp',
       continue: 'Tiếp tục học',
       review: 'Ôn thi',
       lessonsDone: '{done} / {total} bài đã xong',
@@ -93,8 +93,8 @@
     en: {
       backVocab: '← Lessons',
       backCourse: '← Course',
-      courseKicker: 'STUDY · DELF B2',
-      courseTitle: 'French Tenses',
+      courseKicker: 'STUDY',
+      courseTitle: 'French Tenses Atlas',
       continue: 'Continue learning',
       review: 'Review',
       lessonsDone: '{done} / {total} lessons complete',

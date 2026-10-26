@@ -45,7 +45,6 @@ export const BASE_SETTINGS = {
   oaiModel: 'e2e-model',
   targetLang: 'French',
   targetCode: 'fr-FR',
-  autoPlay: false,
   scoreEngine: 'auto',
   uiLang: 'en',
   quizTypes: ['translate'],

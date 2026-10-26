@@ -15,7 +15,7 @@
 
   var GD = global.GrammarHandbook = {
     id: 'handbook',
-    title: { vi: 'Ngữ pháp tiếng Pháp từng bước', en: 'Grammaire progressive du français' },
+    title: { vi: 'Grammaire progressive du français', en: 'Grammaire progressive du français' },
     subtitle: {
       vi: 'Grammaire progressive du français · 52 chương',
       en: 'Grammaire progressive du français · 52 chapters'

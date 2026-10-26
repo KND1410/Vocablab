@@ -23,7 +23,7 @@ out of the box), but works with any language.
   email service needed). The whole app is behind the login screen. Name, daily
   quests and streak sync to **your own MongoDB Atlas database** through `/api`;
   the deck, mastery, grammar progress, settings and recordings stay local.
-- **Grammar → two courses**: **Tense Atlas**, an 18-chapter DELF B2 tenses course
+- **Grammar → two courses**: **French Tenses Atlas**, an 18-chapter DELF B2 tenses course
   (`js/grammar-data.js`), and **Grammaire progressive du français**, the 52 teaching
   chapters of the *Grammaire progressive du français, niveau intermédiaire (3e
   édition)* (`js/grammar-handbook.js`). Each has a course map, bilingual
@@ -64,7 +64,7 @@ language/
 ├── js/quests.js        shared quest definitions, daily picker, progress, streak
 ├── js/account.js       auth client, local home cache, offline progress queue
 ├── js/speech.js        Azure neural TTS, pronunciation assessment, local recordings
-├── js/grammar-data.js  18-chapter Tense Atlas course (bilingual data)
+├── js/grammar-data.js  18-chapter French Tenses Atlas (bilingual data)
 ├── js/grammar-handbook.js 52-chapter Grammaire progressive course (book lessons)
 ├── js/grammar.js       course map, lessons, exercises, progress, AI tutor
 ├── js/i18n.js          UI language catalogues (EN/VI/FR) + static text mapping
@@ -397,7 +397,7 @@ and space, pronouns and sentences, verbs through time, hypothesis and formal Fre
 - **Teaching only**: the book's exercise pages are deliberately not reproduced; each
   chapter ends with three to five short checks of our own (fill in the blank, multiple
   choice, translation) that grade and save as in the tenses course.
-- **Same reading rhythm as the Tense Atlas**: a Vietnamese/English summary first, then
+- **Same reading rhythm as the Tenses Atlas**: a Vietnamese/English summary first, then
   short paragraphs, tables and bullet lists, French examples with translations, a tip
   or trap callout, and the AI tutor with the chapter context.
 - **Explanations are bilingual, examples stay French**. Switch **VI / EN** at the top of
@@ -498,8 +498,8 @@ and space, pronouns and sentences, verbs through time, hypothesis and formal Fre
   otherwise the browser's speech synthesis. Pick a local voice in **Settings → Speech**
   (with a **Test browser voice** button); set the language code in Settings → AI
   (`fr-FR`, `de-DE`, `ja-JP`, …). On Linux, Firefox's default speech-dispatcher/eSpeak
-  voice is robotic, so choose a better installed voice or use Azure. “Auto-play” reads
-  the word when a card is revealed.
+  voice is robotic, so choose a better installed voice or use Azure. Answers never play
+  automatically — use the speaker buttons when you want to hear a word.
 - **🃏 Flashcards** mode for quick review with *Again / Got it*.
 - **Practice mistakes** button on the results screen.
 
@@ -511,13 +511,17 @@ Keyboard: `1`–`4` answer · `Enter` check/next · `Space` flip card · `←`/`
 
 | Tab | What's there |
 |---|---|
-| **AI** | Simple mode (free, keyless model picker) / Advanced mode (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, target language + language code, auto-play |
+| **AI** | Simple mode (free, keyless model picker) / Advanced mode (Gemini, Groq, Cerebras, OpenRouter, Mistral, DeepSeek, xAI Grok, Cloudflare, local Ollama, custom), one key kept per provider, model list, requests used today, question cache, learning language (16 options) + speech code |
 | **Speech** | Browser voice picker + **Test browser voice**, Azure Speech key + region, French neural voice, “use Azure for every speaker icon” toggle, **Test Azure voice**, pronunciation-scoring engine (Gemini estimate / Azure / automatic) |
 | **Google Sheet** | the three connection modes, load buttons, setup help |
 | **Data** | cached deck info, saved-recording count and deletion, forget deck, reset progress, wipe everything |
 
-Switching the **target language** (e.g. `French` / `fr-FR`) is all you need for a
-different language — the AI prompt, RTL-free UI text and the TTS voice follow it.
+Switch the **learning language** in Settings → AI (French, English, Japanese, Spanish,
+German, Italian, Portuguese, Korean, Chinese, Vietnamese, Russian, Arabic, Dutch,
+Turkish, Polish, Thai) and the speech code follows it (`Japanese` → `ja-JP`). The AI
+prompt, the paragraph direction labels, the shadowing copy, the browser voice list and
+the test phrase all use that language, so a Japanese deck practises Japanese. The two
+Grammar courses (French tenses and *Grammaire progressive*) remain French lessons.
 
 ---
 

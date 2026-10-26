@@ -1191,8 +1191,8 @@ check(/^shadowing delete: count=0 items=0/m.test(log),
   (log.match(/^shadowing delete: .*/m) || [''])[0]);
 check(/flashcard flipped=true/m.test(log), 'flashcard flips');
 check(/flashcard next=\d+\s*\/\s*\d+/m.test(log), 'flashcard advances');
-check(/^grammar course: visible=true cards=18 parts=7 title="Bản đồ các thì" back=true/m.test(log),
-  'the Tense Atlas card opens a course map with all 18 chapters and a way back',
+check(/^grammar course: visible=true cards=18 parts=7 title="Bản đồ thì tiếng Pháp" back=true/m.test(log),
+  'the Tenses Atlas card opens a course map with all 18 chapters and a way back',
   (log.match(/^grammar course: .*/m) || [''])[0]);
 check(/^grammar lesson: title="Présent" subtitle="Thì hiện tại" exercises=6 tutor=true tables=[1-9]/m.test(log),
   'a chapter opens as a full lesson with tables, exercises and the AI tutor',

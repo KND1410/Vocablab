@@ -315,6 +315,26 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .setup-card .seg-btn { padding: .36rem .62rem; font-size: .78rem; }
 .practice-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem; margin-bottom: .8rem; }
 .practice-tabs .seg-btn { justify-content: center; }
+
+/* ---------- Chosen topics (practice setup) ---------- */
+.chosen-topics {
+  display: flex; flex-direction: column; gap: .4rem;
+  border: 1px solid var(--border); border-radius: 12px;
+  padding: .55rem .65rem; margin-bottom: .8rem;
+  background: color-mix(in srgb, var(--primary) 4%, var(--surface));
+}
+.chosen-topics-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.chosen-topics-head .btn { padding-block: .1rem; }
+.chosen-topics-chips { display: flex; flex-wrap: wrap; gap: .3rem; }
+.chosen-topics-chips:empty { display: none; }
+.topic-chip {
+  display: inline-flex; align-items: center;
+  padding: .16rem .55rem; border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: var(--primary-soft); color: var(--primary);
+  font-size: .76rem; font-weight: 600; line-height: 1.35;
+}
+.chosen-topics-count { margin: 0; font-size: .74rem; color: var(--muted); }
 .para-intro { margin: 0 0 .6rem; line-height: 1.45; }
 #paraSetupPane .field { margin-bottom: .55rem; }
 #paraSetupPane .btn-block { margin-top: .2rem; }
