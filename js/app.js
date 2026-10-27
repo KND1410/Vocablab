@@ -1592,7 +1592,7 @@
       return settings.oaiModel || defaultModelForBase(settings.oaiBase) ||
         providerDef(activeProviderId()).model || 'openrouter/free';
     }
-    return settings.geminiModel || 'gemini-flash-latest';
+    return settings.geminiModel || 'gemini-2.5-flash';
   }
   function setActiveModel(id) {
     if (aiKeyless()) { settings.simpleModel = id; saveSettings(); return; }
@@ -1631,6 +1631,17 @@
         return;
       }
     }
+  }
+  /**
+   * The old “gemini-flash-latest” default is an alias Google currently points
+   * at a model that accepts the request and then never answers. Keeping it
+   * saved would make every quiz wait out the deadline, so move the old default
+   * (and only that exact alias) to the stable Flash model.
+   */
+  function migrateGeminiModel() {
+    if (settings.geminiModel !== 'gemini-flash-latest') return;
+    settings.geminiModel = 'gemini-2.5-flash';
+    saveSettings();
   }
   /**
    * Keys saved before the field cleaned them up (e.g. “Bearer gsk_…”, quotes,
@@ -3177,7 +3188,7 @@
     const audio = await Speech.blobToBase64(wav);
     return Ai.assessSpeech({
       key: settings.geminiKey,
-      model: settings.geminiModel || 'gemini-flash-latest',
+      model: settings.geminiModel || 'gemini-2.5-flash',
       audio: audio,
       mimeType: 'audio/wav',
       reference: reference,
@@ -3640,7 +3651,7 @@
       const gemini = geminiScoreReady();
       E.scoreStatus.textContent = engine === 'gemini'
         ? (gemini
-          ? 'Scoring uses Gemini (‘' + (settings.geminiModel || 'gemini-flash-latest') + '’). Azure speech hours are not used.'
+          ? 'Scoring uses Gemini (‘' + (settings.geminiModel || 'gemini-2.5-flash') + '’). Azure speech hours are not used.'
           : 'Gemini scoring is selected, but there is no Gemini key yet. Add one in Settings → AI.')
         : engine === 'azure'
           ? (speechReady()
@@ -3981,11 +3992,14 @@
       saveSettings();
       syncAiUI();
       if (E.inpModel) E.inpModel.value = info.model;
+      const why = info.reason === 'unavailable'
+        ? ' is overloaded and did not answer'
+        : ' is not available';
       E.aiStatus.textContent = 'Gemini updated — “' + (info.previous || 'the old model') +
-        '” is not available; using “' + info.model + '”.';
+        '”' + why + '; using “' + info.model + '”.';
       showAiIssue('');
-      U.toast('Gemini no longer offers “' + (info.previous || 'the old model') +
-        '” — switched to “' + info.model + '”.', 'warn', 10000);
+      U.toast('Gemini ‘' + (info.previous || 'the old model') + '’' + why +
+        ' — switched to “' + info.model + '”.', 'warn', 10000);
       return;
     }
     if (sameBase(info.baseUrl, FREE_PROVIDER.base)) {
@@ -4038,6 +4052,13 @@
         return;
       }
       populateModels(models);
+      // A model list proves the key and the catalogue — not that the chosen
+      // model replies. Gemini aliases have pointed at models that never answer,
+      // which is how “✓ Works” could be followed by a stuck quiz.
+      if (provider === 'gemini') {
+        E.aiStatus.textContent = 'Models loaded — asking Gemini for a reply…';
+        await Ai.checkGemini({ key: activeKey(), model: activeModel() });
+      }
       E.aiStatus.textContent = '✓ Works — ' + models.length + ' models available. Using: ' + activeModel();
       U.toast(providerDef(activeProviderId()).short + ' works. Model: ' + activeModel(), 'ok');
     } catch (e) {
@@ -4722,6 +4743,7 @@
     // Name a provider saved before the list existed, and remember its connection
     // so switching providers can bring it back later.
     migrateProvider();
+    migrateGeminiModel();
     normalizeStoredKeys();
     if (Ai.setModelRepairHandler) Ai.setModelRepairHandler(onModelRepaired);
     rememberConn();

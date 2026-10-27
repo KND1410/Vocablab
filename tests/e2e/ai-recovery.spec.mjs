@@ -154,7 +154,9 @@ test('a Gemini paragraph asks for little thinking, and the wait counts itself ou
     overwrite: true,
     settings: Object.assign({}, BASE_SETTINGS, {
       aiMode: 'advanced', aiProvider: 'gemini', geminiKey: 'AIza-test-key',
-      geminiModel: 'gemini-flash-latest', source: 'ai', practiceMode: 'paragraph'
+      // A concrete newest-family model: the old “gemini-flash-latest” default is
+      // migrated to the stable 2.5 Flash (see app.js), so it cannot test this.
+      geminiModel: 'gemini-3-flash-preview', source: 'ai', practiceMode: 'paragraph'
     })
   });
 

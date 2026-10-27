@@ -26,7 +26,7 @@
     },
     {
       id: 'gemini', label: 'Google Gemini — free tier', short: 'Google Gemini', transport: 'gemini',
-      base: '', model: 'gemini-flash-latest', keyUrl: 'https://aistudio.google.com/apikey',
+      base: '', model: 'gemini-2.5-flash', keyUrl: 'https://aistudio.google.com/apikey',
       keyPrefix: 'AIza', cost: 'free'
     },
     {
@@ -304,6 +304,40 @@
     return /model .*(not found|does not exist|isn't on|is not on)|unknown model|no such model/i.test(String(err.message || ''));
   }
 
+  /* Gemini’s “-latest” aliases can move to a model that is overloaded: it
+     accepts the connection and then never sends a byte. Retrying the same id
+     is pointless, so a stable model your key can use is tried instead. */
+  const GEMINI_STABLE = ['gemini-2.5-flash', 'gemini-flash-lite-latest'];
+
+  async function fallbackGeminiModel(cfg) {
+    if (!cfg || !cfg.key) return null;
+    let models = [];
+    try { models = await listGeminiModels(cfg.key, cfg.signal); } catch (e) { return null; }
+    if (!models.length) return null;
+    const current = String(cfg.model || '');
+    const ids = models.map(function (m) { return m.id; });
+    const ordered = [];
+    GEMINI_STABLE.forEach(function (id) { if (ids.indexOf(id) !== -1) ordered.push(id); });
+    // Then any concrete (non-alias, non-preview) Flash this key can use.
+    sortModels(models).forEach(function (m) {
+      if (!/^gemini-\d+(\.\d+)?-flash$/.test(m.id)) return;
+      if (ordered.indexOf(m.id) === -1) ordered.push(m.id);
+    });
+    models.forEach(function (m) {
+      if (/flash/.test(m.id) && ordered.indexOf(m.id) === -1) ordered.push(m.id);
+    });
+    const next = ordered.filter(function (id) { return id !== current; })[0];
+    if (!next) return null;
+    if (modelRepairHandler) {
+      try {
+        modelRepairHandler({
+          provider: 'gemini', previous: current, model: next, models: models, reason: 'unavailable'
+        });
+      } catch (e) { /* keeping the settings in step must not break the call */ }
+    }
+    return next;
+  }
+
   /** Gemini drops model ids too (a key created today cannot call a retired
       model). Ask what the key can use and continue with the best of that list. */
   async function repairGeminiModel(cfg) {
@@ -454,7 +488,7 @@
       return sortOaiModels(models)[0].id;
     }
     const usable = models.filter(function (m) { return modelRank(m.id) > 0; });
-    if (!usable.length) return (models[0] && models[0].id) || 'gemini-flash-latest';
+    if (!usable.length) return (models[0] && models[0].id) || 'gemini-2.5-flash';
     return sortModels(usable)[0].id;
   }
 
@@ -893,6 +927,19 @@
       signal: cfg.signal,
       onWait: cfg.onWait
     });
+  }
+
+  /** The same “does it answer?” check for Gemini: the model list and the key
+      can both be fine while the chosen model never replies. */
+  async function checkGemini(cfg) {
+    cfg = cfg || {};
+    const model = cfg.model || pickDefaultModel([], 'gemini');
+    const res = await callWithFallbacks({
+      key: cfg.key, model: model, system: 'You are a connectivity check. Reply with one word.',
+      user: 'Reply with the single word OK.', maxTokens: 256, plain: true, noSchema: true,
+      signal: cfg.signal
+    });
+    return res;
   }
 
   /** Try JSON mode first, then plain, retrying on 429/5xx/free-slot 402, and
@@ -1741,7 +1788,7 @@
       err.friendly = 'That recording is too large for Gemini. Keep sentences short (under a minute) and try again.';
     } else if (res.status === 400) {
       err.friendly = 'Gemini rejected the audio request. Use a model that accepts audio (for example ' +
-        'gemini-flash-latest) in Settings → AI, then try again.';
+        'gemini-2.5-flash) in Settings → AI, then try again.';
     } else if (res.status >= 500) {
       err.friendly = 'Gemini had a server error (' + res.status + '). Try again shortly.';
     } else {
@@ -2054,6 +2101,7 @@
     });
     let lastErr = null;
     let repaired = false;
+    let switched = false;
     let call = opts;
     for (let pass = 0; pass < passes.length; pass++) {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -2071,8 +2119,22 @@
               continue;
             }
           }
-          const retryable = e.status === 429 || e.status >= 500;
-          if (retryable && attempt === 0) { await sleep(e.status === 429 ? 5200 : 2200, opts.signal); continue; }
+          // A model that is overloaded (503) or that never answers (deadline)
+          // is not going to get better within this quiz: move to a stable one.
+          if (!switched && (e.status === 408 || e.status === 503)) {
+            switched = true;
+            const alt = await fallbackGeminiModel(call);
+            if (alt) {
+              call = Object.assign({}, call, { model: alt });
+              attempt--;
+              continue;
+            }
+          }
+          // The free tier allows a handful of requests a minute. Spending them
+          // on retries and schema passes turns a quota pause into a long stall.
+          if (e.status === 429) throw e;
+          const retryable = e.status >= 500;
+          if (retryable && attempt === 0) { await sleep(2200, opts.signal); continue; }
           if (e.status === 400) break; // unsupported config → next pass
           if (retryable) break;
           throw e;
@@ -2352,6 +2414,7 @@
     freeSlot: { configure: configureFreeSlot, reset: resetFreeSlot, waitMs: freeWaitMs },
     listModels: listModels,
     checkFree: checkFree,
+    checkGemini: checkGemini,
     pickDefaultModel: pickDefaultModel,
     prettifyModel: prettifyModel,
     generateQuestions: generateQuestions,

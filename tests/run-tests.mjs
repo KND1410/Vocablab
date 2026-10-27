@@ -1560,6 +1560,69 @@ eq(geminiRepair && geminiRepair.provider, 'gemini', '…and the app is told it w
 Ai.setModelRepairHandler(null);
 aiFetch = null;
 
+/* An alias such as “gemini-flash-latest” can point at a model that is
+   overloaded: it takes the request and never answers. That must switch to a
+   stable model instead of waiting out the deadline on every quiz. */
+section('Gemini overloaded model');
+let gemSwitch = null;
+Ai.setModelRepairHandler(function (info) { gemSwitch = info; });
+const gemSwitchCalls = [];
+aiFetch = async function (url, opts) {
+  const u = String(url);
+  gemSwitchCalls.push(u);
+  if (u.indexOf('/models?pageSize=') !== -1) {
+    return fakeResponse(JSON.stringify({
+      models: [
+        { name: 'models/gemini-flash-latest', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }
+      ]
+    }), 200);
+  }
+  if (u.indexOf('gemini-flash-latest') !== -1) {
+    return fakeResponse(JSON.stringify({
+      error: { code: 503, message: 'This model is currently experiencing high demand.' }
+    }), 503);
+  }
+  return fakeResponse(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: questionsReply }] } }]
+  }), 200);
+};
+const gemRecovered = await Ai.generateQuestions({
+  provider: 'gemini', key: 'AIzaTestKey', model: 'gemini-flash-latest', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese'
+});
+eq(gemRecovered.length, 1, 'an overloaded Gemini model no longer fails the request');
+eq(gemSwitch && gemSwitch.model, 'gemini-2.5-flash', '…a stable model takes over');
+eq(gemSwitch && gemSwitch.reason, 'unavailable', '…and the app is told why, so it can save the switch');
+
+// Free-tier quota is a handful of requests a minute: retrying burns the next
+// minute's allowance and turns a short pause into a long stall.
+let gemQuotaCalls = 0;
+aiFetch = async function () {
+  gemQuotaCalls++;
+  return fakeResponse(JSON.stringify({ error: { message: 'Quota exceeded' } }), 429);
+};
+let gemQuota = null;
+try {
+  await Ai.generateQuestions({
+    provider: 'gemini', key: 'AIzaTestKey', model: 'gemini-2.5-flash', items: oneItem,
+    targetLang: 'French', meaningLang: 'Vietnamese'
+  });
+} catch (e) { gemQuota = e; }
+eq(gemQuotaCalls, 1, 'a Gemini quota error is not retried');
+ok(gemQuota && gemQuota.status === 429, '…the real 429 reaches the app');
+
+// “Test key & load models” must prove the model answers, not just that it exists.
+aiFetch = async function () {
+  return fakeResponse(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: 'OK' }] } }]
+  }), 200);
+};
+const gemHealth = await Ai.checkGemini({ key: 'AIzaTestKey', model: 'gemini-2.5-flash' });
+eq(gemHealth && gemHealth.text, 'OK', 'the Gemini check asks for a real reply');
+Ai.setModelRepairHandler(null);
+aiFetch = null;
+
 /* The provider refuses some *pages*, not the request: a page opened as
    “localhost” answers 403 “Missing Turnstile token”, which no fetch can solve,
    while the same anonymous call from this site's own server is accepted. So a
