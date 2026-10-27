@@ -382,6 +382,33 @@
     E.overlay.hidden = true;
   }
 
+  /* ---------- Generation deadline ---------- */
+  /* The AI modules enforce their own request deadlines, but one action can be
+     several requests (repair + retry passes). This is the last line of defence:
+     whatever a provider does, the overlay ends and says why. */
+  const AI_STEP_DEADLINE_MS = 100000;
+  function withDeadline(promise, ms, ctrl, what) {
+    let timer = null;
+    const timeout = new Promise(function (resolve, reject) {
+      timer = setTimeout(function () {
+        try { if (ctrl) ctrl.abort(); } catch (e) { /* ignore */ }
+        const err = new Error('AI deadline');
+        err.timeout = true;
+        err.friendly = 'The AI did not answer within ' + Math.round(ms / 1000) + ' seconds' +
+          (what ? ' (' + what + ')' : '') + '.\n' +
+          '• Try again, pick another provider in Settings → AI, or let the built-in generator make the quiz.';
+        reject(err);
+      }, ms);
+    });
+    return Promise.race([promise, timeout]).then(function (value) {
+      if (timer) clearTimeout(timer);
+      return value;
+    }, function (err) {
+      if (timer) clearTimeout(timer);
+      throw err;
+    });
+  }
+
   /* ---------- Routes / screens ---------- */
   const VIEWS = {
     welcome: { el: 'screenWelcome', nav: 'home' },
@@ -1655,7 +1682,7 @@
     state.controller = new AbortController();
     showOverlay('Building your quiz…', useAi ? 'Asking the AI for fresh questions…' : 'Preparing questions…');
     try {
-      const result = await Quiz.buildPool({
+      const result = await withDeadline(Quiz.buildPool({
         items: items,
         pool: pool,
         source: setup.source,
@@ -1670,7 +1697,7 @@
         meaningLang: 'Vietnamese',
         onProgress: overlayProgress,
         signal: state.controller.signal
-      });
+      }), AI_STEP_DEADLINE_MS, state.controller, providerName());
 
       if (!result.questions.length) {
         throw Object.assign(new Error('No questions'), {
@@ -1748,7 +1775,7 @@
     showOverlay('Writing a paragraph…',
       aiMode() === 'simple' ? 'Asking the free AI for a short text…' : 'Asking the AI for a short text…');
     try {
-      const result = await Quiz.buildPool({
+      const result = await withDeadline(Quiz.buildPool({
         items: items,
         pool: pool,
         source: 'ai',
@@ -1763,7 +1790,7 @@
         meaningLang: 'Vietnamese',
         onProgress: overlayProgress,
         signal: state.controller.signal
-      });
+      }), AI_STEP_DEADLINE_MS, state.controller, providerName());
 
       if (!result.questions.length) {
         const why = result.aiError;
@@ -2315,19 +2342,20 @@
     E.paraInput.disabled = true;
     E.btnParaSkip.disabled = true;
     let fb = null;
+    const checkCtrl = new AbortController();
     try {
-      fb = await Ai.correctParagraph({
+      fb = await withDeadline(Ai.correctParagraph({
         provider: activeProvider(), baseUrl: activeBase(), key: activeKey(), model: activeModel(),
         source: q.prompt, reference: q.reference, userText: text, direction: q.direction,
         keywords: q.keywords, targetLang: settings.targetLang, meaningLang: 'Vietnamese',
-        uiLang: I18n.lang(),
+        uiLang: I18n.lang(), signal: checkCtrl.signal,
         onWait: function (ms) {
           const secs = Math.round(ms / 1000);
           E.btnParaSubmit.textContent = 'Waiting ' + secs + ' s…';
           U.toast('Free AI allows one request every 30 seconds — waiting ' + secs + ' s. ' +
             'Switch to Advanced for no waiting.', 'warn', 8000);
         }
-      });
+      }), AI_STEP_DEADLINE_MS, checkCtrl, providerName());
     } catch (e) {
       state.paraBusy = false;
       E.paraInput.disabled = false;
@@ -2825,7 +2853,7 @@
         ? 'Asking the free AI for a short ' + targetLangName() + ' text…'
         : 'Asking the AI for a short ' + targetLangName() + ' text…');
     try {
-      const result = await Quiz.buildPool({
+      const result = await withDeadline(Quiz.buildPool({
         items: items,
         pool: pool,
         source: 'ai',
@@ -2840,7 +2868,7 @@
         meaningLang: 'Vietnamese',
         onProgress: overlayProgress,
         signal: state.controller.signal
-      });
+      }), AI_STEP_DEADLINE_MS, state.controller, providerName());
       if (!result.questions.length) {
         const why = result.aiError;
         throw Object.assign(new Error('No paragraph'), {

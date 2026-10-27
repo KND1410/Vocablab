@@ -209,7 +209,7 @@
      seconds forever — the exact “stuck on Generating” symptom. */
   const KEYED_TIMEOUT_MS = 90000;   // own key: generous, but finite
   const FREE_TIMEOUT_MS = 45000;    // keyless: one quiz reply, then built-in
-  const GEMINI_TIMEOUT_MS = 75000;  // Gemini can think, but not forever
+  const GEMINI_TIMEOUT_MS = 50000;  // Gemini can think, but not forever
   const FREE_TOTAL_MS = 50000;      // all retries/waits of one keyless call
 
   /** A signal that also aborts on a timer, without losing the caller's cancel. */
@@ -476,7 +476,7 @@
       res = await fetch(BASE + '/models?pageSize=200', { headers: { 'x-goog-api-key': apiKey }, signal: guard.signal });
     } catch (e) {
       if (e && e.name === 'AbortError') {
-        if (guard.timedOut()) throw keylessTimeout('did not answer the model check in 20 seconds', true);
+        if (guard.timedOut()) throw keylessTimeout('the model check within 20 seconds', true);
         throw e;
       }
       const err = new Error('Network error while contacting Gemini');
@@ -842,7 +842,7 @@
     } catch (e) {
       if (e && e.name === 'AbortError') {
         if (guard.timedOut()) throw keylessTimeout(
-          'did not answer within ' + Math.round((keyless ? FREE_TIMEOUT_MS : KEYED_TIMEOUT_MS) / 1000) + ' seconds',
+          'within ' + Math.round((keyless ? FREE_TIMEOUT_MS : KEYED_TIMEOUT_MS) / 1000) + ' seconds',
           !keyless);
         throw e;
       }
@@ -2001,7 +2001,7 @@
     } catch (e) {
       if (e && e.name === 'AbortError') {
         if (guard.timedOut()) throw keylessTimeout(
-          'did not answer within ' + Math.round(GEMINI_TIMEOUT_MS / 1000) + ' seconds', true);
+          'within ' + Math.round(GEMINI_TIMEOUT_MS / 1000) + ' seconds', true);
         throw e;
       }
       const err = new Error('Network error while contacting Gemini');
