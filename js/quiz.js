@@ -355,9 +355,21 @@
       const batchSize = opts.aiKeyless ? AI_BATCH_FREE : AI_BATCH;
       const batches = Util.chunk(pending, batchSize);
       progress(0, batches.length, 'Generating with AI…');
+      // The free service is one shared queue: once it refuses or errors, every
+      // later batch would wait the same 30 seconds to fail the same way. Fall
+      // back for the rest of the quiz instead of leaving the overlay spinning.
+      let aiDown = false;
       for (let b = 0; b < batches.length; b++) {
         const batch = batches[b];
         if (signal && signal.aborted) throw new DOMException('Aborted', 'AbortError');
+        if (aiDown) {
+          for (const item of batch) {
+            const q = Object.assign({}, builtinFor(item, pool, [item.type]), { source: 'builtin' });
+            out.push({ question: q, item: item });
+          }
+          progress(b + 1, batches.length, 'Generating with AI…');
+          continue;
+        }
         try {
           const questions = await Ai.generateQuestions({
             provider: aiProvider || 'gemini', baseUrl: aiBaseUrl || '',
@@ -382,6 +394,7 @@
           if (e && e.name === 'AbortError') throw e;
           if (!allowFallback) throw e;
           aiError = e;
+          if (opts.aiKeyless) aiDown = true;
           for (const item of batch) {
             const q = Object.assign({}, builtinFor(item, pool, [item.type]), { source: 'builtin' });
             out.push({ question: q, item: item });
@@ -433,6 +446,10 @@
             if (e && e.name === 'AbortError') throw e;
             if (!allowFallback) throw e;
             aiError = e;
+            // One paragraph cannot be written by the built-in generator, and a
+            // dead keyless queue would make every further card wait 30 seconds
+            // for nothing — report once and stop.
+            if (opts.aiKeyless) break;
           }
           progress(p + 1, paragraphs.length, 'Writing a paragraph…');
         }

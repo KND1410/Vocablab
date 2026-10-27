@@ -3901,6 +3901,16 @@
       syncAiUI();
       const changed = simpleModel() !== before;
       if (!silent) {
+        // The model list can load while the reply endpoint is down (that is how
+        // Settings used to say “works” during an outage), so the check has to
+        // ask for a real answer before it claims success.
+        E.aiStatus.textContent = 'Models loaded — asking the free AI for a reply…';
+        await Ai.checkFree({
+          baseUrl: FREE_PROVIDER.base, model: simpleModel(),
+          onWait: function (ms) {
+            E.aiStatus.textContent = 'The free AI is shared — waiting ' + Math.round(ms / 1000) + ' s for a slot…';
+          }
+        });
         E.aiStatus.textContent = '✓ Free AI works — ' + models.length + ' model' + (models.length === 1 ? '' : 's') +
           ' available. Using: ' + activeModel() + '. No key needed.';
         U.toast('Free AI works — no key needed. Model: ' + activeModel(), 'ok');
@@ -3938,6 +3948,18 @@
    */
   function onModelRepaired(info) {
     if (!info || !info.model) return;
+    if (info.provider === 'gemini') {
+      settings.geminiModel = info.model;
+      saveSettings();
+      syncAiUI();
+      if (E.inpModel) E.inpModel.value = info.model;
+      E.aiStatus.textContent = 'Gemini updated — “' + (info.previous || 'the old model') +
+        '” is not available; using “' + info.model + '”.';
+      showAiIssue('');
+      U.toast('Gemini no longer offers “' + (info.previous || 'the old model') +
+        '” — switched to “' + info.model + '”.', 'warn', 10000);
+      return;
+    }
     if (sameBase(info.baseUrl, FREE_PROVIDER.base)) {
       settings.simpleModel = info.model;
       if (Array.isArray(info.models) && info.models.length) {

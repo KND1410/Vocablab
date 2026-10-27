@@ -1485,6 +1485,81 @@ Ai.freeSlot.configure({ windowMs: 0, floors: [400, 400, 400] });
 Ai.freeSlot.reset();
 aiFetch = null;
 
+/* An outage (the keyless service answering 500) must not be retried: the slot
+   is closed anyway, so each retry only adds a 30-second wait before the
+   fallback the learner needs. */
+section('Free AI outage');
+Ai.freeSlot.reset();
+let outageCalls = 0;
+aiFetch = async function () {
+  outageCalls++;
+  return fakeResponse(JSON.stringify({ error: { message: 'Something went wrong on our side' } }), 500);
+};
+let outageErr = null;
+try {
+  await Ai.generateQuestions({
+    provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+    targetLang: 'French', meaningLang: 'Vietnamese'
+  });
+} catch (e) { outageErr = e; }
+eq(outageCalls, 1, 'a keyless server error is not retried into another 30-second slot');
+ok(outageErr && /broken on their side/.test(outageErr.friendly),
+  'the outage is named as the provider’s, not the learner’s setup');
+ok(outageErr && /built-in generator/.test(outageErr.friendly),
+  '…and the built-in questions are offered as the way through');
+
+/* “Check the free AI” must ask for a real reply: the model list can load while
+   the reply endpoint is broken, which is how Settings used to claim it worked. */
+aiFetch = async function () {
+  return fakeResponse(JSON.stringify({ choices: [{ message: { content: 'OK' } }] }), 200);
+};
+const health = await Ai.checkFree({ baseUrl: freeDef.base, model: 'openai-fast' });
+eq(health && health.text, 'OK', 'the settings check asks the free service for a real reply');
+aiFetch = async function () {
+  return fakeResponse(JSON.stringify({ error: { message: 'Something went wrong on our side' } }), 500);
+};
+let healthErr = null;
+try { await Ai.checkFree({ baseUrl: freeDef.base, model: 'openai-fast' }); }
+catch (e) { healthErr = e; }
+ok(healthErr && /broken on their side/.test(healthErr.friendly),
+  '…and reports an outage instead of “works”');
+aiFetch = null;
+
+/* Gemini retires model ids too — the app should move to a served one instead of
+   asking the learner to hunt through Settings. */
+section('Gemini model repair');
+let geminiRepair = null;
+Ai.setModelRepairHandler(function (info) { geminiRepair = info; });
+const geminiFlow = [];
+aiFetch = async function (url, opts) {
+  const u = String(url);
+  geminiFlow.push(u);
+  if (u.indexOf('/models?pageSize=') !== -1) {
+    return fakeResponse(JSON.stringify({
+      models: [
+        { name: 'models/gemini-flash-latest', supportedGenerationMethods: ['generateContent'] }
+      ]
+    }), 200);
+  }
+  if (u.indexOf('gemini-retired') !== -1) {
+    return fakeResponse(JSON.stringify({
+      error: { message: 'models/gemini-retired is not found for API version v1beta' }
+    }), 404);
+  }
+  return fakeResponse(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: questionsReply }] } }]
+  }), 200);
+};
+const geminiQuestions = await Ai.generateQuestions({
+  provider: 'gemini', key: 'AIzaTestKey', model: 'gemini-retired', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese'
+});
+eq(geminiQuestions.length, 1, 'a retired Gemini model no longer fails the request');
+eq(geminiRepair && geminiRepair.model, 'gemini-flash-latest', 'a model the key can use replaces it');
+eq(geminiRepair && geminiRepair.provider, 'gemini', '…and the app is told it was a Gemini model');
+Ai.setModelRepairHandler(null);
+aiFetch = null;
+
 /* The provider refuses some *pages*, not the request: a page opened as
    “localhost” answers 403 “Missing Turnstile token”, which no fetch can solve,
    while the same anonymous call from this site's own server is accepted. So a

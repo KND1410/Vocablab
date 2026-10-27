@@ -203,6 +203,38 @@
     });
   }
 
+  /* ---------- Request deadlines ---------- */
+  /* Every request needs a deadline of its own. Without one, a provider that
+     accepts the connection and then stalls leaves the quiz overlay counting
+     seconds forever — the exact “stuck on Generating” symptom. */
+  const KEYED_TIMEOUT_MS = 90000;   // own key: generous, but finite
+  const FREE_TIMEOUT_MS = 45000;    // keyless: one quiz reply, then built-in
+  const GEMINI_TIMEOUT_MS = 75000;  // Gemini can think, but not forever
+  const FREE_TOTAL_MS = 50000;      // all retries/waits of one keyless call
+
+  /** A signal that also aborts on a timer, without losing the caller's cancel. */
+  function requestGuard(externalSignal, ms) {
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    let timedOut = false;
+    let timer = null;
+    function relayAbort() { try { if (ctrl) ctrl.abort(); } catch (e) { /* ignore */ } }
+    if (ctrl && externalSignal && externalSignal.addEventListener) {
+      if (externalSignal.aborted) relayAbort();
+      else externalSignal.addEventListener('abort', relayAbort, { once: true });
+    }
+    if (ctrl && ms > 0) timer = setTimeout(function () { timedOut = true; relayAbort(); }, ms);
+    return {
+      signal: ctrl ? ctrl.signal : (externalSignal || undefined),
+      timedOut: function () { return timedOut; },
+      cleanup: function () {
+        if (timer) { clearTimeout(timer); timer = null; }
+        if (ctrl && externalSignal && externalSignal.removeEventListener) {
+          externalSignal.removeEventListener('abort', relayAbort);
+        }
+      }
+    };
+  }
+
   /* ---------- Free-slot pacing (keyless provider) ---------- */
   /* The keyless service allows ONE reply per IP every 30 seconds and answers
      402 FREE_LIMIT outside that window — and its own “Retry after Ns” cannot
@@ -270,6 +302,25 @@
     if (err.status === 404) return true;
     if (err.status !== 400) return false;
     return /model .*(not found|does not exist|isn't on|is not on)|unknown model|no such model/i.test(String(err.message || ''));
+  }
+
+  /** Gemini drops model ids too (a key created today cannot call a retired
+      model). Ask what the key can use and continue with the best of that list. */
+  async function repairGeminiModel(cfg) {
+    if (!cfg || !cfg.key) return null;
+    let models = [];
+    try { models = await listGeminiModels(cfg.key, cfg.signal); } catch (e) { return null; }
+    if (!models.length) return null;
+    const current = String(cfg.model || '');
+    if (models.some(function (m) { return m.id === current; })) return null;
+    const next = pickDefaultModel(models, 'gemini');
+    if (!next || next === current) return null;
+    if (modelRepairHandler) {
+      try {
+        modelRepairHandler({ provider: 'gemini', previous: current, model: next, models: models });
+      } catch (e) { /* keeping the settings in step must not break the call */ }
+    }
+    return next;
   }
 
   /** The model to use instead of the one that is gone, or null when the
@@ -420,13 +471,19 @@
       throw err;
     }
     let res;
+    const guard = requestGuard(signal, 20000);
     try {
-      res = await fetch(BASE + '/models?pageSize=200', { headers: { 'x-goog-api-key': apiKey }, signal: signal });
+      res = await fetch(BASE + '/models?pageSize=200', { headers: { 'x-goog-api-key': apiKey }, signal: guard.signal });
     } catch (e) {
-      if (e && e.name === 'AbortError') throw e;
+      if (e && e.name === 'AbortError') {
+        if (guard.timedOut()) throw keylessTimeout('did not answer the model check in 20 seconds', true);
+        throw e;
+      }
       const err = new Error('Network error while contacting Gemini');
       err.friendly = 'Could not reach the Gemini API. Check your internet connection.';
       throw err;
+    } finally {
+      guard.cleanup();
     }
     if (!res.ok) throw await httpError(res, 'Gemini (list models)');
     const data = await res.json();
@@ -513,7 +570,9 @@
     // more room keep a 20-word batch inside one reply.
     if (o.keyless) {
       body.reasoning_effort = 'low';
-      body.max_tokens = Math.max(body.max_tokens, 8192);
+      // A health check only needs a word back; a full reply would burn the
+      // shared slot on nothing.
+      body.max_tokens = o.tiny ? (o.maxTokens || 256) : Math.max(body.max_tokens, 8192);
     }
     return body;
   }
@@ -690,7 +749,9 @@
           'Groq, Cerebras and OpenRouter have free tiers. Built-in questions cover the rest meanwhile.';
     } else if (res.status >= 500) {
       err.friendly = opts.keyless
-        ? 'The free AI service had a server error (' + res.status + '). It is shared and occasionally overloaded — try again in a minute, or switch to Advanced with your own key.'
+        ? 'The free AI service is broken on their side right now (' + res.status + '). Nothing in your setup needs changing.\n' +
+          '• Quizzes use the built-in generator meanwhile; paragraph practice needs AI, so use Advanced with a free Groq or Gemini key.\n' +
+          '• Try again later, or press “Check the free AI” in Settings → AI.'
         : 'The provider had a server error (' + res.status + '). Try again shortly.';
     } else {
       err.friendly = err.message;
@@ -745,13 +806,19 @@
     return sortOaiModels(models);
   }
 
-  function keylessTimeout(what) {
-    const err = new Error('The free AI took too long to answer');
+  function keylessTimeout(what, keyed) {
+    const err = new Error('The AI took too long to answer');
     err.status = 408;
     err.timeout = true;
-    err.friendly = 'The free AI ' + (what || 'is taking too long') + ' — it is a shared service and can queue up.\n' +
-      '• Try again in a minute.\n' +
-      '• Or switch to Advanced in Settings → AI with your own key, which has no queue.';
+    if (keyed) {
+      err.friendly = 'The provider did not answer ' + (what || 'in time') + '.\n' +
+        '• Try again, or pick another provider in Settings → AI.\n' +
+        '• VocabLab falls back to built-in questions meanwhile.';
+    } else {
+      err.friendly = 'The free AI ' + (what || 'is taking too long') + ' — it is a shared service and can queue up.\n' +
+        '• Try again in a minute.\n' +
+        '• Or switch to Advanced in Settings → AI with your own key, which has no queue.';
+    }
     return err;
   }
 
@@ -763,30 +830,25 @@
     // 30-second rule, and a local server is unlimited.
     const paced = keyless && !normalizeKey(cfg.key);
     if (paced) await waitFreeSlot(cfg);
-    let timer = null, ctrl = null;
+    const guard = requestGuard(cfg.signal, keyless ? FREE_TIMEOUT_MS : KEYED_TIMEOUT_MS);
     let res;
     try {
-      // A keyless call has no deadline of its own; without one the UI can sit on
-      // “Checking…” forever when the shared service queues. Abort after 90 s —
-      // a plain reply already takes 10–30 s on a busy day.
-      if (keyless && !cfg.signal && typeof AbortController !== 'undefined') {
-        ctrl = new AbortController();
-        timer = setTimeout(function () { ctrl.abort(); }, 90000);
-      }
       res = await freeChat(base + '/chat/completions', {
         method: 'POST',
         headers: oaiHeaders(base, cfg.key),
         body: JSON.stringify(oaiBuildBody(Object.assign({}, cfg, { keyless: keyless }))),
-        signal: cfg.signal || (ctrl && ctrl.signal)
+        signal: guard.signal
       }, keyless);
     } catch (e) {
       if (e && e.name === 'AbortError') {
-        if (ctrl && ctrl.signal.aborted) throw keylessTimeout('took more than 90 seconds to answer');
+        if (guard.timedOut()) throw keylessTimeout(
+          'did not answer within ' + Math.round((keyless ? FREE_TIMEOUT_MS : KEYED_TIMEOUT_MS) / 1000) + ' seconds',
+          !keyless);
         throw e;
       }
       throw await networkError(base, cfg.model);
     } finally {
-      if (timer) clearTimeout(timer);
+      guard.cleanup();
     }
     if (!res.ok) {
       throw await oaiHttpError(res, 'AI provider (chat)', {
@@ -805,12 +867,42 @@
      30 s” queue. A paragraph plus its correction can queue twice in a row. */
   const FREE_SLOT_WAITS = 3;
 
+  /** A real “does it answer?” check for the keyless provider. Listing models
+      only proves the catalogue is up — the reply endpoint can be broken while
+      the list still loads, which is exactly how Settings used to say “works”
+      while every quiz failed. */
+  async function checkFree(cfg) {
+    cfg = cfg || {};
+    const def = providerForBase(normalizeBaseUrl(cfg.baseUrl)) ||
+      (cfg.provider && providerById(cfg.provider));
+    const baseUrl = normalizeBaseUrl(cfg.baseUrl) || (def && def.base);
+    if (!baseUrl) {
+      const err = new Error('No free provider');
+      err.friendly = 'The free AI is not configured.';
+      throw err;
+    }
+    return oaiCallWithFallbacks({
+      baseUrl: baseUrl,
+      key: '',
+      model: cfg.model || (def && def.model) || 'openai-fast',
+      system: 'You are a connectivity check. Reply with one word.',
+      user: 'Reply with the single word OK.',
+      maxTokens: 128,
+      plain: true,
+      tiny: true,
+      signal: cfg.signal,
+      onWait: cfg.onWait
+    });
+  }
+
   /** Try JSON mode first, then plain, retrying on 429/5xx/free-slot 402, and
       swapping a model the provider no longer serves for one it does. */
   async function oaiCallWithFallbacks(cfg) {
     // Tutor replies are prose, so skip the JSON-mode pass entirely. Sending
     // response_format: json_object for a chat answer only wastes a request.
     const passes = cfg.plain ? [{ jsonMode: false }] : [{ jsonMode: true }, { jsonMode: false }];
+    const keyless = !!(cfg.keyless || (providerForBase(normalizeBaseUrl(cfg.baseUrl)) || {}).keyless);
+    const startedAt = Date.now();
     let lastErr = null;
     let slotWaits = 0;
     let repaired = false;
@@ -841,6 +933,9 @@
             // burning every attempt within a few seconds.
             if (slotWaits >= FREE_SLOT_WAITS) break;
             const ms = freeWaitMs(e.retryAfter * 1000, slotWaits);
+            // One quiz must not spend minutes queueing: past this budget the
+            // built-in generator is a better answer than a spinning overlay.
+            if (keyless && Date.now() - startedAt + ms > FREE_TOTAL_MS) break;
             slotWaits++;
             freeNextAt = Date.now() + ms;
             if (typeof cfg.onWait === 'function') cfg.onWait(ms);
@@ -848,6 +943,10 @@
             attempt--;
             continue;
           }
+          // A keyless failure is not worth retrying: the next attempt lands in
+          // the same closed slot (429/5xx do not open it), so retrying only
+          // adds a 30-second wait before the unavoidable fallback.
+          if (keyless && e.status !== 400) throw e;
           const retryable = e.status === 429 || e.status >= 500;
           if (retryable && attempt === 0) {
             await sleep(e.status === 429 ? 5200 : 2200, cfg.signal);
@@ -1881,6 +1980,7 @@
     if (thinking) generationConfig.thinkingConfig = thinking;
 
     let res;
+    const guard = requestGuard(signal, GEMINI_TIMEOUT_MS);
     try {
       res = await fetch(url, {
         method: 'POST',
@@ -1896,13 +1996,19 @@
             { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }
           ]
         }),
-        signal: signal
+        signal: guard.signal
       });
     } catch (e) {
-      if (e && e.name === 'AbortError') throw e;
+      if (e && e.name === 'AbortError') {
+        if (guard.timedOut()) throw keylessTimeout(
+          'did not answer within ' + Math.round(GEMINI_TIMEOUT_MS / 1000) + ' seconds', true);
+        throw e;
+      }
       const err = new Error('Network error while contacting Gemini');
       err.friendly = 'Could not reach the Gemini API. Check your internet connection (or switch the Generator to Built-in).';
       throw err;
+    } finally {
+      guard.cleanup();
     }
     if (!res.ok) throw await httpError(res, 'Gemini (generate)');
 
@@ -1947,15 +2053,26 @@
       return true;
     });
     let lastErr = null;
+    let repaired = false;
+    let call = opts;
     for (let pass = 0; pass < passes.length; pass++) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          return await callOnce(Object.assign({}, opts, passes[pass]));
+          return await callOnce(Object.assign({}, call, passes[pass]));
         } catch (e) {
           if (e && e.name === 'AbortError') throw e;
           lastErr = e;
+          if (!repaired && modelMissingError(e)) {
+            repaired = true;
+            const fixed = await repairGeminiModel(call);
+            if (fixed) {
+              call = Object.assign({}, call, { model: fixed });
+              attempt--;
+              continue;
+            }
+          }
           const retryable = e.status === 429 || e.status >= 500;
-          if (retryable && attempt === 0) { await sleep(e.status === 429 ? 5200 : 2200); continue; }
+          if (retryable && attempt === 0) { await sleep(e.status === 429 ? 5200 : 2200, opts.signal); continue; }
           if (e.status === 400) break; // unsupported config → next pass
           if (retryable) break;
           throw e;
@@ -2234,6 +2351,7 @@
     // Free-slot pacing, exposed so tests can shrink the 30-second window.
     freeSlot: { configure: configureFreeSlot, reset: resetFreeSlot, waitMs: freeWaitMs },
     listModels: listModels,
+    checkFree: checkFree,
     pickDefaultModel: pickDefaultModel,
     prettifyModel: prettifyModel,
     generateQuestions: generateQuestions,
