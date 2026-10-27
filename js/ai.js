@@ -187,7 +187,178 @@
     propertyOrdering: ['questions']
   };
 
-  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function abortError() { const e = new Error('Aborted'); e.name = 'AbortError'; return e; }
+
+  /** A wait the learner can cancel: the overlay's Cancel aborts the signal and
+      the sleep rejects instead of holding the dialog until the timer runs out. */
+  function sleep(ms, signal) {
+    return new Promise(function (resolve, reject) {
+      if (signal && signal.aborted) { reject(abortError()); return; }
+      function onAbort() { clearTimeout(timer); reject(abortError()); }
+      const timer = setTimeout(function () {
+        if (signal && signal.removeEventListener) signal.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      if (signal && signal.addEventListener) signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
+  /* ---------- Free-slot pacing (keyless provider) ---------- */
+  /* The keyless service allows ONE reply per IP every 30 seconds and answers
+     402 FREE_LIMIT outside that window — and its own “Retry after Ns” cannot
+     be trusted: it has answered “1s” while the real remaining wait was about
+     25 s. Retrying on that header burns every retry in a couple of seconds, the
+     quiz falls back to built-in questions and the paragraph never comes.
+     So timing is tracked here instead: when a keyless reply lands, the next
+     call holds until the window reopens (counting down in the progress text
+     the UI already shows), and a 402 waits out the rest of the window rather
+     than believing a too-small claim. */
+  const FREE_WINDOW_MS = 30000;
+  // When this session has no reply of its own to measure from, a small claim
+  // is distrusted this hard: first guess half a window, then the full window.
+  const FREE_WAIT_FLOORS = [15000, 30000, 30000];
+  let freeTiming = { windowMs: FREE_WINDOW_MS, floors: FREE_WAIT_FLOORS };
+  let freeNextAt = 0;   // earliest send time for the next keyless call
+
+  /** How long a 402 is worth waiting: the rest of this session's window when
+      we know it (our own accounting is exact), otherwise the larger of the
+      provider's claim and a distrust floor. Always 1–45 s. */
+  function freeWaitMs(claimMs, attempt) {
+    const now = Date.now();
+    const remain = freeNextAt > now ? freeNextAt - now : 0;
+    const floors = (freeTiming && freeTiming.floors) || [];
+    const floor = floors[Math.min(attempt || 0, Math.max(0, floors.length - 1))] || 0;
+    const ms = remain > 0
+      ? Math.max(remain, claimMs || 0)
+      : Math.max(claimMs || 0, floor);
+    return Math.min(45000, Math.max(1000, Math.round(ms)));
+  }
+
+  function configureFreeSlot(opts) {
+    opts = opts || {};
+    if (opts.windowMs != null) freeTiming.windowMs = Math.max(0, Number(opts.windowMs) || 0);
+    if (Array.isArray(opts.floors)) {
+      freeTiming.floors = opts.floors.map(Number).filter(function (n) { return isFinite(n); });
+    }
+  }
+
+  function resetFreeSlot() { freeNextAt = 0; }
+
+  /** Hold a keyless call until the free window reopens, counting the wait. */
+  async function waitFreeSlot(cfg) {
+    const wait = freeNextAt - Date.now();
+    if (wait <= 0) return;
+    // Below one second the countdown would read “waiting 0 s” — just go.
+    if (wait >= 1000 && typeof cfg.onWait === 'function') cfg.onWait(wait);
+    await sleep(wait, cfg.signal);
+  }
+
+  /* ---------- Model repair ---------- */
+  /* A provider that stops serving a model — the free service drops them often —
+     leaves the saved id behind, and from then on *every* request answers 404.
+     One “model not found” is enough to ask what the provider serves now and
+     continue with that, so the app keeps working instead of asking the learner
+     to poke around in Settings. */
+  let modelRepairHandler = null;
+
+  function setModelRepairHandler(fn) {
+    modelRepairHandler = typeof fn === 'function' ? fn : null;
+  }
+
+  function modelMissingError(err) {
+    if (!err) return false;
+    if (err.status === 404) return true;
+    if (err.status !== 400) return false;
+    return /model .*(not found|does not exist|isn't on|is not on)|unknown model|no such model/i.test(String(err.message || ''));
+  }
+
+  /** The model to use instead of the one that is gone, or null when the
+      provider still lists it (or cannot be asked). */
+  async function repairModel(cfg) {
+    // A local server has no “retired” model: one that is missing was simply
+    // never pulled, and that message already says which pull to run.
+    if (isLocalBaseUrl(cfg.baseUrl)) return null;
+    let models = [];
+    try {
+      models = await oaiListModels({
+        baseUrl: cfg.baseUrl, key: cfg.key, keyless: cfg.keyless, signal: cfg.signal
+      });
+    } catch (e) {
+      return null;
+    }
+    if (!models.length) return null;
+    const current = String(cfg.model || '');
+    if (models.some(function (m) { return m.id === current; })) return null;
+    const next = pickDefaultModel(models, 'openai') || models[0].id;
+    if (!next || next === current) return null;
+    if (modelRepairHandler) {
+      try {
+        modelRepairHandler({ baseUrl: cfg.baseUrl, previous: current, model: next, models: models });
+      } catch (e) { /* keeping the settings in step must not break the call */ }
+    }
+    return next;
+  }
+
+  /* ---------- Free-provider relay ---------- */
+  /* The free service refuses some *pages* — a page opened as “localhost” gets
+     403 “Missing Turnstile token”, which no fetch can solve — while the very
+     same anonymous request sent by this site's own server is accepted. So a
+     refusal is retried through api/ai-free.js; after that first success every
+     free call goes there directly instead of making a doomed round trip. */
+  let freeRelayWanted = false;
+
+  function relayUrl(kind) {
+    try {
+      if (typeof location === 'undefined') return '';
+      if (location.protocol !== 'http:' && location.protocol !== 'https:') return '';
+      const origin = location.origin;
+      if (!origin || origin === 'null') return '';
+      return origin + '/api/ai-free?what=' + (kind === 'models' ? 'models' : 'chat');
+    } catch (e) {
+      return '';
+    }
+  }
+
+  /** null = this host has no working relay (a plain file host, or a server
+      error), so the caller keeps the original answer. */
+  async function viaRelay(url, opts) {
+    try {
+      const res = await fetch(url, opts);
+      if (!res || !res.headers || res.headers.get('x-vocablab-relay') !== '1') return null;
+      freeRelayWanted = true;
+      return res;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function refused(res, keyless) {
+    return !!(keyless && res && (res.status === 401 || res.status === 403));
+  }
+
+  async function freeChat(directUrl, opts, keyless) {
+    const relay = keyless ? relayUrl('chat') : '';
+    if (relay && freeRelayWanted) {
+      const back = await viaRelay(relay, opts);
+      if (back) return back;
+      freeRelayWanted = false;
+    }
+    const res = await fetch(directUrl, opts);
+    if (!relay || !refused(res, keyless)) return res;
+    return (await viaRelay(relay, opts)) || res;
+  }
+
+  async function freeModels(directUrl, opts) {
+    const relay = relayUrl('models');
+    if (relay && freeRelayWanted) {
+      const back = await viaRelay(relay, opts);
+      if (back) return back;
+      freeRelayWanted = false;
+    }
+    const res = await fetch(directUrl, opts);
+    if (!relay || !refused(res, true)) return res;
+    return (await viaRelay(relay, opts)) || res;
+  }
 
   /* ---------- Models ---------- */
   function prettifyModel(id) {
@@ -459,7 +630,11 @@
     let detail = '';
     try {
       const body = await res.json();
-      detail = (body && body.error && body.error.message) || '';
+      const problem = body && body.error;
+      // Providers disagree on the shape: {error:{message}} or {error:"…"} —
+      // the string form is usually the one that says what actually happened.
+      if (typeof problem === 'string') detail = problem;
+      else detail = (problem && problem.message) || '';
     } catch (e) { /* ignore */ }
     const err = new Error(context + ' failed (' + res.status + ')' + (detail ? ' — ' + detail : ''));
     err.status = res.status;
@@ -468,26 +643,44 @@
     } else if (res.status === 401 || res.status === 403) {
       const p = providerForBase(opts.base || '');
       const who = (p && p.short) || 'The provider';
-      err.friendly = who + ' rejected this key (401/403)' + (detail ? ' — ' + detail : '') + '.' +
-        (p && p.keyUrl ? '\n• Copy a new key from ' + p.keyUrl + ' and paste it into the API key field on its own.' : '') +
-        (p && p.keyPrefix ? '\n• ' + p.short + ' keys look like “' + p.keyPrefix + '…” — if yours does not, it belongs to another provider.' : '') +
-        '\n• A key only works for the provider that issued it, and only for models that key may use.';
+      if (opts.keyless) {
+        // No key exists in this mode, so blaming the key sends the learner on a
+        // pointless hunt. This is the service questioning the page itself.
+        err.friendly = 'The free service refused this request (' + res.status +
+          (detail ? ' — ' + detail : '') + ').\n' +
+          '• No key is involved: it is challenging this page, not your setup. A page opened as “localhost” is one it challenges like this.\n' +
+          '• VocabLab retries the same call through this site\u2019s own server. If it still fails, open the app as 127.0.0.1 instead of localhost, use the deployed site, or switch to Advanced with your own key (Groq and Gemini have free tiers).';
+      } else {
+        err.friendly = who + ' rejected this key (401/403)' + (detail ? ' — ' + detail : '') + '.' +
+          (p && p.keyUrl ? '\n• Copy a new key from ' + p.keyUrl + ' and paste it into the API key field on its own.' : '') +
+          (p && p.keyPrefix ? '\n• ' + p.short + ' keys look like “' + p.keyPrefix + '…” — if yours does not, it belongs to another provider.' : '') +
+          '\n• A key only works for the provider that issued it, and only for models that key may use.';
+      }
     } else if (res.status === 402) {
       if (opts.keyless) {
-        const ra = res.headers && typeof res.headers.get === 'function' ? Number(res.headers.get('retry-after')) : NaN;
+        // The wait it asks for is usually in the body (“Retry after 3s”) and only
+        // sometimes in a header, so read both — a needless 30-second pause is
+        // the difference between a quiz that starts and one that looks broken.
+        const header = res.headers && typeof res.headers.get === 'function' ? Number(res.headers.get('retry-after')) : NaN;
+        const bodyMatch = /retry after\s+(\d+)\s*s/i.exec(detail || '');
+        const said = isFinite(header) && header > 0 ? header : (bodyMatch ? Number(bodyMatch[1]) : NaN);
         err.friendly = 'The free AI allows one request every 30 seconds — it is a shared public service.\n' +
           '• Wait a moment and press again.\n' +
           '• For no waiting, switch to Advanced in Settings → AI and use your own key.';
         err.freeWait = true;
-        err.retryAfter = isFinite(ra) && ra > 0 ? Math.min(45, ra) : 30;
+        err.retryAfter = isFinite(said) && said > 0 ? Math.min(45, said) : 30;
       } else {
         err.friendly = 'The provider says there are no credits for this model (402). On OpenRouter, pick a “:free” model such as openrouter/free.';
       }
     } else if (res.status === 404) {
-      err.friendly = 'Endpoint or model not found (404)' + (detail ? ' — ' + detail : '') +
-        (isLocalBaseUrl(opts.base || '')
-          ? '\n• Local Ollama: download the model first — ollama pull ' + (opts.model || 'llama3.2')
-          : '\n• Check the Base URL and the model ID in Settings → AI.');
+      err.friendly = opts.keyless
+        ? 'The free service no longer offers “' + (opts.model || 'this model') + '” (404).\n' +
+          '• Open Settings → AI and press “Check the free AI” to load the models it serves now.\n' +
+          '• VocabLab tries this by itself — retry the same action and it will pick a model that exists.'
+        : 'Endpoint or model not found (404)' + (detail ? ' — ' + detail : '') +
+          (isLocalBaseUrl(opts.base || '')
+            ? '\n• Local Ollama: download the model first — ollama pull ' + (opts.model || 'llama3.2')
+            : '\n• Check the Base URL and the model ID in Settings → AI.');
     } else if (res.status === 429) {
       err.friendly = opts.keyless
         ? 'The free AI is busy right now (429) — it is a shared service with a queue.\n' +
@@ -527,7 +720,7 @@
         ctrl = new AbortController();
         timer = setTimeout(function () { ctrl.abort(); }, 20000);
       }
-      res = await fetch(modelsUrl, { headers: oaiHeaders(base, cfg.key), signal: cfg.signal || (ctrl && ctrl.signal) });
+      res = await freeModels(modelsUrl, { headers: oaiHeaders(base, cfg.key), signal: cfg.signal || (ctrl && ctrl.signal) });
     } catch (e) {
       if (e && e.name === 'AbortError') {
         if (ctrl && ctrl.signal.aborted) throw keylessTimeout('did not answer the model check in 20 seconds');
@@ -566,24 +759,29 @@
     const base = normalizeBaseUrl(cfg.baseUrl);
     const def = providerForBase(base);
     const keyless = !!(cfg.keyless || (def && def.keyless));
+    // Pace only truly keyless calls: a paid key on the same provider has no
+    // 30-second rule, and a local server is unlimited.
+    const paced = keyless && !normalizeKey(cfg.key);
+    if (paced) await waitFreeSlot(cfg);
     let timer = null, ctrl = null;
     let res;
     try {
       // A keyless call has no deadline of its own; without one the UI can sit on
-      // “Checking…” forever when the shared service queues. Abort after 60 s.
+      // “Checking…” forever when the shared service queues. Abort after 90 s —
+      // a plain reply already takes 10–30 s on a busy day.
       if (keyless && !cfg.signal && typeof AbortController !== 'undefined') {
         ctrl = new AbortController();
-        timer = setTimeout(function () { ctrl.abort(); }, 60000);
+        timer = setTimeout(function () { ctrl.abort(); }, 90000);
       }
-      res = await fetch(base + '/chat/completions', {
+      res = await freeChat(base + '/chat/completions', {
         method: 'POST',
         headers: oaiHeaders(base, cfg.key),
         body: JSON.stringify(oaiBuildBody(Object.assign({}, cfg, { keyless: keyless }))),
         signal: cfg.signal || (ctrl && ctrl.signal)
-      });
+      }, keyless);
     } catch (e) {
       if (e && e.name === 'AbortError') {
-        if (ctrl && ctrl.signal.aborted) throw keylessTimeout('took more than 60 seconds to answer');
+        if (ctrl && ctrl.signal.aborted) throw keylessTimeout('took more than 90 seconds to answer');
         throw e;
       }
       throw await networkError(base, cfg.model);
@@ -595,39 +793,64 @@
         base: base, model: cfg.model, keyless: keyless
       });
     }
+    // A reply just landed: hold the next keyless call for a full window from
+    // THIS moment — the only trustworthy measurement of when the slot reopens.
+    if (paced) freeNextAt = Date.now() + freeTiming.windowMs;
     const data = await res.json();
     usageBump(1);
     return oaiExtractText(data);
   }
 
-  /** Try JSON mode first, then plain, retrying once on 429/5xx/free-slot 402. */
+  /* How many times one call may wait out the keyless service's “one reply per
+     30 s” queue. A paragraph plus its correction can queue twice in a row. */
+  const FREE_SLOT_WAITS = 3;
+
+  /** Try JSON mode first, then plain, retrying on 429/5xx/free-slot 402, and
+      swapping a model the provider no longer serves for one it does. */
   async function oaiCallWithFallbacks(cfg) {
     // Tutor replies are prose, so skip the JSON-mode pass entirely. Sending
     // response_format: json_object for a chat answer only wastes a request.
     const passes = cfg.plain ? [{ jsonMode: false }] : [{ jsonMode: true }, { jsonMode: false }];
     let lastErr = null;
-    let waitedForSlot = false;
+    let slotWaits = 0;
+    let repaired = false;
+    let call = cfg;
     for (let pass = 0; pass < passes.length; pass++) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          return await oaiCallOnce(Object.assign({}, cfg, passes[pass]));
+          return await oaiCallOnce(Object.assign({}, call, passes[pass]));
         } catch (e) {
           if (e && e.name === 'AbortError') throw e;
           lastErr = e;
-          const freeWait = e.status === 402 && e.freeWait;
-          const retryable = e.status === 429 || e.status >= 500 || freeWait;
-          if (retryable && attempt === 0) {
-            if (freeWait) {
-              // The keyless service allows one reply per IP per ~30 s. Wait for
-              // the next slot once, and say so instead of freezing silently.
-              if (waitedForSlot) break;
-              waitedForSlot = true;
-              const ms = Math.min(45000, Math.max(1000, Math.round((e.retryAfter || 30) * 1000)));
-              if (typeof cfg.onWait === 'function') cfg.onWait(ms);
-              await sleep(ms);
-            } else {
-              await sleep(e.status === 429 ? 5200 : 2200);
+          // A model that is gone fails every request from now on: look up what
+          // the provider serves and re-send with that, once per call.
+          if (!repaired && modelMissingError(e)) {
+            repaired = true;
+            const fixed = await repairModel(call);
+            if (fixed) {
+              call = Object.assign({}, call, { model: fixed });
+              attempt--;
+              continue;
             }
+          }
+          const freeWait = e.status === 402 && e.freeWait;
+          if (freeWait) {
+            // The provider's “Retry after” lies low (it has said 1s for a
+            // wait of ~25 s), so wait out this session's window or a distrust
+            // floor — each retry then lands in an open slot instead of
+            // burning every attempt within a few seconds.
+            if (slotWaits >= FREE_SLOT_WAITS) break;
+            const ms = freeWaitMs(e.retryAfter * 1000, slotWaits);
+            slotWaits++;
+            freeNextAt = Date.now() + ms;
+            if (typeof cfg.onWait === 'function') cfg.onWait(ms);
+            await sleep(ms, cfg.signal);
+            attempt--;
+            continue;
+          }
+          const retryable = e.status === 429 || e.status >= 500;
+          if (retryable && attempt === 0) {
+            await sleep(e.status === 429 ? 5200 : 2200, cfg.signal);
             continue;
           }
           if (e.status === 400) break; // e.g. json mode unsupported → next pass
@@ -1157,6 +1380,9 @@
       if ((cfg.provider || 'gemini') === 'gemini') {
         return callWithFallbacks({
           key: cfg.key, model: cfg.model, system: built.system, user: extra.user,
+          // The repair pass asks for a colder, tighter answer — forward it, or
+          // every Gemini attempt silently runs at the default temperature.
+          temperature: extra.temperature, maxTokens: extra.maxTokens,
           signal: cfg.signal, noSchema: true
         });
       }
@@ -1436,7 +1662,8 @@
       generationConfig.responseSchema = SPEECH_SCHEMA;
       // Flash models think before answering unless told not to; a scoring
       // reply is short, so skipping that keeps latency and tokens down.
-      generationConfig.thinkingConfig = { thinkingBudget: 0 };
+      const thinking = leastThinking(cfg.model || 'gemini-flash-latest');
+      if (thinking) generationConfig.thinkingConfig = thinking;
     }
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 60000) : null;
@@ -1599,21 +1826,59 @@
     throw new Error('Could not parse the model output as JSON');
   }
 
+  /* ---------- Thinking control ---------- */
+  /*
+   * A “thinking” Gemini model spends 1–3 minutes reasoning before it writes
+   * anything, which looks exactly like a hang. How to turn that down changed
+   * with the model family, and the two ways are not interchangeable:
+   *   · Gemini 2.5 takes a token budget — 0 switches thinking off; Pro refuses
+   *     0 and its smallest allowed budget is 128.
+   *   · Gemini 3 dropped the budget for thinkingLevel (minimal | low | …); a
+   *     budget sent to it is either a 400 or, worse, is ignored — and then the
+   *     model quietly thinks for minutes anyway.
+   * Aliases move, so “gemini-flash-latest” must be treated as the newest family.
+   */
+  function leastThinking(model) {
+    const id = String(normalizeModelPath(model || '')).toLowerCase();
+    const found = /gemini-(\d+)(?:\.(\d+))?/.exec(id);
+    const version = found ? Number(found[1] + '.' + (found[2] || '0')) : 0;
+    const pro = /pro/.test(id);
+    // A “-latest” alias is reassigned to the newest family whenever Google
+    // ships one, so it can never be judged by its own name.
+    if (/flash-latest|pro-latest/.test(id)) return { thinkingLevel: pro ? 'low' : 'minimal' };
+    if (version >= 3) return { thinkingLevel: pro ? 'low' : 'minimal' };
+    if (version >= 2.5) return pro ? { thinkingBudget: 128 } : { thinkingBudget: 0 };
+    // A bare “gemini-flash”/“gemini-pro” is the newest of its line; the older
+    // families are always versioned (gemini-1.5, gemini-2.0).
+    if (!version && /(flash|pro)/.test(id)) return { thinkingLevel: pro ? 'low' : 'minimal' };
+    // Anything else has no thinking knob: an unknown field would only earn a
+    // 400 on every single request.
+    return null;
+  }
+
+  /** The other way of asking for little thinking, tried when the first is
+      rejected — so no pass of the ladder is left asking for full latency. */
+  function altThinking(model) {
+    const first = leastThinking(model);
+    if (!first) return null;
+    if (first.thinkingLevel) return { thinkingBudget: 0 };
+    return { thinkingLevel: 'minimal' };
+  }
+
   /* ---------- Raw call ---------- */
   async function callOnce(opts) {
-    const { key, model, system, user, useSchema, useThinkingOff, signal } = opts;
+    const { key, model, system, user, useSchema, thinking, signal } = opts;
     const url = BASE + '/' + normalizeModelPath(model) + ':generateContent';
     const generationConfig = {
-      temperature: 0.85,
+      temperature: opts.temperature == null ? 0.85 : opts.temperature,
       topP: 0.95,
-      maxOutputTokens: 8192,
+      maxOutputTokens: opts.maxTokens || 8192,
       responseMimeType: opts.plain ? 'text/plain' : 'application/json'
     };
     if (useSchema) generationConfig.responseSchema = RESPONSE_SCHEMA;
-    // Flash/Pro 2.5+ models "think" before answering, which can consume the whole
-    // output budget and truncate the JSON. Ask for no thinking where supported;
-    // if a model rejects this, callWithFallbacks retries without it.
-    if (useThinkingOff) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    // Thinking models both waste the output budget and make the learner wait,
+    // so ask for as little as this model accepts (see leastThinking).
+    if (thinking) generationConfig.thinkingConfig = thinking;
 
     let res;
     try {
@@ -1657,15 +1922,30 @@
     return { text: text, usage: data.usageMetadata || null };
   }
 
-  /** Try schema+no-thinking first, then progressively simpler requests. One retry on 429/5xx. */
+  /**
+   * Try the much-less-thinking version first and only give up on it as a last
+   * resort: a pass that leaves thinking on can add minutes to one paragraph.
+   * Order: schema + least thinking, schema + the other style, schema alone,
+   * then no schema (for models that reject it) — again with least thinking.
+   */
   async function callWithFallbacks(opts) {
-    const passes = opts.noSchema
-      ? [{ useSchema: false, useThinkingOff: true }, { useSchema: false, useThinkingOff: false }]
-      : [
-        { useSchema: true, useThinkingOff: true },
-        { useSchema: true, useThinkingOff: false },
-        { useSchema: false, useThinkingOff: false }
-      ];
+    const least = leastThinking(opts.model);
+    const alt = altThinking(opts.model);
+    const first = least || alt;
+    const second = least ? alt : null;
+    const ladder = [first, second, null]
+      .map(function (thinking) { return { useSchema: !opts.noSchema, thinking: thinking }; });
+    // Models that reject the schema still get the least-thinking request.
+    if (!opts.noSchema) ladder.push({ useSchema: false, thinking: first });
+    // The same request must never be sent twice just because two thinking
+    // styles were not available for this model.
+    const seen = new Set();
+    const passes = ladder.filter(function (pass) {
+      const key = pass.useSchema + '|' + JSON.stringify(pass.thinking);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     let lastErr = null;
     for (let pass = 0; pass < passes.length; pass++) {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -1950,6 +2230,9 @@
     normalizeKey: normalizeKey,
     keyFormat: keyFormat,
     keyShapeWarning: keyShapeWarning,
+    setModelRepairHandler: setModelRepairHandler,
+    // Free-slot pacing, exposed so tests can shrink the 30-second window.
+    freeSlot: { configure: configureFreeSlot, reset: resetFreeSlot, waitMs: freeWaitMs },
     listModels: listModels,
     pickDefaultModel: pickDefaultModel,
     prettifyModel: prettifyModel,

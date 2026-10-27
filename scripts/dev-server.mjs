@@ -32,6 +32,7 @@ if (fs.existsSync(envFile)) {
 
 const HANDLERS = {
   '/api/health': 'api/health.js',
+  '/api/ai-free': 'api/ai-free.js',
   '/api/home': 'api/home.js',
   '/api/profile': 'api/profile.js',
   '/api/auth/signup': 'api/auth/signup.js',

@@ -343,18 +343,44 @@
   }
 
   /* ---------- Overlay ---------- */
+  /* A long AI wait used to look like a frozen dialog, so once it passes a few
+     seconds the overlay counts them out — “writing a paragraph · 42 s” tells the
+     learner it is still working, not stuck. */
+  let overlayBase = '';
+  let overlayClock = null;
+  let overlayStarted = 0;
+
+  function overlayPaint() {
+    if (!E.loadMsg) return;
+    const secs = Math.round((Date.now() - overlayStarted) / 1000);
+    E.loadMsg.textContent = overlayBase + (secs >= 5 ? ' · ' + secs + ' s' : '');
+  }
+  function stopOverlayClock() {
+    if (overlayClock) { clearInterval(overlayClock); overlayClock = null; }
+  }
+  function startOverlayClock() {
+    stopOverlayClock();
+    if (typeof setInterval === 'function') overlayClock = setInterval(overlayPaint, 1000);
+  }
   function showOverlay(title, msg) {
     E.loadTitle.textContent = title;
-    E.loadMsg.textContent = msg || '';
+    overlayBase = msg || '';
+    overlayStarted = Date.now();
+    overlayPaint();
     E.loadBar.style.width = '0%';
     E.overlay.hidden = false;
+    startOverlayClock();
   }
   function overlayProgress(done, total, label) {
     const pct = total ? Math.round((done / total) * 100) : 5;
     E.loadBar.style.width = pct + '%';
-    E.loadMsg.textContent = (label || '') + (total ? ' (' + done + '/' + total + ')' : '');
+    overlayBase = (label || '') + (total ? ' (' + done + '/' + total + ')' : '');
+    overlayPaint();
   }
-  function hideOverlay() { E.overlay.hidden = true; }
+  function hideOverlay() {
+    stopOverlayClock();
+    E.overlay.hidden = true;
+  }
 
   /* ---------- Routes / screens ---------- */
   const VIEWS = {
@@ -3851,29 +3877,91 @@
     setActiveModel(preferred);
   }
 
-  async function testSimple() {
-    E.aiStatus.textContent = 'Checking the free AI…';
+  /**
+   * Ask the free service which models it serves and keep the saved one usable.
+   * Silent checks (opening Settings) never nag; a model the free service has
+   * dropped is reported the moment it changes, because from then on every
+   * request would answer 404.
+   */
+  async function refreshFreeModels(silent) {
+    if (!silent) E.aiStatus.textContent = 'Checking the free AI…';
     try {
       const models = await Ai.listModels({ provider: 'openai', key: '', baseUrl: FREE_PROVIDER.base, keyless: true });
-      showAiIssue('');
       if (!models.length) {
-        E.aiStatus.textContent = 'The free service answered, but listed no chat model. Try a quiz — or switch to Advanced with your own key.';
+        if (!silent) E.aiStatus.textContent = 'The free service answered, but listed no chat model. Try a quiz — or switch to Advanced with your own key.';
         return;
       }
+      showAiIssue('');
+      const before = simpleModel();
       settings.simpleModels = models.map(function (m) { return { id: m.id, label: m.label || m.id }; });
       if (!models.some(function (m) { return m.id === simpleModel(); })) {
         settings.simpleModel = Ai.pickDefaultModel(models, 'openai') || models[0].id;
       }
       saveSettings();
       syncAiUI();
-      E.aiStatus.textContent = '✓ Free AI works — ' + models.length + ' model' + (models.length === 1 ? '' : 's') +
-        ' available. Using: ' + activeModel() + '. No key needed.';
-      U.toast('Free AI works — no key needed. Model: ' + activeModel(), 'ok');
+      const changed = simpleModel() !== before;
+      if (!silent) {
+        E.aiStatus.textContent = '✓ Free AI works — ' + models.length + ' model' + (models.length === 1 ? '' : 's') +
+          ' available. Using: ' + activeModel() + '. No key needed.';
+        U.toast('Free AI works — no key needed. Model: ' + activeModel(), 'ok');
+      } else if (changed) {
+        E.aiStatus.textContent = 'Free AI updated — “' + before + '” is not served any more; using “' +
+          simpleModel() + '”.';
+        U.toast('The free service no longer offers “' + before + '” — switched to “' + simpleModel() + '”.', 'warn', 10000);
+      }
     } catch (e) {
+      // A background check must never interrupt: only a check the learner asked
+      // for reports its own failure.
+      if (silent) return;
       const detail = e.friendly || e.message;
       E.aiStatus.textContent = '✕ ' + detail;
       showAiIssue(detail);
       U.toast(detail, 'bad', 12000);
+    }
+  }
+
+  function testSimple() { return refreshFreeModels(false); }
+
+  let freeModelChecked = false;
+  /** Once per session, when Settings → AI is opened: a stale free model is
+      fixed before it can fail a quiz. */
+  function verifyFreeModel() {
+    if (freeModelChecked || aiMode() !== 'simple') return;
+    freeModelChecked = true;
+    refreshFreeModels(true);
+  }
+
+  /**
+   * The provider stopped serving the model we were using (the free service
+   * drops them regularly). ai.js has already moved the call to one it does
+   * serve — this keeps the saved choice — and the picker — in step.
+   */
+  function onModelRepaired(info) {
+    if (!info || !info.model) return;
+    if (sameBase(info.baseUrl, FREE_PROVIDER.base)) {
+      settings.simpleModel = info.model;
+      if (Array.isArray(info.models) && info.models.length) {
+        settings.simpleModels = info.models.map(function (m) { return { id: m.id, label: m.label || m.id }; });
+      }
+      saveSettings();
+      syncAiUI();
+      if (E.aiStatus) {
+        E.aiStatus.textContent = 'Free AI updated — “' + (info.previous || 'the old model') +
+          '” is not served any more; using “' + info.model + '”. No key needed.';
+      }
+      showAiIssue('');
+      U.toast('The free service no longer offers “' + (info.previous || 'the old model') +
+        '” — switched to “' + info.model + '”.', 'warn', 10000);
+      return;
+    }
+    if (aiMode() === 'advanced' && sameBase(info.baseUrl, settings.oaiBase)) {
+      settings.oaiModel = info.model;
+      rememberConn();
+      saveSettings();
+      syncAiUI();
+      if (E.inpModel) E.inpModel.value = info.model;
+      U.toast('“' + (info.previous || 'That model') + '” is not served any more — using “' +
+        info.model + '” instead.', 'warn', 10000);
     }
   }
 
@@ -3945,6 +4033,7 @@
 
   function openSettings(tab) {
     syncSettingsUI();
+    if (tab === 'ai') verifyFreeModel();
     if (E.inpAzureKey) {
       E.inpAzureKey.type = 'password';
       E.btnToggleAzureKey.textContent = 'Show';
@@ -4584,6 +4673,7 @@
     // so switching providers can bring it back later.
     migrateProvider();
     normalizeStoredKeys();
+    if (Ai.setModelRepairHandler) Ai.setModelRepairHandler(onModelRepaired);
     rememberConn();
     syncSettingsUI();
     bindEvents();

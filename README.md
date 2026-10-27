@@ -346,6 +346,15 @@ How it keeps you inside the free tier:
   ask (shape spelled out, colder, more room), and a provider that is out of quota
   tells you to switch provider (or switches for you in one click) instead of
   leaving you stuck.
+- **Free-slot queue** — the keyless service allows one reply per IP every 30 s,
+  and it says how long to wait. That wait is read from the answer itself and
+  waited out (up to three times per call), so a paragraph and its correction can
+  queue back-to-back instead of reporting a failure.
+- **Retired models** — providers drop model names regularly (the free service
+  especially). A model the provider no longer serves is replaced by one it does,
+  the choice is saved, and the message says what changed — every AI feature keeps
+  working without a trip to Settings. Opening **Settings → AI** also checks the
+  saved free model quietly, once per session.
 - **Counter** — Settings → AI shows requests used today and cache size.
 
 Notes:
@@ -533,7 +542,8 @@ Grammar courses (French tenses and *Grammaire progressive*) remain French lesson
 | “Missing Sheets API key” | That mode needs a Google Cloud key — switch to **⭐ Sheet link — no key** instead |
 | “Could not open the sheet” (Sheet link mode) | Set sharing to “Anyone with the link → Viewer” |
 | `429` from the AI provider | Free-tier limit. Wait a minute, or pick another provider in Settings → AI (Groq, Cerebras and OpenRouter are free too) — the error offers a one-click switch, and the app falls back to built-in questions meanwhile. In Simple mode, the keyless service is shared: retry, or switch to Advanced |
-| Free AI is busy / slow (Simple) | It is a public, shared service with a queue. Retry in a minute, press **Check the free AI**, or switch to Advanced with your own key (Groq and Gemini have free tiers). The built-in generator still covers everything except paragraphs |
+| Free AI is busy / slow (Simple) | It is a public, shared service with a queue. The app now waits out the “one reply per 30 s” slot by itself, so this is mostly only visible as a pause. Retry in a minute, press **Check the free AI**, or switch to Advanced with your own key (Groq and Gemini have free tiers). The built-in generator still covers everything except paragraphs |
+| Every AI action says it failed in Simple mode | The model saved in Settings → AI is probably one the free service has retired — it answers `404` for every request from then on. The app now asks what is served, switches to it, saves it, and repeats the request; the message names the old and new model. Press **Check the free AI** in Settings → AI to see the list yourself. Advanced providers get the same treatment when they retire a model |
 | Provider rejects the key (`401`/`403`) | The app now names the provider and its own reason (“Invalid API Key”). Keys are *not* shared between providers: `gsk_…` (56 chars) = Groq, `xai-…` = xAI **Grok**, `sk-or-…` = OpenRouter, `sk-…` = DeepSeek, `AIza…` = Gemini. **Groq (fast inference, free) and Grok (xAI, paid) are different companies one letter apart** — a key from a “Grok” page will never work on the Groq provider. A key that matches no provider's format, or another provider's, is called out the moment you paste it, with the console it should come from. A pasted `Bearer ` prefix, quotes or a stray newline are stripped automatically (keys saved earlier are repaired on load). On OpenRouter use a `:free` model; on Cloudflare include your account ID in the Base URL |
 | AI replies, but the quiz still shows built-in questions | The model answered in a shape VocabLab can't use. The prompt now spells out the exact JSON (`{"questions":[…]}`, one object per word) and the app retries once, colder and with more room, before giving up. If it still fails, the model ignores JSON mode: open Settings → AI (the box shows how the reply began) and pick a plain chat model instead of a reasoning one |
 | Paragraph translation is greyed out | It is AI-only, by design: use Simple mode (free, no key) in Settings → AI, or add your own key in Advanced. The quiz Generator setting does **not** affect paragraph practice — it always uses AI. A paragraph is written **and** corrected by AI, so it is never replaced by a built-in question; if a generation fails mid-session the reason is kept in Settings → AI |

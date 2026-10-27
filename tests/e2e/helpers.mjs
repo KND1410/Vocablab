@@ -85,6 +85,18 @@ export async function seedApp(page, opts) {
       localStorage.setItem('vocablab.deck', JSON.stringify(payload.deck));
     }
   }, { settings: settings, deck: deck, overwrite: !!options.overwrite });
+  // Fake providers answer instantly, but the keyless provider paces real calls
+  // to one per 30 s. Shrink that window to nothing once the scripts load, or a
+  // second AI call in the same test would sleep a real half-minute.
+  await page.addInitScript(function () {
+    let tries = 0;
+    const timer = setInterval(function () {
+      if (window.Ai && window.Ai.freeSlot) {
+        clearInterval(timer);
+        window.Ai.freeSlot.configure({ windowMs: 0, floors: [50, 50, 50] });
+      } else if (++tries > 2000) clearInterval(timer);
+    }, 5);
+  });
 }
 
 /** Open a route and wait until the app has routed to its screen. */

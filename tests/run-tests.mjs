@@ -92,6 +92,9 @@ const sandbox = {
     }
   },
   DecompressionStream,
+  // Pages always have one: the free-provider relay needs an origin to call back
+  // to, and CORS advice names the page it is talking from.
+  location: { origin: 'http://localhost:4300', protocol: 'http:', hostname: 'localhost', port: '4300', hash: '' },
   Math, Date, JSON, Object, Array, String, Number, Boolean, RegExp, Set, Map, Promise, Error,
   URL // browsers always have it; ai.js uses it to name the failing host
 };
@@ -280,8 +283,8 @@ eq(speechRequests[0].body.generationConfig.responseMimeType, 'application/json',
   'scoring asks for JSON');
 ok(!!speechRequests[0].body.generationConfig.responseSchema,
   'the scoring schema is attached on the first pass');
-eq(speechRequests[0].body.generationConfig.thinkingConfig.thinkingBudget, 0,
-  'scoring skips Gemini thinking when supported');
+eq(speechRequests[0].body.generationConfig.thinkingConfig.thinkingLevel, 'minimal',
+  'scoring asks the newest Flash family for minimal thinking');
 
 // A model that rejects the schema/thinking flag: the next pass drops both.
 speechRequests.length = 0;
@@ -302,6 +305,84 @@ eq(retried.score, 70, 'a rejected schema is retried without it');
 eq(speechRequests.length, 2, 'the retry makes exactly one extra request');
 ok(!speechRequests[1].generationConfig.responseSchema, 'the retry leaves the schema out');
 ok(!speechRequests[1].generationConfig.thinkingConfig, 'the retry leaves the thinking flag out');
+
+/* ---------- Gemini thinking control ---------- */
+/* A thinking model answers in minutes, and which knob turns it down changed
+   with the family: 2.5 takes a token budget (Pro refuses 0), Gemini 3 dropped
+   it for thinkingLevel. The wrong one is a 400 — or worse, ignored, and the
+   learner waits anyway. */
+section('Gemini thinking control');
+const thinkWords = [
+  { term: 'gare', meaning: 'nhà ga' }, { term: 'valise', meaning: 'va li' },
+  { term: 'bureau', meaning: 'văn phòng' }, { term: 'billet', meaning: 'vé' }
+];
+/** A reply normalizeParagraph accepts for the words above: the Vietnamese
+    paragraph avoids the target terms, the French reference uses them all. */
+function thinkReply() {
+  return JSON.stringify({
+    paragraph: 'Buổi sáng, tôi ra nhà ga rồi xếp va li vào văn phòng và mua một tấm vé.',
+    reference: 'Le matin, je vais à la gare, je range la valise au bureau et j’achète un billet.',
+    keywords: thinkWords.map((w) => ({ term: w.term, meaning: w.meaning, note: '' }))
+  });
+}
+async function paragraphRequest(model) {
+  const bodies = [];
+  aiFetch = async function (url, opts) {
+    bodies.push(JSON.parse(opts.body));
+    return fakeResponse(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: thinkReply() }] } }]
+    }));
+  };
+  await Ai.generateParagraph({
+    provider: 'gemini', key: 'AIza-test-key', model: model, words: thinkWords,
+    targetLang: 'French', meaningLang: 'Vietnamese', direction: 'vi2fr'
+  });
+  return { thinking: bodies[0].generationConfig.thinkingConfig || null, calls: bodies.length };
+}
+
+const think25 = await paragraphRequest('gemini-2.5-flash');
+eq(think25.thinking && think25.thinking.thinkingBudget, 0, 'Gemini 2.5 Flash is asked to think not at all');
+const thinkPro = await paragraphRequest('gemini-2.5-pro');
+eq(thinkPro.thinking && thinkPro.thinking.thinkingBudget, 128,
+  'Gemini 2.5 Pro gets its smallest allowed budget, never 0');
+const think3 = await paragraphRequest('gemini-3-flash-preview');
+eq(think3.thinking && think3.thinking.thinkingLevel, 'minimal',
+  'Gemini 3 Flash gets thinkingLevel, not a budget it ignores');
+const think31 = await paragraphRequest('gemini-3.1-pro-preview');
+eq(think31.thinking && think31.thinking.thinkingLevel, 'low', 'Gemini 3 Pro gets its lowest level');
+const thinkAlias = await paragraphRequest('gemini-flash-latest');
+eq(thinkAlias.thinking && thinkAlias.thinking.thinkingLevel, 'minimal',
+  'the moving “-latest” alias is treated as the newest family, not 2.5');
+ok(!thinkAlias.thinking || thinkAlias.thinking.thinkingBudget === undefined,
+  'a 2.5-style budget is never sent to the newest family');
+const thinkBare = await paragraphRequest('gemini-flash');
+eq(thinkBare.thinking && thinkBare.thinking.thinkingLevel, 'minimal',
+  'an unversioned Flash name is treated as the newest line too');
+const thinkOld = await paragraphRequest('gemini-2.0-flash');
+eq(thinkOld.thinking, null, 'a model with no thinking knob is not sent an unknown field');
+eq(thinkOld.calls, 1, 'and that request is made once, not repeated pass after pass');
+
+// A model that rejects the first thinking style must not land on a pass that
+// lets the model think freely — that is the multi-minute stall.
+let thinkPasses = [];
+aiFetch = async function (url, opts) {
+  const body = JSON.parse(opts.body || '{}');
+  thinkPasses.push(body.generationConfig.thinkingConfig || null);
+  if (thinkPasses.length === 1) {
+    return fakeResponse(JSON.stringify({ error: { message: "Unknown name 'thinkingLevel'" } }), 400);
+  }
+  return fakeResponse(JSON.stringify({
+    candidates: [{ content: { parts: [{ text: thinkReply() }] } }]
+  }));
+};
+await Ai.generateParagraph({
+  provider: 'gemini', key: 'AIza-test-key', model: 'gemini-3-flash-preview', words: thinkWords,
+  targetLang: 'French', meaningLang: 'Vietnamese', direction: 'vi2fr'
+});
+eq(thinkPasses.length, 2, 'a rejected thinking style is retried once, not dropped');
+ok(thinkPasses[1] && thinkPasses[1].thinkingBudget === 0,
+  'the retry asks with the other style instead of giving the model free rein');
+aiFetch = null;
 
 // Free-tier quota errors should point at the Azure alternative instead of a quiz.
 aiFetch = async function () {
@@ -1193,6 +1274,11 @@ aiFetch = null;
 /* The keyless provider (Simple mode): its own /models URL, no Authorization
    header, and only the tier that works without a key. */
 const freeDef = Ai.providerById('pollinations');
+/* The 30-second free slot is enforced with real timers in the app; tests
+   shrink it to milliseconds so pacing is still exercised but never slow.
+   The production values are asserted through Ai.freeSlot.waitMs below. */
+Ai.freeSlot.configure({ windowMs: 0, floors: [400, 400, 400] });
+Ai.freeSlot.reset();
 ok(freeDef && freeDef.keyless === true, 'the free provider is marked keyless');
 eq(freeDef && freeDef.base, 'https://text.pollinations.ai/openai', 'the free provider speaks the OpenAI shape');
 eq(freeDef && freeDef.modelsUrl, 'https://text.pollinations.ai/models', 'its model list lives beside /openai');
@@ -1237,6 +1323,224 @@ eq(freeWait, 1000, 'the free-slot wait is reported to the UI');
 ok(freeLimit && /one request every 30 seconds/.test(freeLimit.friendly),
   'a 402 free-slot limit is explained as the free service’s own rule');
 ok(freeLimit && !/OpenRouter/.test(freeLimit.friendly), '…and not mistaken for OpenRouter credits');
+aiFetch = null;
+
+/* A model the provider has stopped serving (the free service drops them) would
+   fail every request from then on, because the id stays in the settings. */
+section('AI model repair');
+const questionsReply = JSON.stringify({
+  questions: [{
+    type: 'mc', direction: 'term2meaning', term: 'gare', prompt: 'la gare',
+    options: ['le bureau', 'la valise', 'le billet', 'la gare'], answer: 'la gare', explanation: 'station'
+  }]
+});
+const chatReply = () => fakeResponse(JSON.stringify({ choices: [{ message: { content: questionsReply } }] }), 200);
+const goneReply = (model) => fakeResponse(JSON.stringify({
+  error: { message: 'Model "' + model + '" isn\'t on the Classic API.' }
+}), 404);
+
+let repairFlow = [];
+let repairedWith = null;
+Ai.setModelRepairHandler(function (info) { repairedWith = info; });
+aiFetch = async function (url, opts) {
+  const u = String(url);
+  repairFlow.push(u);
+  if (/\/models$/.test(u)) {
+    return fakeResponse(JSON.stringify([{ name: 'openai-fast', tier: 'anonymous' }]), 200);
+  }
+  const body = JSON.parse(opts.body || '{}');
+  if (body.model !== 'openai-fast') return goneReply(body.model);
+  return chatReply();
+};
+const repairedQuestions = await Ai.generateQuestions({
+  provider: 'openai', baseUrl: freeDef.base, key: '', model: 'mistral', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese'
+});
+eq(repairedQuestions.length, 1, 'a model the provider dropped no longer fails the whole request');
+eq(repairedWith && repairedWith.model, 'openai-fast', 'the model that does exist is reported back to the app');
+eq(repairedWith && repairedWith.previous, 'mistral', '…together with the one it replaced');
+eq(repairFlow.filter((u) => /\/models$/.test(u)).length, 1, 'the model list is asked exactly once');
+
+// Nothing usable to switch to: the message must point at the model check.
+let stuckErr = null;
+aiFetch = async function (url) {
+  if (/\/models$/.test(String(url))) return fakeResponse(JSON.stringify([]), 200);
+  return goneReply('ghost');
+};
+try {
+  await Ai.generateQuestions({
+    provider: 'openai', baseUrl: freeDef.base, key: '', model: 'ghost', items: oneItem,
+    targetLang: 'French', meaningLang: 'Vietnamese'
+  });
+} catch (e) { stuckErr = e; }
+ok(stuckErr && /Check the free AI/.test(stuckErr.friendly),
+  'when nothing can be repaired, the error names the free-model check');
+ok(!/\/api\/tags/.test(stuckErr.friendly), 'a dead free model is not reported as a local-server problem');
+
+// A local server keeps its own advice: a model is missing because it was never
+// pulled, not because the provider retired it.
+let ollamaErr = null;
+aiFetch = async function (url) {
+  if (/\/models$/.test(String(url))) return fakeResponse(JSON.stringify({ data: [{ id: 'llama3.2' }] }), 200);
+  return fakeResponse(JSON.stringify({ error: { message: 'model "ghost" not found, try pulling it first' } }), 404);
+};
+try {
+  await Ai.generateQuestions({
+    provider: 'openai', baseUrl: 'http://localhost:11434/v1', key: '', model: 'ghost', items: oneItem,
+    targetLang: 'French', meaningLang: 'Vietnamese'
+  });
+} catch (e) { ollamaErr = e; }
+ok(ollamaErr && /ollama pull ghost/.test(ollamaErr.friendly),
+  'a local model that was never pulled is not swapped for another one');
+
+/* The service usually says the wait in the body (“Retry after 3s”), not in a
+   header — and one quiz can need two replies, so the wait must survive twice. */
+let slotCalls = 0;
+const slotWaits = [];
+aiFetch = async function () {
+  slotCalls++;
+  if (slotCalls <= 2) {
+    return fakeResponse(JSON.stringify({
+      error: { message: 'Free limit reached: 1 reply every 30 seconds per IP. Retry after 1s, or get unlimited replies.' }
+    }), 402);
+  }
+  return chatReply();
+};
+const slotQuestions = await Ai.generateQuestions({
+  provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese', onWait: (ms) => { slotWaits.push(ms); }
+});
+eq(slotWaits.length, 2, 'the free-slot queue is waited out more than once');
+eq(slotWaits[0], 1000, 'the wait follows the seconds the service itself asked for');
+eq(slotQuestions.length, 1, 'the request still succeeds after waiting for the slot');
+Ai.setModelRepairHandler(null);
+aiFetch = null;
+
+/* The service's own “Retry after Ns” is not reliable — it has answered
+   “1s” when the real remaining wait was about 25 s — so the waiting logic is
+   asserted here directly: distrust small claims, trust our own window. */
+section('Free-slot pacing');
+Ai.freeSlot.reset();
+Ai.freeSlot.configure({ windowMs: 0, floors: [15000, 30000, 30000] });
+eq(Ai.freeSlot.waitMs(1000, 0), 15000, 'a “retry after 1s” claim is distrusted on the first wait');
+eq(Ai.freeSlot.waitMs(1000, 1), 30000, 'a second 402 in a fresh session waits out the full window');
+eq(Ai.freeSlot.waitMs(99999, 0), 45000, 'the countdown never exceeds 45 s');
+Ai.freeSlot.configure({ floors: [] });
+eq(Ai.freeSlot.waitMs(0, 0), 1000, 'the wait is never below a one-second countdown');
+
+/* After a reply of our own the window is known exactly — it wins over both
+   the provider's claim and the distrusted-floor path. */
+Ai.freeSlot.configure({ windowMs: 6000, floors: [15000, 30000, 30000] });
+Ai.freeSlot.reset();
+aiFetch = async function () { return chatReply(); };
+await Ai.generateQuestions({
+  provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese'
+});
+const windowLeft = Ai.freeSlot.waitMs(1000, 0);
+ok(windowLeft >= 5000 && windowLeft <= 6000,
+  'our own window (≈6 s left) is trusted over the 1 s claim: ' + windowLeft + ' ms');
+
+/* The next call holds for the window *before* sending — no doomed request,
+   and the countdown reaches the UI. */
+Ai.freeSlot.configure({ windowMs: 1300, floors: [400, 400, 400] });
+Ai.freeSlot.reset();
+const pacedWaits = [];
+const pacedFirst = await Ai.generateQuestions({
+  provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese', onWait: (ms) => { pacedWaits.push(ms); }
+});
+eq(pacedWaits.length, 0, 'the first call of a session goes out immediately');
+const paceStart = Date.now();
+const pacedSecond = await Ai.generateQuestions({
+  provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese', onWait: (ms) => { pacedWaits.push(ms); }
+});
+const pacedFor = Date.now() - paceStart;
+eq(pacedWaits.length, 1, 'the call right after a reply waits for the slot first');
+ok(pacedWaits[0] >= 1000 && pacedWaits[0] <= 1300,
+  'the countdown is the remaining window: ' + pacedWaits[0] + ' ms');
+ok(pacedFor >= 1000, 'the wait really happened before the request (' + pacedFor + ' ms)');
+eq(pacedFirst.length, 1, 'and the paced generation still succeeds');
+eq(pacedSecond.length, 1, '…both times');
+
+/* Cancel must work during the countdown, not only during the request. */
+Ai.freeSlot.configure({ windowMs: 30000, floors: [400, 400, 400] });
+Ai.freeSlot.reset();
+await Ai.generateQuestions({
+  provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese'
+});
+const abortCtrl = new AbortController();
+const pendingGen = Ai.generateQuestions({
+  provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese', signal: abortCtrl.signal
+});
+setTimeout(() => abortCtrl.abort(), 120);
+let slotAborted = null;
+try { await pendingGen; } catch (e) { slotAborted = e; }
+eq(slotAborted && slotAborted.name, 'AbortError',
+  'cancelling during the free-slot countdown aborts instead of holding the dialog');
+Ai.freeSlot.configure({ windowMs: 0, floors: [400, 400, 400] });
+Ai.freeSlot.reset();
+aiFetch = null;
+
+/* The provider refuses some *pages*, not the request: a page opened as
+   “localhost” answers 403 “Missing Turnstile token”, which no fetch can solve,
+   while the same anonymous call from this site's own server is accepted. So a
+   refusal switches every free call to api/ai-free.js. */
+section('Free AI relay (the provider refusing the page)');
+const relayLog = [];
+const relayBody = JSON.stringify({ choices: [{ message: { content: questionsReply } }] });
+aiFetch = async function (url) {
+  const u = String(url);
+  relayLog.push(u);
+  if (u.indexOf('/api/ai-free') !== -1) {
+    if (u.indexOf('what=models') !== -1) {
+      return fakeResponse(JSON.stringify([{ name: 'openai-fast', tier: 'anonymous' }]), 200, { 'x-vocablab-relay': '1' });
+    }
+    return fakeResponse(relayBody, 200, { 'x-vocablab-relay': '1' });
+  }
+  return fakeResponse(JSON.stringify({ error: 'Missing Turnstile token' }), 403);
+};
+const relayModels = await Ai.listModels({ provider: 'openai', key: '', baseUrl: freeDef.base });
+eq(relayModels.map((m) => m.id), ['openai-fast'], 'a refused model list is fetched through this site’s own server');
+eq(relayLog.length, 2, 'direct attempt first, then the relay');
+ok(/\/api\/ai-free\?what=models$/.test(relayLog[1]), 'the relay URL names the model list');
+
+relayLog.length = 0;
+const relayQuestions = await Ai.generateQuestions({
+  provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+  targetLang: 'French', meaningLang: 'Vietnamese'
+});
+eq(relayQuestions.length, 1, 'the quiz is generated through the relay');
+eq(relayLog.length, 1, 'once the relay is known to work, the direct call is not tried again');
+ok(/\/api\/ai-free\?what=chat$/.test(relayLog[0]), 'the relay chat endpoint is used');
+
+// A host with no server behind it (a plain file host): say what actually
+// happened — blaming a key this mode does not have sends nobody anywhere.
+aiFetch = async function () { return fakeResponse(JSON.stringify({ error: 'Missing Turnstile token' }), 403); };
+let refusedErr = null;
+try {
+  await Ai.generateQuestions({
+    provider: 'openai', baseUrl: freeDef.base, key: '', model: 'openai-fast', items: oneItem,
+    targetLang: 'French', meaningLang: 'Vietnamese'
+  });
+} catch (e) { refusedErr = e; }
+ok(refusedErr && /Missing Turnstile token/.test(refusedErr.friendly), 'the provider’s own reason reaches the learner');
+ok(refusedErr && /No key is involved/.test(refusedErr.friendly), '…and the message does not blame a key');
+ok(refusedErr && /rejected this key/.test(refusedErr.friendly) === false, 'the key-hunt advice is gone in keyless mode');
+ok(refusedErr && /127\.0\.0\.1/.test(refusedErr.friendly), '…with the localhost workaround instead');
+
+// The relay stopped answering: go back to calling the provider directly.
+relayLog.length = 0;
+aiFetch = async function (url) {
+  relayLog.push(String(url));
+  return fakeResponse(JSON.stringify([{ name: 'openai-fast', tier: 'anonymous' }]), 200);
+};
+const directAgain = await Ai.listModels({ provider: 'openai', key: '', baseUrl: freeDef.base });
+eq(directAgain.length, 1, 'a broken relay falls back to the direct call');
+ok(relayLog.every((u) => u.indexOf('/api/ai-free') === -1), '…and stays on the direct call');
 aiFetch = null;
 
 /* ---------- planning + session ---------- */
@@ -2664,6 +2968,65 @@ eq(missingRoutes, [], 'every serverless function has a route in the local dev se
 ok(fs.existsSync(path.join(root, 'package.json')) &&
   /"dev:local": "node scripts\/dev-server\.mjs"/.test(fs.readFileSync(path.join(root, 'package.json'), 'utf8')),
   'npm run dev:local points at the local server');
+
+/* The relay endpoint behind the localhost 403: the browser asks its own origin,
+   the server sends the provider a request with no Origin header — which is the
+   whole point, since the provider challenges browser pages opened as localhost. */
+section('Free AI relay endpoint (api/ai-free.js)');
+const aiFreeApi = require('../api/ai-free.js');
+const upstreamFetch = global.fetch;
+const relayHits = [];
+function stubUpstream(status, body) {
+  global.fetch = async function (url, opts) {
+    relayHits.push({ url: String(url), opts: opts || {} });
+    return {
+      status: status,
+      headers: { get: function (name) { return String(name).toLowerCase() === 'content-type' ? 'application/json' : null; } },
+      text: async function () { return body; }
+    };
+  };
+}
+const localOrigin = { origin: 'http://localhost:4300', host: 'localhost:4300' };
+
+stubUpstream(200, '[{"name":"openai-fast","tier":"anonymous"}]');
+const relayModelsRes = await apiCall(aiFreeApi, 'GET', '/api/ai-free?what=models', { headers: localOrigin });
+eq(relayModelsRes.status, 200, 'the relay answers with the provider’s own status');
+eq(relayModelsRes.data[0].id || relayModelsRes.data[0].name, 'openai-fast', '…and its own body');
+ok(/https:\/\/text\.pollinations\.ai\/models$/.test(relayHits[relayHits.length - 1].url),
+  'the model list is asked for from the free provider');
+const upstreamHeaders = relayHits[relayHits.length - 1].opts.headers || {};
+ok(!('Origin' in upstreamHeaders) && !('origin' in upstreamHeaders),
+  'the server sends no Origin header — that is what the provider accepts');
+eq(relayModelsRes.headers['x-vocablab-relay'], '1', 'a relayed answer is marked, so the app can trust it');
+
+stubUpstream(403, '{"error":"Missing Turnstile token"}');
+const relayChatRes = await apiCall(aiFreeApi, 'POST', '/api/ai-free?what=chat', {
+  headers: localOrigin, body: { model: 'openai-fast', messages: [{ role: 'user', content: 'hi' }] }
+});
+eq(relayChatRes.status, 403, 'the provider’s refusal is passed through, not hidden');
+eq(relayChatRes.data.error, 'Missing Turnstile token', '…with the reason the provider gave');
+ok(/\/openai\/chat\/completions$/.test(relayHits[relayHits.length - 1].url), 'chat is relayed to the chat endpoint');
+eq(JSON.parse(relayHits[relayHits.length - 1].opts.body).model, 'openai-fast', 'the payload is forwarded unchanged');
+
+stubUpstream(200, '{}');
+relayHits.length = 0;
+const evilRelay = await apiCall(aiFreeApi, 'POST', '/api/ai-free?what=chat', {
+  headers: { origin: 'https://evil.example', host: 'localhost:4300' }, body: { model: 'x' }
+});
+eq(evilRelay.status, 403, 'a foreign page cannot relay through us');
+eq(relayHits.length, 0, '…and the provider is never contacted for it');
+const methodRes = await apiCall(aiFreeApi, 'DELETE', '/api/ai-free?what=chat', { headers: localOrigin });
+eq(methodRes.status, 405, 'only GET and POST are relayed');
+const targetRes = await apiCall(aiFreeApi, 'GET', '/api/ai-free?what=anything', { headers: localOrigin });
+eq(targetRes.status, 400, 'an unknown target is refused');
+
+global.fetch = async function () { throw new Error('offline'); };
+const downRes = await apiCall(aiFreeApi, 'GET', '/api/ai-free?what=models', { headers: localOrigin });
+eq(downRes.status, 502, 'an unreachable provider becomes a clean 502');
+global.fetch = upstreamFetch;
+
+eq(devServer.HANDLERS['/api/ai-free'], 'api/ai-free.js',
+  'the relay has a route in the local dev server');
 
 section('Offline quest queue');
 
