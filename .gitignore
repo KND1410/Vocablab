@@ -19,8 +19,10 @@ Thumbs.db
 # Source PDFs for the grammar course — kept local, never published.
 *.pdf
 
-# Exam papers and their audio — copyrighted course material, kept local.
-exam/
+# Exam papers (PDF) — kept local, never published. The exam audio is tracked
+# so the deployed app can actually play the listening tracks.
+exam/**/*.pdf
+exam/**/Thumbs.db
 
 # Agent guidance — kept local, never committed.
 AGENTS.md

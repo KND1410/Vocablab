@@ -145,6 +145,7 @@
       '</span><span class="exam-audio-label">' + esc(piste) + '</span>' +
       '<span class="muted tiny">' + esc(t('exam.listenFree')) + '</span></div>' +
       '<audio class="exam-player" controls preload="none" src="' + esc(ex.src) + '"></audio>' +
+      '<p class="exam-audio-missing" hidden></p>' +
       '</div>';
   }
 
@@ -464,6 +465,35 @@
     el.textContent = fmtClock(left);
   }
 
+  /**
+   * A player whose file is missing (404, no network, another device that
+   * cannot reach this server) fails silently: the button just does nothing.
+   * Say so instead, and clear the warning if a later attempt plays.
+   */
+  function bindAudio() {
+    const players = root.querySelectorAll('.exam-player');
+    for (let i = 0; i < players.length; i++) {
+      const a = players[i];
+      if (a.dataset.audioBound) continue;
+      a.dataset.audioBound = '1';
+      const note = a.parentNode && a.parentNode.querySelector('.exam-audio-missing');
+      a.addEventListener('error', function () {
+        if (!note) return;
+        note.hidden = false;
+        note.textContent = t('exam.audioMissing');
+      });
+      a.addEventListener('playing', function () {
+        if (note) { note.hidden = true; note.textContent = ''; }
+      });
+      a.addEventListener('loadedmetadata', function () {
+        if (note && !note.hidden && isFinite(a.duration) && a.duration > 0) {
+          note.hidden = true;
+          note.textContent = '';
+        }
+      });
+    }
+  }
+
   function render() {
     if (!root) return;
     if (!exam || view === 'list') {
@@ -477,7 +507,7 @@
     }
     root.innerHTML = view === 'review' ? reviewBlock() : shell();
     hydrateFeedback();
-    if (view === 'paper') updateTimer();
+    if (view === 'paper') { updateTimer(); bindAudio(); }
   }
 
   function mount() {

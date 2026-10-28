@@ -129,6 +129,21 @@ test('the first listening track actually plays in the page', async ({ page }) =>
   expect(played.time).toBeGreaterThan(0);
 });
 
+test('a missing audio file says so instead of staying silent', async ({ page }) => {
+  // Reproduces any device that cannot reach the exam folder (404 on the track).
+  await page.route('**/*.mp3', function (route) {
+    return route.fulfill({ status: 404, contentType: 'text/plain', body: 'missing' });
+  });
+  await openExam(page);
+  const outcome = await page.locator('audio.exam-player').first().evaluate(function (el) {
+    return el.play().then(function () { return 'played'; }, function (err) { return String(err && err.name || err); });
+  });
+  expect(outcome).not.toBe('played');
+  const note = page.locator('.exam-audio-missing').first();
+  await expect(note).toBeVisible();
+  await expect(note).toContainText('did not load');
+});
+
 test('ticking an answer saves it and survives a reload', async ({ page }) => {
   await openExam(page);
   const first = page.locator('.exam-q').first();

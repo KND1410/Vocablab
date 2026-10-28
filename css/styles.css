@@ -1940,6 +1940,11 @@ h1, h2, h3, h4 { font-weight: 800; }
 .exam-audio-ico { display: inline-flex; color: var(--primary); }
 .exam-audio-label { font-weight: 800; font-size: .82rem; }
 .exam-player { width: 100%; height: 38px; display: block; }
+.exam-audio-missing {
+  margin: .45rem 0 0; padding: .4rem .55rem; border: 2px solid var(--bad);
+  border-radius: 8px; background: color-mix(in srgb, var(--bad) 12%, transparent);
+  color: var(--bad); font-size: .8rem; font-weight: 700; line-height: 1.35;
+}
 
 .exam-read { border: 2px dashed var(--border); border-radius: 10px; background: var(--surface); margin: .7rem 0; }
 .exam-read summary {
