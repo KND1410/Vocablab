@@ -554,6 +554,7 @@
     if (name === 'welcome' || name === 'files') placeClassFile(name);
     if (name === 'welcome') renderHome();
     if (name === 'exam' && window.Exam) Exam.render();
+    if (name === 'community' && window.Community) Community.render();
     if (name === 'files') updateSourceUI();
     if (!opts.fromRouter) setHash(VIEW_ROUTE[name] || 'home');
     window.scrollTo({ top: 0, behavior: 'smooth' });

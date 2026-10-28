@@ -384,11 +384,16 @@
 
     <!-- Community -->
     <section id="routeCommunity" class="route-page" hidden>
-      <div class="empty-page">
-        <span class="empty-ico">◌</span>
-        <h1 data-i18n="community.title">Community</h1>
-        <p class="muted" data-i18n="community.body">Share progress and practise with other learners. This space is coming next.</p>
+      <div class="page-head">
+        <div>
+          <p class="page-kicker" data-i18n="community.kicker">Learners</p>
+          <h1 data-i18n="community.title">Community</h1>
+          <p class="muted" data-i18n="community.body">Everyone learning with VocabLab.</p>
+        </div>
+        <span id="communityCount" class="pill pill-muted" hidden>0</span>
       </div>
+      <div id="communityGrid" class="community-grid" aria-live="polite"></div>
+      <p class="muted small" data-i18n="community.emailNote">Emails are partly hidden to protect members’ privacy.</p>
     </section>
 
     <!-- Progress -->
@@ -1305,6 +1310,7 @@
 <script src="js/exam-data.js"></script>
 <script src="js/exam-guide.js"></script>
 <script src="js/exam.js"></script>
+<script src="js/community.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

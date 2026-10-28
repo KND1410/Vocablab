@@ -91,7 +91,7 @@ function collect(page) {
   return page.evaluate(function () {
     // The sheet-format card documents the multilingual column aliases and shows
     // sample French/Vietnamese words: content, not UI copy.
-    const skip = 'script, style, textarea, code, pre, #selUiLang, [data-i18n-skip], .code-block, #toasts, #scriptCode, #sheetFormatCard table';
+    const skip = 'script, style, textarea, code, pre, #selUiLang, [data-i18n-skip], .code-block, #toasts, #scriptCode, #sheetFormatCard table, .community-card';
     const seen = new Set();
     const out = [];
     function push(raw) {

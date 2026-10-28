@@ -35,6 +35,7 @@ const HANDLERS = {
   '/api/ai-free': 'api/ai-free.js',
   '/api/home': 'api/home.js',
   '/api/profile': 'api/profile.js',
+  '/api/community': 'api/community.js',
   '/api/auth/signup': 'api/auth/signup.js',
   '/api/auth/login': 'api/auth/login.js',
   '/api/auth/logout': 'api/auth/logout.js',

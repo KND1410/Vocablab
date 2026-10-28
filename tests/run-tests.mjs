@@ -2247,6 +2247,11 @@ const missingInHtml = declared.filter((id) => htmlSrc.indexOf('id="' + id + '"')
 const notDeclared = usedIds.filter((id) => declared.indexOf(id) === -1);
 eq(missingInHtml, [], 'every cached element id exists in index.html');
 eq(notDeclared, [], 'every E.* element is declared in cacheEls()');
+ok(/id="communityGrid"/.test(htmlSrc) && /id="communityCount"/.test(htmlSrc) &&
+  /id="routeCommunity"/.test(htmlSrc), 'the community page has its member grid and counter');
+ok(htmlSrc.indexOf('js/community.js') !== -1 &&
+  htmlSrc.indexOf('js/community.js') < htmlSrc.indexOf('js/app.js'),
+  'community.js loads before the app');
 ok(/id="btnTestVoice"/.test(htmlSrc) && /E\.btnTestVoice\.addEventListener\('click', testVoice\)/.test(appSrc) &&
   /No speech voices found/.test(appSrc), 'the homepage has a speaker test with a no-voice explanation');
 
@@ -2837,6 +2842,13 @@ function createFakeDb() {
       findOne: async function (filter) {
         return rows.find(function (doc) { return matches(doc, filter); }) || null;
       },
+      find: function (filter) {
+        return {
+          toArray: async function () {
+            return rows.filter(function (doc) { return matches(doc, filter); });
+          }
+        };
+      },
       findOneAndUpdate: async function (filter, update) {
         if (name !== 'throttle') return null;
         let doc = rows.find(function (d) { return d._id === filter._id; });
@@ -2893,6 +2905,7 @@ const meApi = require('../api/auth/me.js');
 const resetApi = require('../api/auth/reset.js');
 const profileApi = require('../api/profile.js');
 const homeApi = require('../api/home.js');
+const communityApi = require('../api/community.js');
 const progressApi = require('../api/daily/progress.js');
 
 async function apiCall(handler, method, url, opts) {
@@ -2971,6 +2984,16 @@ const evilRes = await apiCall(profileApi, 'PATCH', '/api/profile', {
   headers: { cookie: apiCookie, origin: 'https://evil.example' }, body: { name: 'Evil' }
 });
 eq(evilRes.status, 403, 'cross-site writes are rejected');
+const communityRes = await apiCall(communityApi, 'GET', '/api/community', { headers: { cookie: apiCookie } });
+eq(communityRes.status, 200, 'the community list loads for a signed-in user');
+const listed = communityRes.data.users.filter(function (u) { return u.id === signupRes.data.user.id; })[0];
+ok(!!listed, 'the signed-in user appears in the community list');
+eq(listed.name, 'Renamed User', 'the list shows the public name');
+ok(listed.email.indexOf('***') !== -1 && listed.email !== apiEmail, 'community emails are masked');
+ok(!('password' in listed) && !('recovery' in listed), 'private fields never leave the community API');
+eq(communityRes.data.total, communityRes.data.users.length, 'the total matches the listed members');
+const anonCommunity = await apiCall(communityApi, 'GET', '/api/community', {});
+eq(anonCommunity.status, 401, 'the community list needs a session');
 const noCookieRes = await apiCall(homeApi, 'GET', '/api/home?date=' + apiDate, {});
 eq(noCookieRes.status, 401, 'daily data needs a session');
 

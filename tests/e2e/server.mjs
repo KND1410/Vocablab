@@ -11,6 +11,7 @@ import { createRequire } from 'node:module';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const require = createRequire(import.meta.url);
 const Quests = require('../../js/quests.js');
+const Auth = require('../../lib/auth.js');
 const port = Number(process.env.E2E_PORT || 4173);
 const host = process.env.E2E_HOST || '127.0.0.1';
 
@@ -121,6 +122,16 @@ async function apiHandler(req, res) {
     const body = await readBody(req);
     if (body.name) account.user.name = String(body.name).slice(0, 60);
     return send(res, 200, { user: account.user });
+  }
+
+  if (route === '/api/community') {
+    if (!account.signedIn) return send(res, 401, { error: 'Please sign in.' });
+    const members = [
+      { id: account.user.id, name: account.user.name, email: Auth.maskEmail(account.user.email), joinedAt: '2026-10-04T09:00:00.000Z' },
+      { id: 'e2e-mai', name: 'Mai Nguyen', email: 'm***i@example.com', joinedAt: '2026-10-02T09:00:00.000Z' },
+      { id: 'e2e-luc', name: 'Luc Martin', email: 'l***n@example.com', joinedAt: '2026-10-03T09:00:00.000Z' }
+    ].sort(function (a, b) { return b.joinedAt.localeCompare(a.joinedAt); });
+    return send(res, 200, { users: members, total: members.length });
   }
 
   if (route === '/api/home') {

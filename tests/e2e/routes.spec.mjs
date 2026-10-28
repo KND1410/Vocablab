@@ -112,13 +112,18 @@ test('a deep link survives a reload', async ({ page }) => {
   await expect(page.locator('.nav-item[data-route="progress"]')).toHaveAttribute('aria-current', 'page');
 });
 
-test('the exam room lists its papers and community stays a placeholder', async ({ page }) => {
+test('the exam room lists its papers and community lists its members', async ({ page }) => {
   await openRoute(page, 'exam');
   await expect(page.locator('#routeExam h1')).toHaveText('Exam papers');
   await expect(page.locator('.exam-choice')).toHaveCount(2);
 
   await openRoute(page, 'community');
   await expect(page.locator('#routeCommunity h1')).toHaveText('Community');
+  await expect(page.locator('.community-card')).toHaveCount(3);
+  await expect(page.locator('#communityCount')).toHaveText('3 learners');
+  await expect(page.locator('.community-card').first().locator('.community-name')).toHaveText('E2E Learner');
+  await expect(page.locator('.community-email').first()).toContainText('***');
+  await expect(page.locator('.community-avatar').first()).toHaveText('EL');
 });
 
 test('the in-app nav links change the route without a page load', async ({ page }) => {

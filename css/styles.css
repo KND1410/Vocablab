@@ -1343,6 +1343,32 @@ body:not(.auth-locked) #authScreen { display: none !important; }
 .route-grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.1rem; align-items: start; }
 .route-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.1rem; align-items: stretch; }
 .route-grid-2 > .card, .route-grid-3 > .card { min-width: 0; }
+/* Community member directory: three per row, two on tablets, one on phones. */
+.community-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.community-card { display: flex; align-items: center; gap: .85rem; min-width: 0; padding: .9rem 1rem; }
+.community-avatar {
+  flex: 0 0 auto; width: 2.9rem; height: 2.9rem; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: .95rem; font-weight: 800;
+  letter-spacing: .02em; color: #fff;
+  background: linear-gradient(135deg,
+    hsl(var(--avatar-hue, 220) 58% 30%),
+    hsl(calc(var(--avatar-hue, 220) + 32) 62% 22%));
+  border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+}
+.community-text { min-width: 0; }
+.community-name {
+  margin: 0; font-size: .98rem; letter-spacing: -.02em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.community-email { margin: .1rem 0 0; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
+.community-loading { grid-column: 1 / -1; padding: 1.4rem .2rem; }
+.community-empty {
+  grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center;
+  gap: .7rem; text-align: center; padding: 2.2rem 1rem;
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+}
 .lessons-grid { grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr); }
 .practice-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, .6fr); gap: 1.2rem; align-items: start; }
 .practice-side { display: flex; flex-direction: column; gap: 1rem; position: sticky; top: 4.5rem; }
@@ -1425,9 +1451,11 @@ body:not(.auth-locked) #authScreen { display: none !important; }
   .para-layout { grid-template-columns: minmax(0, 1fr); }
   .para-inspector { position: static; max-height: none; }
   .practice-layout, .lessons-grid { grid-template-columns: minmax(0, 1fr); }
+  .community-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   .route-grid-2, .route-grid-3 { grid-template-columns: minmax(0, 1fr); }
+  .community-grid { grid-template-columns: minmax(0, 1fr); }
   .page-head { flex-direction: column; }
   .top-actions .account-pill { display: none; }
   .brand-sub { display: none; }
