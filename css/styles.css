@@ -1345,7 +1345,10 @@ body:not(.auth-locked) #authScreen { display: none !important; }
 .route-grid-2 > .card, .route-grid-3 > .card { min-width: 0; }
 /* Community member directory: three per row, two on tablets, one on phones. */
 .community-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.community-card { display: flex; align-items: center; gap: .85rem; min-width: 0; padding: .9rem 1rem; }
+.community-card { display: flex; flex-direction: column; gap: .75rem; min-width: 0; padding: .9rem 1rem; }
+.community-head { display: flex; align-items: center; gap: .85rem; min-width: 0; }
+.community-stats { display: flex; flex-wrap: wrap; gap: .35rem; }
+.community-stats .pill { font-size: .7rem; padding: .18rem .5rem; }
 .community-avatar {
   flex: 0 0 auto; width: 2.9rem; height: 2.9rem; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;

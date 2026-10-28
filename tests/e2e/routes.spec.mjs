@@ -124,6 +124,9 @@ test('the exam room lists its papers and community lists its members', async ({ 
   await expect(page.locator('.community-card').first().locator('.community-name')).toHaveText('E2E Learner');
   await expect(page.locator('.community-email').first()).toContainText('***');
   await expect(page.locator('.community-avatar').first()).toHaveText('EL');
+  await expect(page.locator('.community-card').first()).toContainText('2-day streak');
+  await expect(page.locator('.community-card').first()).toContainText('12 days practised');
+  await expect(page.locator('.community-card').nth(1)).toContainText('New member');
 });
 
 test('the in-app nav links change the route without a page load', async ({ page }) => {

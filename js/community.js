@@ -44,10 +44,20 @@
     return node;
   }
 
+  function stat(text, kind) {
+    const node = document.createElement('span');
+    node.className = 'pill ' + (kind === 'streak' ? 'pill-accent' : 'pill-muted');
+    node.textContent = text;
+    return node;
+  }
+
   function card(user) {
     const node = document.createElement('article');
     node.className = 'card community-card';
-    node.appendChild(avatar(user));
+
+    const head = document.createElement('div');
+    head.className = 'community-head';
+    head.appendChild(avatar(user));
 
     const text = document.createElement('div');
     text.className = 'community-text';
@@ -62,7 +72,24 @@
 
     text.appendChild(name);
     if (user.email) text.appendChild(email);
-    node.appendChild(text);
+    head.appendChild(text);
+    node.appendChild(head);
+
+    const streak = (user.streak && user.streak.current) || 0;
+    const days = user.daysCompleted || 0;
+    const stats = document.createElement('div');
+    stats.className = 'community-stats';
+    if (!streak && !days) {
+      stats.appendChild(stat(I18n.t('community.newMember'), 'days'));
+    } else {
+      if (streak) {
+        stats.appendChild(stat(I18n.t(streak === 1 ? 'community.streakOne' : 'community.streak', { n: streak }), 'streak'));
+      }
+      if (days) {
+        stats.appendChild(stat(I18n.t(days === 1 ? 'community.daysOne' : 'community.days', { n: days }), 'days'));
+      }
+    }
+    node.appendChild(stats);
     return node;
   }
 

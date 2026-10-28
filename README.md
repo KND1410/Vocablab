@@ -20,8 +20,8 @@ with any language.
   lesson-aware AI tutor. Progress is local.
 - **Exam room**: two full DELF B2 white papers (listening, reading, 250-word
   writing) with a 24-hour attempt, audio players and AI essay feedback.
-- **Community**: every member's name and partly hidden email, with initials
-  avatars, three per row.
+- **Community**: every member's name, partly hidden email, current streak and
+  days practised, with initials avatars, three per row.
 - **Level up (B1/B2)**: optional rewrites after a perfect paragraph or a correct
   typed VI → target answer; nothing is applied automatically.
 - **No build step**: static files plus Vercel serverless functions.

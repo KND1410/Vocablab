@@ -2816,9 +2816,14 @@ function createFakeDb() {
   function nextId(prefix) { seq += 1; return prefix + seq; }
   function matches(doc, filter) {
     return Object.keys(filter || {}).every(function (key) {
-      if (filter[key] === null) return doc[key] == null;
-      if (key === '_id') return String(doc[key]) === String(filter[key]);
-      return doc[key] === filter[key];
+      const want = filter[key];
+      if (want && typeof want === 'object' && Object.prototype.hasOwnProperty.call(want, '$ne')) {
+        if (want.$ne === null) return doc[key] != null;
+        return doc[key] !== want.$ne;
+      }
+      if (want === null) return doc[key] == null;
+      if (key === '_id') return String(doc[key]) === String(want);
+      return doc[key] === want;
     });
   }
   function applySet(doc, update) {
@@ -2991,6 +2996,8 @@ ok(!!listed, 'the signed-in user appears in the community list');
 eq(listed.name, 'Renamed User', 'the list shows the public name');
 ok(listed.email.indexOf('***') !== -1 && listed.email !== apiEmail, 'community emails are masked');
 ok(!('password' in listed) && !('recovery' in listed), 'private fields never leave the community API');
+eq(listed.streak.current, 1, 'the community list shows the current streak');
+eq(listed.daysCompleted, 1, 'the community list counts the finished day');
 eq(communityRes.data.total, communityRes.data.users.length, 'the total matches the listed members');
 const anonCommunity = await apiCall(communityApi, 'GET', '/api/community', {});
 eq(anonCommunity.status, 401, 'the community list needs a session');
