@@ -80,7 +80,12 @@
 
     const head = document.createElement('div');
     head.className = 'community-head';
-    head.appendChild(avatar(user));
+    const pic = avatar(user);
+    if (user.online) {
+      pic.classList.add('is-online');
+      pic.title = I18n.t('community.online');
+    }
+    head.appendChild(pic);
 
     const text = document.createElement('div');
     text.className = 'community-text';
@@ -93,7 +98,12 @@
     name.appendChild(nameText);
 
     const lastSeen = timeAgo(user.lastLoginAt);
-    if (lastSeen) {
+    if (user.online) {
+      const meta = document.createElement('span');
+      meta.className = 'community-last community-online';
+      meta.textContent = I18n.t('community.online');
+      name.appendChild(meta);
+    } else if (lastSeen) {
       const meta = document.createElement('span');
       meta.className = 'community-last';
       meta.textContent = I18n.t('community.lastLogin', { when: lastSeen });

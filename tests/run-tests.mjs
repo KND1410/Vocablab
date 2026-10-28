@@ -2989,6 +2989,15 @@ const evilRes = await apiCall(profileApi, 'PATCH', '/api/profile', {
   headers: { cookie: apiCookie, origin: 'https://evil.example' }, body: { name: 'Evil' }
 });
 eq(evilRes.status, 403, 'cross-site writes are rejected');
+// Two extra members pin the order: a member seen just now, and a dormant one
+// with a longer streak that must still come after every online member.
+fakeDb.store.users.push(
+  { _id: 'u-online', name: 'Online Omar', email: 'omar@example.com', createdAt: new Date(),
+    streak: { current: 3, best: 3, lastCompletedDate: '' }, lastSeenAt: new Date(), lastLoginAt: new Date() },
+  { _id: 'u-offline', name: 'Offline Olive', email: 'olive@example.com', createdAt: new Date(),
+    streak: { current: 9, best: 9, lastCompletedDate: '' },
+    lastLoginAt: new Date(Date.now() - 40 * 24 * 60 * 60 * 1000) }
+);
 const communityRes = await apiCall(communityApi, 'GET', '/api/community', { headers: { cookie: apiCookie } });
 eq(communityRes.status, 200, 'the community list loads for a signed-in user');
 const listed = communityRes.data.users.filter(function (u) { return u.id === signupRes.data.user.id; })[0];
@@ -2999,6 +3008,10 @@ ok(!('password' in listed) && !('recovery' in listed), 'private fields never lea
 eq(listed.streak.current, 1, 'the community list shows the current streak');
 eq(listed.daysCompleted, 1, 'the community list counts the finished day');
 ok(/^\d{4}-\d{2}-\d{2}T/.test(listed.lastLoginAt || ''), 'the community list shows the last login');
+eq(listed.online, true, 'opening the app marks the member online');
+eq(communityRes.data.users.map(function (u) { return u.name; }),
+  ['Online Omar', 'Renamed User', 'Offline Olive'],
+  'online members come first and each group is ordered by current streak');
 eq(communityRes.data.total, communityRes.data.users.length, 'the total matches the listed members');
 const anonCommunity = await apiCall(communityApi, 'GET', '/api/community', {});
 eq(anonCommunity.status, 401, 'the community list needs a session');

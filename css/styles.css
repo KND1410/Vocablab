@@ -1345,15 +1345,16 @@ body:not(.auth-locked) #authScreen { display: none !important; }
 .route-grid-2 > .card, .route-grid-3 > .card { min-width: 0; }
 /* Community member directory: three per row, two on tablets, one on phones. */
 .community-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.community-card { display: flex; align-items: center; gap: 1rem; min-width: 0; padding: .9rem 1rem; }
-.community-head { display: flex; align-items: center; gap: .85rem; min-width: 0; flex: 1 1 auto; }
+.community-card { display: flex; align-items: center; gap: .8rem; min-width: 0; padding: .85rem .9rem; }
+.community-head { display: flex; align-items: center; gap: .7rem; min-width: 0; flex: 1 1 auto; }
 .community-stats {
   margin-left: auto; flex: 0 0 auto;
   display: flex; flex-direction: column; align-items: flex-end; gap: .3rem;
 }
-.community-stats .pill { font-size: .7rem; padding: .18rem .5rem; }
+.community-stats .pill { font-size: .66rem; padding: .16rem .45rem; }
 .community-avatar {
   flex: 0 0 auto; width: 2.9rem; height: 2.9rem; border-radius: 50%;
+  position: relative;
   display: inline-flex; align-items: center; justify-content: center;
   font-family: var(--font-display); font-size: .95rem; font-weight: 800;
   letter-spacing: .02em; color: #fff;
@@ -1362,6 +1363,11 @@ body:not(.auth-locked) #authScreen { display: none !important; }
     hsl(calc(var(--avatar-hue, 220) + 32) 62% 22%));
   border: 1px solid var(--border); box-shadow: var(--shadow-sm);
 }
+.community-avatar.is-online::after {
+  content: ""; position: absolute; right: -2px; bottom: -2px;
+  width: .72rem; height: .72rem; border-radius: 50%;
+  background: var(--ok); border: 2px solid var(--surface);
+}
 .community-text { min-width: 0; }
 .community-name {
   margin: 0; font-size: .98rem; letter-spacing: -.02em;
@@ -1369,6 +1375,7 @@ body:not(.auth-locked) #authScreen { display: none !important; }
 }
 .community-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .community-last { color: var(--muted); font-size: .7rem; font-weight: 500; white-space: nowrap; }
+.community-online { color: var(--ok); font-weight: 700; }
 .community-email { margin: .1rem 0 0; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
 .community-loading { grid-column: 1 / -1; padding: 1.4rem .2rem; }
 .community-empty {
@@ -1455,11 +1462,14 @@ body:not(.auth-locked) #authScreen { display: none !important; }
   .route-grid-3 { grid-template-columns: 1fr 1fr; }
 }
 @media (min-width: 1100px) { .brand-sub { display: inline; } }
+@media (max-width: 1360px) {
+  /* Three columns only when there is room for a full name next to the stats. */
+  .community-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 1080px) {
   .para-layout { grid-template-columns: minmax(0, 1fr); }
   .para-inspector { position: static; max-height: none; }
   .practice-layout, .lessons-grid { grid-template-columns: minmax(0, 1fr); }
-  .community-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   .route-grid-2, .route-grid-3 { grid-template-columns: minmax(0, 1fr); }

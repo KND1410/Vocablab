@@ -15,6 +15,14 @@ module.exports = H.wrap(async function (req, res) {
   const user = await A.requireUser(db, req, res);
   if (!user) return;
 
+  // Presence for the community directory: opening the app is the signal, so
+  // the write lives here rather than on every request. A failed stamp must
+  // never stop the home page from loading.
+  await db.collection('users').updateOne(
+    { _id: user._id },
+    { $set: { lastSeenAt: new Date() } }
+  ).catch(function () {});
+
   const date = query(req, 'date') || Daily.utcToday();
   const badDate = Daily.checkDate(date);
   if (badDate) return H.fail(res, 400, badDate);

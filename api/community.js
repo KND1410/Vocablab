@@ -4,12 +4,24 @@ const A = require('../lib/auth');
 const D = require('../lib/db');
 const Quests = require('../js/quests');
 
+/** Someone seen this recently is treated as online in the directory. */
+const ONLINE_MS = 15 * 60 * 1000;
+
+function timeOf(value) {
+  if (!value) return 0;
+  const at = new Date(value).getTime();
+  return isFinite(at) ? at : 0;
+}
+
 /**
  * GET /api/community
  *
  * The member directory shown on #/community. Any signed-in learner can read it;
  * emails are masked server-side (see A.maskEmail) so the list never exposes a
  * full address, and only the public fields leave the database.
+ *
+ * Order: online members first, then by current streak (highest first) within
+ * each group, so the most active learners surface at the top.
  *
  * Progress is the number of days the member has finished at least one daily
  * quest (the same moment a streak advances), plus their current and best
@@ -44,23 +56,30 @@ module.exports = H.wrap(async function (req, res) {
   });
 
   const today = new Date().toISOString().slice(0, 10);
+  const nowMs = Date.now();
   const users = rows.map(function (u) {
     const key = String(u._id);
     const streak = Quests.streakView(u.streak, today, false);
-    const seen = u.lastLoginAt ? new Date(u.lastLoginAt).getTime() : lastSession[key];
+    const loginAt = timeOf(u.lastLoginAt) || lastSession[key] || 0;
+    const seenAt = Math.max(timeOf(u.lastSeenAt), loginAt);
     return {
       id: key,
       name: u.name || 'Learner',
       email: A.maskEmail(u.email),
       joinedAt: u.createdAt ? new Date(u.createdAt).toISOString() : null,
-      lastLoginAt: seen && isFinite(seen) ? new Date(seen).toISOString() : null,
+      lastLoginAt: loginAt ? new Date(loginAt).toISOString() : null,
+      online: seenAt > nowMs - ONLINE_MS,
       streak: { current: streak.current, best: streak.best },
       daysCompleted: days[key] || 0
     };
   }).sort(function (a, b) {
-    // Newest members first, then alphabetical, so the order is stable.
-    const byDate = String(b.joinedAt || '').localeCompare(String(a.joinedAt || ''));
-    return byDate || a.name.localeCompare(b.name);
+    // Online first; inside each group the longest current streak leads, then
+    // the name keeps the order stable for equal streaks.
+    if (a.online !== b.online) return a.online ? -1 : 1;
+    const byStreak = (b.streak.current || 0) - (a.streak.current || 0);
+    if (byStreak) return byStreak;
+    return a.name.localeCompare(b.name) ||
+      String(b.joinedAt || '').localeCompare(String(a.joinedAt || ''));
   });
 
   H.json(res, 200, { users: users, total: users.length });

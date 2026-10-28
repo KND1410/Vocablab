@@ -121,13 +121,19 @@ test('the exam room lists its papers and community lists its members', async ({ 
   await expect(page.locator('#routeCommunity h1')).toHaveText('Community');
   await expect(page.locator('.community-card')).toHaveCount(3);
   await expect(page.locator('#communityCount')).toHaveText('3 learners');
-  await expect(page.locator('.community-card').first().locator('.community-name-text')).toHaveText('E2E Learner');
+
+  // Online members first, longest current streak first inside each group.
+  await expect(page.locator('.community-name-text')).toHaveText(['Mai Nguyen', 'E2E Learner', 'Luc Martin']);
+  await expect(page.locator('.community-avatar.is-online')).toHaveCount(2);
+  await expect(page.locator('.community-online')).toHaveText(['Online now', 'Online now']);
   await expect(page.locator('.community-email').first()).toContainText('***');
-  await expect(page.locator('.community-avatar').first()).toHaveText('EL');
-  await expect(page.locator('.community-card').first()).toContainText('2-day streak');
-  await expect(page.locator('.community-card').first()).toContainText('12 days practised');
-  await expect(page.locator('.community-card').first()).toContainText('Last login: 2 hours ago');
-  await expect(page.locator('.community-card').nth(1)).toContainText('New member');
+  await expect(page.locator('.community-avatar').first()).toHaveText('MN');
+
+  // The dormant member has the longest streak but still comes last.
+  await expect(page.locator('.community-card').first()).toContainText('5-day streak');
+  await expect(page.locator('.community-card').first()).toContainText('40 days practised');
+  await expect(page.locator('.community-card').last()).toContainText('9-day streak');
+  await expect(page.locator('.community-card').last()).toContainText('Last login: 5 days ago');
 });
 
 test('the in-app nav links change the route without a page load', async ({ page }) => {
