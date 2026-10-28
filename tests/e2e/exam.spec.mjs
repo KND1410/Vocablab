@@ -28,7 +28,7 @@ test.beforeEach(async ({ request, page }) => {
 
 async function openCatalogue(page) {
   await openRoute(page, 'exam');
-  await expect(page.locator('.exam-choice')).toHaveCount(1);
+  await expect(page.locator('.exam-choice')).toHaveCount(2);
   await expect(page.locator('#routeExam h1')).toHaveText('Exam papers');
 }
 
@@ -71,20 +71,63 @@ test('the catalogue grows when another exam is installed', async ({ page }) => {
   await openCatalogue(page);
   await page.evaluate(function () {
     const copy = JSON.parse(JSON.stringify(window.ExamData.list[0]));
-    copy.id = 'blanc-2';
-    copy.number = 2;
-    copy.title = 'Examen blanc n°2';
-    copy.subtitle = 'Deuxième sujet';
+    copy.id = 'blanc-3';
+    copy.number = 3;
+    copy.title = 'Examen blanc n°3';
+    copy.subtitle = 'Troisième sujet';
     window.ExamData.list.push(copy);
     window.ExamData.byId[copy.id] = copy;
     window.Exam.render();
   });
-  await expect(page.locator('.exam-choice')).toHaveCount(2);
-  await expect(page.locator('.exam-choice').nth(1)).toContainText('Examen blanc n°2');
+  await expect(page.locator('.exam-choice')).toHaveCount(3);
+  await expect(page.locator('.exam-choice').nth(2)).toContainText('Examen blanc n°3');
 
   // The whole card is a click target, not only its button.
-  await page.locator('.exam-choice').nth(1).locator('h2').click();
+  await page.locator('.exam-choice').nth(2).locator('h2').click();
+  await expect(page.locator('.exam-detail h1')).toHaveText('Examen blanc n°3');
+});
+
+test('a second paper opens with its own pistes and a letter essay', async ({ page }) => {
+  await openCatalogue(page);
+  const second = page.locator('.exam-choice').nth(1);
+  await expect(second).toContainText('Examen blanc n°2');
+  await expect(second).toContainText('3 audio tracks');
+  await expect(second.locator('.exam-status')).toHaveText('Not started');
+
+  await second.locator('h2').click();
   await expect(page.locator('.exam-detail h1')).toHaveText('Examen blanc n°2');
+  await expect(page.locator('.exam-detail [data-act="start"]')).toHaveText('Start exam');
+  await page.locator('.exam-detail [data-act="start"]').click();
+
+  await expect(page.locator('.exam-part')).toHaveCount(3);
+  await expect(page.locator('.exam-q')).toHaveCount(40);
+  const sources = await page.locator('audio.exam-player').evaluateAll(function (els) {
+    return els.map(function (el) { return el.getAttribute('src'); });
+  });
+  expect(sources).toEqual([
+    'exam/No.2/delf_b2_ibk_28.mp3',
+    'exam/No.2/delf_b2_ibk_29.mp3',
+    'exam/No.2/delf_b2_ibk_30.mp3'
+  ]);
+  await expect(page.locator('#examPart-production')).toContainText('taxi');
+  await expect(page.locator('#examPart-production')).toContainText('lettre');
+});
+
+test('the second paper grades its réclamation against letter rules', async ({ page }) => {
+  await openCatalogue(page);
+  await page.locator('.exam-choice').nth(1).locator('[data-act="open"]').click();
+  await page.locator('.exam-detail [data-act="start"]').click();
+  await expect(page.locator('.exam-q')).toHaveCount(40);
+
+  const essay = page.locator('#examEssay');
+  const text = Array.from({ length: 250 }, function (_, i) { return 'mot' + (i + 1); }).join(' ');
+  await essay.fill(text);
+  await page.getByRole('button', { name: 'AI feedback' }).first().click();
+  await expect(page.locator('#examFeedback')).toBeVisible();
+  expect(lastTutorPrompt).toContain('Wattier');
+  expect(lastTutorPrompt).toContain('EXIGENCES DE LA LETTRE');
+  expect(lastTutorPrompt).not.toContain('EXIGENCES DE L’ARTICLE');
+  expect(lastTutorPrompt).toContain('remboursement');
 });
 
 test('the DELF paper renders with all questions, tick boxes and three audio tracks', async ({ page, request }) => {
@@ -152,9 +195,9 @@ test('ticking an answer saves it and survives a reload', async ({ page }) => {
   await expect(page.locator('#examAnswered')).toHaveText('1 / 40 answered');
 
   await page.reload();
-  await expect(page.locator('.exam-choice')).toHaveCount(1);
+  await expect(page.locator('.exam-choice')).toHaveCount(2);
   await expect(page.locator('.exam-status.is-active')).toBeVisible();
-  await page.locator('.exam-choice').first().locator('[data-act="open"]').click();
+  await page.locator('.exam-choice[data-exam-card="blanc-1"]').locator('[data-act="open"]').click();
   await expect(page.locator('.exam-detail [data-act="start"]')).toHaveText('Continue exam');
   await page.locator('.exam-detail [data-act="start"]').click();
   await expect(page.locator('.exam-part')).toHaveCount(3);
@@ -179,8 +222,8 @@ test('the essay autosaves, counts words and can ask for AI feedback', async ({ p
   expect(lastTutorPrompt).toContain('PRODUCTION DU CANDIDAT');
 
   await page.reload();
-  await expect(page.locator('.exam-choice')).toHaveCount(1);
-  await page.locator('.exam-choice').first().locator('[data-act="open"]').click();
+  await expect(page.locator('.exam-choice')).toHaveCount(2);
+  await page.locator('.exam-choice[data-exam-card="blanc-1"]').locator('[data-act="open"]').click();
   await page.locator('.exam-detail [data-act="start"]').click();
   await expect(page.locator('.exam-part')).toHaveCount(3);
   await expect(page.locator('#examEssay')).toHaveValue(text);
@@ -214,10 +257,10 @@ test('after 24 hours the exam restarts with empty answers', async ({ page }) => 
     localStorage.setItem(key, JSON.stringify(saved));
   }, SESSION_KEY);
   await page.reload();
-  await expect(page.locator('.exam-choice')).toHaveCount(1);
+  await expect(page.locator('.exam-choice')).toHaveCount(2);
   await expect(page.locator('.exam-status.is-expired')).toHaveText('Session expired');
 
-  await page.locator('.exam-choice').first().locator('[data-act="open"]').click();
+  await page.locator('.exam-choice[data-exam-card="blanc-1"]').locator('[data-act="open"]').click();
   await expect(page.locator('.exam-status.is-expired')).toHaveText('Session expired');
   await page.locator('.exam-detail [data-act="start"]').click();
   await expect(page.locator('.exam-part')).toHaveCount(3);

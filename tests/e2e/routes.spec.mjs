@@ -115,7 +115,7 @@ test('a deep link survives a reload', async ({ page }) => {
 test('the exam room lists its papers and community stays a placeholder', async ({ page }) => {
   await openRoute(page, 'exam');
   await expect(page.locator('#routeExam h1')).toHaveText('Exam papers');
-  await expect(page.locator('.exam-choice')).toHaveCount(1);
+  await expect(page.locator('.exam-choice')).toHaveCount(2);
 
   await openRoute(page, 'community');
   await expect(page.locator('#routeCommunity h1')).toHaveText('Community');

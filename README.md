@@ -414,25 +414,35 @@ and space, pronouns and sentences, verbs through time, hypothesis and formal Fre
 - **Explanations are bilingual, examples stay French**. Switch **VI / EN** at the top of
   a lesson; the choice and the per-chapter progress are remembered in this browser.
 
-### Exam room — Examen blanc n°1 (DELF B2)
+### Exam room — Examen blanc n°1 & n°2 (DELF B2)
 
-**Exam** keeps a list of papers, starting with a scanned white paper transcribed into
-the app: the complete listening comprehension (20 questions on pistes 25–27),
-reading comprehension (20 questions on the *small talk*, *écocirque* and
-*gentillesse* texts) and the 250-word written production. Pick a paper, review its
-three parts, then press **Start exam**. Every question is a tick box with the paper's
-three choices, and the written task has an editor with a live word count.
+**Exam** keeps a list of papers, two scanned white papers transcribed into the app:
+
+- **Examen blanc n°1** — listening (20 questions on pistes 25–27), reading (20
+  questions on the *small talk*, *écocirque* and *gentillesse* texts) and the
+  250-word article for a reading association.
+- **Examen blanc n°2** — listening (20 questions on pistes 28–30: a cat café in
+  Tours, an employer bonus, three short documents), reading (20 questions on the
+  *Alain Gomis* interview, *la sieste au travail* and the *plate-formes ou salles de
+  cinéma* debate between Asma, Julie and Antoine) and the 250-word réclamation for a
+  late train and an 80-euro taxi.
+
+Pick a paper, review its three parts, then press **Start exam**. Every question is a
+tick box with the paper's three choices, and the written task has an editor with a
+live word count.
 
 - **Choose, then start**: opening a paper only shows its overview. Answers and the
   24-hour clock exist only after **Start exam**, and an unfinished attempt shows
-  **Continue exam** until it expires. To add Examen 2 later, append it to the `EXAMS`
-  array in `js/exam-data.js` and drop its pistes under `exam/No.2/`; the catalogue
+  **Continue exam** until it expires. To add Examen 3, append it to the `EXAMS`
+  array in `js/exam-data.js` and drop its pistes under `exam/No.3/`; the catalogue
   picks it up automatically.
 - **24-hour session**: the countdown starts at **Start exam**. Answers and the essay
   are saved in this browser as you type; after 24 hours the attempt is cleared and
   the paper returns to its overview for a fresh Start.
-- **Audio**: each listening exercise plays its own `exam/No.1/delf_b2_ibk_*.mp3`
-  track directly in the page — pause, seek and replay as often as you like.
+- **Audio**: each listening exercise plays its own `exam/No.1/delf_b2_ibk_*.mp3` or
+  `exam/No.2/delf_b2_ibk_*.mp3` track directly in the page — pause, seek and replay as
+  often as you like. A track that fails to load says so under the player instead of
+  staying silent.
 - **No answer key**: the book's corrigé is not part of the scan, so **Review answers**
   shows your choices (and the unanswered questions) for self-checking instead of a
   score.
@@ -440,15 +450,17 @@ three choices, and the written task has an editor with a live word count.
   Wattier (*Production écrite DELF B2*, 2017), distilled into `js/exam-guide.js`:
   content 14/25 (consigne, register, facts, argumentation, coherence) + form 11/25
   (vocabulary range and control, spelling, grammar forms, sentence complexity), the
-  250-word target with its 225–275 tolerance, and the article requirements (title,
-  chapeau, signature, one main idea per paragraph, examples). The reply gives a
-  criterion-by-criterion /25, three targeted corrections and two priorities in the
-  interface language, using the same **Settings → AI** setup as the rest of the app.
-  The book PDF itself stays local and git-ignored; only this distilled rubric is in
-  the app.
-- The scanned PDF and the MP3 tracks stay local in the git-ignored `exam/` folder
-  (copyrighted course material), so the player works when the tracks are installed
-  next to the app; the paper, questions and writing grid are all in `js/`.
+  250-word target with its 225–275 tolerance, and the requirements of the form asked
+  for: the article rules (title, chapeau, signature, one main idea per paragraph,
+  examples) for Examen 1, the correspondence rules (formule d'appel, daté facts,
+  explicit request, formule de politesse) for the réclamation of Examen 2. The reply
+  gives a criterion-by-criterion /25, three targeted corrections and two priorities in
+  the interface language, using the same **Settings → AI** setup as the rest of the
+  app. The book PDF itself stays local and git-ignored; only this distilled rubric is
+  in the app.
+- The scanned PDFs stay local in `exam/` (git-ignored as `exam/**/*.pdf`); the MP3
+  tracks are tracked and ship with the site, so the player works on any device. The
+  paper, questions and writing grid are all in `js/`.
 
 ### Vocabulary practice
 

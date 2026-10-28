@@ -3328,7 +3328,7 @@ qMode = 'ok';
 /* ---------- Examen blanc n°1 (DELF B2) ---------- */
 section('Exam paper — Examen blanc n°1');
 
-ok(ExamData && ExamData.list.length === 1, 'one exam paper is bundled');
+ok(ExamData && ExamData.list.length === 2, 'two exam papers are bundled');
 const exam = ExamData.list[0];
 eq(exam.id, 'blanc-1', 'the exam has a stable id');
 eq(exam.hours, 24, 'the session lasts 24 hours');
@@ -3376,6 +3376,55 @@ const write = exam.parts[2].essay;
 ok(write && write.minWords === 250, 'the writing task asks for 250 words');
 ok(/association/.test(write.prompt) && /lecture/.test(write.prompt), 'the essay prompt is the book’s reading-association task');
 
+/* ---------- Examen blanc n°2 ---------- */
+section('Exam paper — Examen blanc n°2');
+
+const exam2 = ExamData.list[1];
+eq(exam2.id, 'blanc-2', 'the second paper has a stable id');
+eq(exam2.number, 2, 'the second paper is numbered 2');
+eq(exam2.folder, 'exam/No.2/', 'the second paper serves its tracks from exam/No.2');
+eq(exam2.hours, 24, 'the second session also lasts 24 hours');
+eq(exam2.parts.map(function (p) { return p.title; }),
+  ['Compréhension de l’oral', 'Compréhension des écrits', 'Production écrite'],
+  'the second paper has the three DELF parts');
+eq(exam2.parts.map(function (p) { return p.points; }), [25, 25, 25], 'each part of the second paper is worth 25 points');
+eq(exam2.points, 75, 'the second paper totals 75 points');
+eq(exam2.questionCount, 40, 'the second paper also asks 40 tick-box questions');
+
+const all2 = [];
+exam2.parts.forEach(function (part) {
+  (part.exercises || []).forEach(function (ex) {
+    ex.questions.forEach(function (row) { all2.push({ part: part, ex: ex, q: row }); });
+  });
+});
+eq(all2.length, 40, 'every question of the second paper is reachable');
+ok(all2.every(function (row) { return row.q.options.length === 3; }), 'every second-paper question offers three choices');
+ok(all2.every(function (row) { return row.q.points > 0; }), 'every second-paper question carries points');
+ok(all2.every(function (row) { return row.q.text.trim().length > 10; }), 'every second-paper question has its full wording');
+const ids2 = all2.map(function (row) { return row.q.id; });
+eq(new Set(ids2).size, ids2.length, 'second-paper question ids are unique');
+ok(ids2.every(function (id) { return qIds.indexOf(id) === -1; }), 'the two papers never share a question id');
+
+const oral2 = exam2.parts[0].exercises;
+eq(oral2.map(function (ex) { return ex.piste; }), [28, 29, 30], 'the second paper uses pistes 28–30');
+eq(oral2.map(function (ex) { return ex.src; }),
+  ['exam/No.2/delf_b2_ibk_28.mp3', 'exam/No.2/delf_b2_ibk_29.mp3', 'exam/No.2/delf_b2_ibk_30.mp3'],
+  'each second-paper exercise points at its own mp3');
+if (oral2.every(function (ex) { return fs.existsSync(path.join(root, ex.src)); })) {
+  ok(true, 'all three second-paper mp3 files exist on disk');
+}
+eq(oral2.reduce(function (n, ex) { return n + ex.questions.length; }, 0), 20, 'the second oral part asks 20 questions');
+eq(exam2.parts[1].exercises.reduce(function (n, ex) { return n + ex.questions.length; }, 0), 20, 'the second written part asks 20 questions');
+eq(exam2.parts[1].exercises.map(function (ex) { return ex.points; }), [9, 9, 7], 'the second written exercises keep the 9/9/7 weighting');
+ok(exam2.parts[1].exercises.filter(function (ex) { return ex.matching; }).length === 1,
+  'the second paper keeps its three-reader matching exercise');
+
+const write2 = exam2.parts[2].essay;
+ok(write2 && write2.minWords === 250, 'the second writing task also asks for 250 words');
+eq(write2.type, 'letter', 'the second task is a letter, not an article');
+ok(/taxi/.test(write2.prompt) && /retard/.test(write2.prompt),
+  'the second prompt is the train-delay réclamation');
+
 ok(htmlSrc.indexOf('js/exam-data.js') !== -1 &&
   htmlSrc.indexOf('js/exam-data.js') < htmlSrc.indexOf('js/exam-guide.js') &&
   htmlSrc.indexOf('js/exam-guide.js') < htmlSrc.indexOf('js/exam.js') &&
@@ -3421,6 +3470,21 @@ ok(builtGuide.system.indexOf('14') !== -1 && builtGuide.system.indexOf('11') !==
 ok(builtGuide.prompt.length < 9000, 'the prompt stays compact enough for a small model');
 const shortGuide = ExamGuide.buildFeedbackPrompt({ task: essayPrompt, essay: 'Trop court.', words: 12, language: 'en' });
 ok(/trop court/i.test(shortGuide.prompt), 'a short essay is flagged against the 225-word minimum');
+ok(/EXIGENCES DE L’ARTICLE/.test(shortGuide.prompt), 'the article task is graded against article rules');
+ok(!/EXIGENCES DE LA LETTRE/.test(shortGuide.prompt), 'the article task never asks for letter rules');
+
+/* The réclamation of Examen 2 must not be graded against press-article rules. */
+const letterGuide = ExamGuide.buildFeedbackPrompt({
+  task: write2.prompt,
+  essay: 'Madame, Monsieur,',
+  words: 240,
+  language: 'en',
+  type: write2.type
+});
+ok(/EXIGENCES DE LA LETTRE/.test(letterGuide.prompt), 'a letter task is graded against letter rules');
+ok(!/EXIGENCES DE L’ARTICLE/.test(letterGuide.prompt), 'the letter task never asks for article rules');
+ok(/formule de politesse/.test(letterGuide.prompt), 'the letter rules ask for the closing formula');
+ok(/Wattier/.test(letterGuide.prompt), 'the letter is still graded with the DELF B2 grid');
 
 /* ---------- summary ---------- */
 console.log('\n' + '─'.repeat(46));

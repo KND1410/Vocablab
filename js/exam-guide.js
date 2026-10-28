@@ -21,6 +21,7 @@
     formPoints: 11,
     totalPoints: 25,
     article: 'Un article de presse comporte un titre, un chapeau (qui joue le rôle d’introduction) et une signature. Chaque paragraphe développe une idée principale, avec des arguments secondaires et des exemples précis ; on laisse un espace entre les parties.',
+    letter: 'Une lettre ou une réclamation respecte les usages de la correspondance : formule d’appel (Madame, Monsieur,), présentation claire des faits (quand, où, quoi) avec les détails donnés dans la consigne, demande explicite et formulée avec courtoisie, formule de politesse finale et signature. Le ton reste poli et ferme, jamais familier ni agressif.',
     steps: [
       'Analyser la situation de communication et la consigne : qui écrit, à qui, pourquoi, quel type de texte et quels éléments sont exigés.',
       'Planifier 2 ou 3 parties, avec une idée principale par paragraphe et des exemples précis.',
@@ -88,11 +89,25 @@
   }
 
   /**
-   * Build the examiner prompt. `opts`: { task, essay, words, language }.
+   * Build the examiner prompt. `opts`: { task, essay, words, language, type }.
+   * `type` is 'article' or 'letter'; an unknown or missing type falls back to
+   * whatever the task text itself suggests, so a réclamation is never graded
+   * against press-article rules.
    * The marker PRODUCTION DU CANDIDAT is also used by the test fixtures.
    */
+  function requirements(type, task) {
+    const kind = type === 'letter' || type === 'article'
+      ? type
+      : /\blettre\b|\bréclam/i.test(task) ? 'letter' : 'article';
+    if (kind === 'letter') {
+      return { heading: 'EXIGENCES DE LA LETTRE', text: GUIDE.letter };
+    }
+    return { heading: 'EXIGENCES DE L’ARTICLE', text: GUIDE.article };
+  }
+
   function buildFeedbackPrompt(opts) {
-    const task = String(opts && opts.task || '').trim();
+    opts = opts || {};
+    const task = String(opts.task || '').trim();
     const essay = String(opts && opts.essay || '').trim();
     const words = opts && opts.words != null ? opts.words : wordCount(essay);
     const language = languageName(opts && opts.language);
@@ -131,8 +146,8 @@
       'MÉTHODE',
       GUIDE.steps.map(function (step, i) { return (i + 1) + '. ' + step; }).join('\n'),
       '',
-      'EXIGENCES DE L’ARTICLE',
-      GUIDE.article,
+      requirements(opts.type, task).heading,
+      requirements(opts.type, task).text,
       'Vérifie aussi que le texte répond à toutes les parties de la consigne (par exemple : expliquer la raison d’être de l’association, demander un espace, donner des arguments et des exemples précis).',
       '',
       'FORME DE TA RÉPONSE',

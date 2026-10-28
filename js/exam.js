@@ -383,7 +383,7 @@
       '<ol class="exam-detail-list">' + parts + '</ol></section>' +
       '<div class="exam-detail-note">' +
       '<p>' + esc(t('exam.startNote')) + '</p>' +
-      '<p class="muted small">' + esc(t('exam.methodNote')) + '</p>' +
+      '<p class="muted tiny exam-method">' + esc(t('exam.methodNote')) + '</p>' +
       '<p class="muted small">' + esc(t('exam.noKeyNote')) + '</p>' +
       '</div></div>';
   }
@@ -610,7 +610,8 @@
         task: essay.prompt,
         essay: state.essay,
         words: words,
-        language: lang
+        language: lang,
+        type: essay.type
       });
     }
     // Fallback if the guide did not load: still score content and form.

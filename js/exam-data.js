@@ -328,7 +328,330 @@
     title: 'Production écrite',
     points: 25,
     minWords: 250,
+    type: 'article',
     prompt: 'Vous habitez en France et vous êtes bénévole dans une association qui fait la promotion de la lecture chez les adolescents. Vous écrivez un article dans la revue de votre ville où vous expliquez pourquoi votre association existe. Vous demandez à ce qu’un espace soit mis à votre disposition pour recevoir les jeunes et organiser des activités. Vous exposez vos arguments de manière détaillée et cohérente en citant des exemples précis (250 mots).',
+    note: 'Vous disposez d’une feuille entière pour réaliser l’épreuve de production écrite le jour de l’examen.'
+  };
+
+  /* ==========================================================
+     Examen blanc n°2 — pistes 28, 29, 30
+     ========================================================== */
+
+  /* ---------- Partie 1 — compréhension de l'oral ---------- */
+
+  const ORAL2_1 = {
+    id: 'x1',
+    number: 1,
+    piste: 28,
+    audio: 'delf_b2_ibk_28.mp3',
+    plays: 'Vous allez écouter 2 fois un document.',
+    instruction: 'Répondez aux questions en cochant la bonne réponse.',
+    points: 9,
+    questions: [
+      q('Le projet de Ludivine pourra voir le jour grâce…', 1.5, [
+        'au soutien de la ville de Tours.',
+        'à l’aide d’un collectif de projets originaux.',
+        'à la participation financière de donateurs.'
+      ]),
+      q('Qu’est-ce qui a donné naissance au projet de Ludivine ?', 1.5, [
+        'Son envie de créer.',
+        'Son esprit d’entreprise.',
+        'Son sens de l’engagement.'
+      ]),
+      q('En quoi consiste le projet de Ludivine ?', 1.5, [
+        'C’est un café avec des chats en liberté.',
+        'C’est une association d’amoureux des chats.',
+        'C’est un centre d’accueil pour les chats malades.'
+      ]),
+      q('Ludivine explique que son établissement pourra se financer grâce…', 1, [
+        'à la générosité des visiteurs.',
+        'aux associations de la région.',
+        'à la vente de produits sur place.'
+      ]),
+      q('L’objectif final du projet de Ludivine est…', 1.5, [
+        'que les gens adoptent des chats abandonnés.',
+        'que les gens nourrissent les chats abandonnés.',
+        'que les gens s’occupent de la santé des chats abandonnés.'
+      ]),
+      q('Concernant la réalisation de son projet, Ludivine est…', 1, [
+        'peu enthousiaste.',
+        'assez découragée.',
+        'plutôt confiante.'
+      ]),
+      q('Face au projet de Ludivine, les habitants de Tours sont plutôt…', 1, [
+        'intéressés.',
+        'sceptiques.',
+        'indifférents.'
+      ])
+    ]
+  };
+
+  const ORAL2_2 = {
+    id: 'x2',
+    number: 2,
+    piste: 29,
+    audio: 'delf_b2_ibk_29.mp3',
+    plays: 'Vous allez écouter 2 fois un document.',
+    instruction: 'Répondez aux questions en cochant la bonne réponse.',
+    points: 9,
+    questions: [
+      q('L’aide financière dont il est question dans le reportage est une prime…', 1.5, [
+        'que l’État va donner aux entreprises.',
+        'que tous les députés veulent rendre obligatoire.',
+        'que les entreprises peuvent donner à leurs employés.'
+      ]),
+      q('La prime dont le reportage parle est de…', 1, [
+        '400 euros par an.',
+        '500 euros par an.',
+        '800 euros par an.'
+      ]),
+      q('Cette idée de prime fait partie de mesures pour…', 1, [
+        'réduire la pollution.',
+        'relancer l’économie.',
+        'soutenir les entreprises.'
+      ]),
+      q('Pour bénéficier de cette aide, les salariés s’engagent à…', 1.5, [
+        'acheter une voiture électrique.',
+        'modifier leur mode de déplacement.',
+        'faire plus d’efforts pour les entreprises.'
+      ]),
+      q('D’après le journaliste, la mesure d’aide vise prioritairement…', 1.5, [
+        'les cyclistes.',
+        'les automobilistes.',
+        'les usagers des transports en commun.'
+      ]),
+      q('L’application de l’aide financière…', 1.5, [
+        'évoluera dans le temps.',
+        'sera la même dans tout le pays.',
+        'variera selon les entreprises concernées.'
+      ]),
+      q('La prime pourra être attribuée aux salariés grâce à un système de…', 1, [
+        'versement.',
+        'carte prépayée.',
+        'ticket restaurant.'
+      ])
+    ]
+  };
+
+  const ORAL2_3 = {
+    id: 'x3',
+    number: 3,
+    piste: 30,
+    audio: 'delf_b2_ibk_30.mp3',
+    plays: 'Vous allez écouter 1 fois 3 documents.',
+    instruction: 'Lisez les questions. Écoutez le document et répondez en cochant la bonne réponse.',
+    points: 7,
+    documents: [
+      { number: 1, label: 'Document 1' },
+      { number: 2, label: 'Document 2' },
+      { number: 3, label: 'Document 3' }
+    ],
+    questions: [
+      q('Quelle est la particularité des cours de français d’Odile ?', 1.5, [
+        'Ils se déroulent sur Internet.',
+        'Ses élèves participent à une radio.',
+        'Elle crée ses propres documents audio.'
+      ], { doc: 1 }),
+      q('Qu’est-ce qui plaît le plus aux étudiants d’Odile ?', 1, [
+        'Réaliser des interviews.',
+        'Travailler de façon collective.',
+        'Améliorer leurs compétences orales.'
+      ], { doc: 1 }),
+      q('Le reportage met en évidence…', 1, [
+        'la mauvaise image du tourisme de masse sur Instagram.',
+        'les conséquences négatives d’Instagram sur certains lieux.',
+        'l’influence démesurée de certains instagrameurs sur les réseaux sociaux.'
+      ], { doc: 2 }),
+      q('Selon le reportage, de nos jours, certains vacanciers…', 1, [
+        'publient trop de photos de leurs voyages sur les réseaux.',
+        'voyagent dans le seul but de publier leurs photos sur les réseaux.',
+        's’inspirent un peu des photos que les autres ont postées sur les réseaux.'
+      ], { doc: 2 }),
+      q('Selon l’Académie française, quel serait le risque d’utiliser trop de mots en anglais ?', 1, [
+        'La mort de la langue française.',
+        'L’émergence d’une nouvelle langue.',
+        'La disparition de l’Académie française.'
+      ], { doc: 3 }),
+      q('Pourquoi le Québec est-il un exemple en matière de protection de la langue française ?', 1.5, [
+        'L’anglais est interdit au travail.',
+        'Les titres de films anglophones sont traduits.',
+        'Les dictionnaires ne comportent pas d’anglicismes.'
+      ], { doc: 3 })
+    ]
+  };
+
+  const ECRIT2_1 = {
+    id: 'x4',
+    number: 1,
+    title: 'Comprendre un texte informatif ou argumentatif',
+    points: 9,
+    intro: 'Vous lisez un entretien dans un journal francophone.',
+    note: '1. École nationale supérieure des métiers de l’image et du son (France). 2. Réalisateur originaire du Burkina Faso. 3. Gagner peu, voire pas d’argent.',
+    text: {
+      title: 'Alain Gomis : « Le cinéma, c’est ma vie ! Pas le moyen de gagner ma vie. »',
+      source: 'africultures.com',
+      author: 'Entretien de Claude Forest',
+      date: '7 août 2017',
+      blocks: [
+        { p: 'Le Franco-Sénégalais Alain Gomis est avant tout réalisateur (Félicité, 2017). […] Pour payer ses études de cinéma à La Sorbonne, après avoir échoué aux concours d’entrée à la Fémis et à Louis-Lumière (Paris), il devient surveillant dans les écoles. Avec ses premiers salaires il achète une caméra vidéo et commence à tourner des petits films. […]' },
+        { h: 'Comment êtes-vous venu au cinéma ?' },
+        { p: 'J’ai toujours aimé […] vivre les films comme si j’étais dedans. En troisième année de licence de cinéma, on n’avait pas de caméra ni de matériel, les cours étaient théoriques mais j’ai pu voir plein de films, et j’ai notamment passé beaucoup de temps à la cinémathèque. […]' },
+        { p: '[…] J’ai toujours voulu réaliser, et quand je pensais être chef opérateur c’était dans l’optique de réaliser. Étudier le scénario c’était aussi dans l’optique de réaliser. Car pour moi le cinéma était une globalité et qu’il est difficile de devenir réalisateur sans connaître ce qui se passe autour. Mais finalement, je suis devenu directement réalisateur. […] J’ai appris en faisant.' },
+        { h: 'Pourquoi avoir créé votre société de production ?' },
+        { p: 'Par la force des choses. […] Mais j’ai eu de la chance, car après avoir écrit un premier scénario pour l’université, un ami gabonais me dit avoir des connexions avec Idrissa Ouedraogo, qui avait une société de production à Montreuil, et qu’on pourrait peut-être y faire notre stage. […] On arrive à faire le film dans des conditions un peu difficiles mais je me retrouve propulsé et ça devient presque facile ; certes j’ai dû me battre mais je trouve que j’ai eu de la chance par rapport à d’autres. À un moment la porte s’ouvre, on ne sait pas pourquoi.' },
+        { h: 'Essentiellement producteur de vos films, comment définiriez-vous ce métier ?' },
+        { p: 'Comme je produis davantage mes films que ceux des autres, le métier de producteur c’est d’essayer peut-être de comprendre, à la lecture du scénario ou du projet, vers qui aller, qui ça peut intéresser, quel genre de budget on peut obtenir, et ainsi inscrire le film dans une réalité économique. Il faut faire avec l’argent qui est là, c’est ce que j’ai appris. Au premier film je me suis aperçu qu’il y avait des éléments que je demandais que je n’obtiendrais pas, et donc dès le deuxième projet j’ai écrit en fonction d’une réalité économique. […]' },
+        { h: 'Quelle est votre relation au public ?' },
+        { p: '[…] J’essaye d’être le plus honnête, le plus sincère possible ; j’espère que ça touchera les gens, mais je ne le fais pas dans une volonté de séduction. Le cinéma c’est ma vie ! Ce n’est pas mon moyen de gagner ma vie, même si j’essaye d’en vivre aussi. […] J’ai fait Aujourd’hui en essayant d’être le plus direct, en cherchant une espèce d’authenticité, de vérité, et je l’ai d’abord destiné à un public populaire africain.' },
+        { h: 'Comment cette démarche s’insère-t-elle dans votre métier de producteur ?' },
+        { p: '[…] Je ne vis pas matériellement de mon métier de producteur, parce que sur mes films en général, je commence juste à coproduire, et que ça me prend un tel temps d’écrire et de faire mes films seul, qu’il est incompatible avec celui que je dois donner aux autres en tant que producteur. C’est très compliqué quand on a un réalisateur qui vient avec son projet, car il attend qu’on soit avec lui, qu’on le soutienne, etc. C’est pour ça que je coproduis très peu et que je ne gagne pas d’argent dessus, et quand je le fais c’est à perte. J’aimerais pouvoir le faire plus mais je veux être honnête avec ce que je peux faire. […] J’ai l’impression que beaucoup se rendent compte de la difficulté de réaliser des films en les faisant. C’est pour ça que quand des jeunes me disent « je veux faire du cinéma », la première chose que je leur dis c’est « Vous êtes sûr ? » parce que c’est très difficile, c’est un sport d’endurance et de combat. C’est très difficile d’allier les deux. Être combatif pendant aussi longtemps, c’est épuisant, tu ne gagnes pas un rond, il faut le faire pour des motivations profondes, sinon ce n’est pas la peine, c’est trop difficile. […]' },
+      ]
+    },
+    questions: [
+      q('Alain Gomis estime que, grâce à ses études de cinéma,…', 1.5, [
+        'il a eu accès à du matériel.',
+        'il a pu rencontrer des réalisateurs.',
+        'il a perfectionné sa culture cinématographique.'
+      ]),
+      q('Alain Gomis a toujours voulu être…', 1, [
+        'réalisateur.',
+        'producteur.',
+        'chef-opérateur.'
+      ]),
+      q('Alain Gomis considère que, globalement, dans son parcours, il a eu…', 1.5, [
+        'des facilités.',
+        'les bonnes relations.',
+        'de belles opportunités.'
+      ]),
+      q('Quel est le conseil d’Alain Gomis en tant que producteur ?', 1.5, [
+        'Écrire le film une fois les financements obtenus.',
+        'Tout faire pour obtenir l’argent dont on a besoin.',
+        'Adapter le budget du film en fonction des financements.'
+      ]),
+      q('Qu’est-ce qui guide Alain Gomis dans ce qu’il propose au public ?', 1.5, [
+        'La volonté de séduire.',
+        'Le désir d’authenticité.',
+        'L’envie de vivre de son art.'
+      ]),
+      q('Quelle difficulté Alain Gomis rencontre-t-il en tant que producteur ? Le manque…', 1, [
+        'de temps.',
+        'de soutien.',
+        'd’honnêteté.'
+      ]),
+      q('Son discours envers les jeunes qui veulent se tourner vers le cinéma est…', 1, [
+        'réaliste.',
+        'rassurant.',
+        'encourageant.'
+      ])
+    ]
+  };
+
+  const ECRIT2_2 = {
+    id: 'x5',
+    number: 2,
+    title: 'Comprendre un texte informatif ou argumentatif',
+    points: 9,
+    intro: 'Vous lisez un article dans un journal francophone.',
+    note: '1. coup de barre : moment de fatigue. 2. farouche : cruelle, sauvage.',
+    text: {
+      title: 'La sieste au travail à travers le monde',
+      source: 'welcometothejungle.com',
+      author: 'Gabriel Boccara',
+      date: '16 octobre 2018',
+      blocks: [
+        { p: 'Qui ne l’a jamais rencontré… le coup de barre après la pause déjeuner où l’on rêverait d’être dans son lit, rien que 5 minutes, pour reposer ses yeux ? Personne ! Peut-être avez-vous même déjà testé des techniques pour dormir, incognito, à votre bureau ? Dans certains pays, les salariés n’ont pas à se cacher de vouloir faire la sieste au travail, au contraire ! Les perceptions de la sieste diffèrent grandement selon la culture et peuvent nous révéler quelques indices sur la mentalité de chaque pays au travail…' },
+        { h: 'Historique de la sieste' },
+        { p: 'La sieste a toujours fait partie intégrante de la vie de nos ancêtres, que ce soit à l’époque des hommes des cavernes ou des philosophes des Lumières. Ce n’est qu’à partir de la révolution industrielle (entre le XVIIIe et le XIXe siècle) et de l’urbanisation de la population qu’elle a été abandonnée : les chaleurs de mi-journée étant plus supportables en intérieur qu’au milieu d’un champ et le travail à la chaîne nécessitant une présence constante des ouvriers, il est vite devenu inapproprié de s’endormir au travail.' },
+        { p: 'Pourtant, la sieste n’a pas dit son dernier mot et fait son grand retour sur nos lieux de travail, en tant que facilitateur de bien-être, bien sûr, mais aussi en tant qu’outil de performance. En effet, il a été prouvé par la Nasa qu’une sieste de 15 minutes a des effets considérables sur notre vigilance, notre humeur et notre mémoire, augmentant ainsi nos performances cognitives de manière générale et réduisant nos risques de maladies cardiovasculaires de 37 % d’après la Harvard Medical School. Si ses bienfaits ne sont plus à prouver, chaque culture a néanmoins sa propre perception de la sieste… […]' },
+        { h: 'France : la sieste, de plus en plus acceptée' },
+        { p: 'En France, la sieste en entreprise est acceptée dans la plupart des start-up et des entreprises technologiques, où le turnover est très important et donc la qualité de vie au travail aussi. Mais dans les métiers de la finance, de la grande distribution ou encore de l’industrie, la sieste aura encore beaucoup à prouver, avant d’être finalement tolérée.' },
+        { p: 'D’après un sondage OpinionWay datant de 2016, 12 % des managers seraient pour la pratique de la sieste à la pause. Ces dernières années ont été le théâtre d’une véritable prise de conscience autour du bien-être en entreprise… Une tendance générale devenue difficile à ignorer dans un contexte où la course aux talents se fait de plus en plus farouche ? Parmi les composantes de cette tendance, on retrouve toujours la qualité de sommeil car elle impacte l’ensemble de nos capacités cognitives. Le moment idéal pour la sieste de pointer de nouveau le bout de son nez et de rappeler qu’elle est bien plus qu’un luxe : elle est une nécessité, surtout en entreprise.' }
+      ]
+    },
+    questions: [
+      q('Selon l’article, qu’est-ce qui influence la perception qu’un pays a de la sieste ?', 1, [
+        'Sa culture.',
+        'Son climat.',
+        'Ses horaires.'
+      ]),
+      q('Au cours de l’histoire, qu’est-ce qui a contribué à la disparition de la sieste ?', 1, [
+        'L’industrialisation.',
+        'La réduction des horaires.',
+        'Les changements climatiques.'
+      ]),
+      q('Selon l’article, la Harvard Medical School a prouvé que la sieste au travail…', 1.5, [
+        'avait des effets positifs sur notre santé.',
+        'augmentait notre sensation de bien-être.',
+        'facilitait les échanges dans les entreprises.'
+      ]),
+      q('D’après l’article, en France, la sieste est plus acceptée dans les start-up que dans d’autres secteurs, car…', 1.5, [
+        'elles ont une culture d’entreprise différente.',
+        'elles veulent que leurs salariés se sentent bien.',
+        'elles sont dirigées par des managers plus tolérants.'
+      ]),
+      q('Selon l’article, dans le secteur de l’industrie et de la finance, la sieste…', 1.5, [
+        'n’est pas considérée efficace.',
+        'ne convainc pas les dirigeants.',
+        'n’intéresse pas les travailleurs.'
+      ]),
+      q('D’après l’article, quelle est la tendance générale dans le monde de l’entreprise ?', 1.5, [
+        'Le confort des salariés.',
+        'La rapidité des salariés.',
+        'La rentabilité des salariés.'
+      ]),
+      q('L’article conclut sur le fait que la sieste est…', 1, [
+        'un fait culturel.',
+        'un besoin humain.',
+        'un caprice au travail.'
+      ])
+    ]
+  };
+
+  const CINE_COMMENTS = {
+    title: 'Plate-formes ou salles de cinéma ?',
+    intro: 'Après avoir lu, sur Internet, l’article « Plate-formes ou salles de ciné ? », trois lecteurs réagissent et envoient des commentaires. Lisez les réponses des trois lecteurs ci-dessous.',
+    people: [
+      {
+        name: 'Asma',
+        text: 'Moi, c’est simple, je ne vois pas pourquoi on devrait payer une place de cinéma le même prix qu’un abonnement à une plate-forme qui diffuse des films et séries télé ! Je trouve que, maintenant, les places de ciné sont hors de prix. Et, en plus, question confort, c’est pas l’idéal d’être assise à côté de quelqu’un qui mange des pop-corn ou d’avoir quelqu’un devant qui me cache la moitié de l’écran, merci bien ! Quand je suis sur mon ordi, je choisis le film que je veux voir, je le regarde quand j’ai envie, et surtout je suis à l’aise ! Je peux mettre pause, grignoter, etc. Pour moi, c’est l’idéal.'
+      },
+      {
+        name: 'Julie',
+        text: 'J’ai toujours été une grande fan de cinéma ! Je tiens ça de ma mère, qui m’a emmenée dans les salles obscures dès que j’étais en âge de l’accompagner. Quand j’étais petite, je me souviens de l’excitation que je ressentais à l’idée d’aller voir le dernier Disney ! Cette excitation est intacte, je surveille de près l’actualité ciné et, dès qu’un film me plaît, je vais le voir aussitôt ! J’ai souscrit à un abonnement dans un petit cinéma indépendant de mon quartier, du coup j’y vais au moins six fois par mois ! Avec des amis ou toute seule, peu importe, j’y vais avant tout pour voir le film. Je suis un peu inquiète de la popularité des plate-formes telles que Netflix, mais je suis sûre que le cinéma a encore de beaux jours devant lui !'
+      },
+      {
+        name: 'Antoine',
+        text: 'Je crois que les plate-formes sont en train de marquer la fin des salles de cinéma. Je suis assez pessimiste, à vrai dire. Quand on voit que, maintenant, des grosses maisons de production lancent de nouvelles sorties uniquement en ligne et plus du tout dans les salles de cinéma, on a de quoi s’inquiéter ! Mais bon, moi aussi je me suis abonné à Netflix, c’est tellement pratique et avantageux financièrement ! Comment concurrencer ces nouveaux géants d’Internet ? Alors, du coup, moi, ce que je fais c’est que de temps en temps je vais au cinéma pour soutenir les petits films d’auteurs. Les grosses productions, je pense qu’elles s’en sortiront toujours. Mais les petits films d’auteurs, il faut les aider !'
+      }
+    ]
+  };
+
+  const ECRIT2_3 = {
+    id: 'x6',
+    number: 3,
+    title: 'Comprendre le point de vue d’un locuteur francophone',
+    points: 7,
+    intro: 'À quelle personne associez-vous chaque point de vue ? Pour chaque affirmation, cochez la bonne réponse.',
+    matching: true,
+    text: CINE_COMMENTS,
+    questions: [
+      q('Le problème du cinéma, c’est que le coût des places est trop élevé…', 1.5, ['Asma', 'Julie', 'Antoine']),
+      q('Certains films méritent d’être vus au cinéma car ils ont plus besoin de spectateurs que d’autres.', 1.5, ['Asma', 'Julie', 'Antoine']),
+      q('Aller au cinéma procure des sensations uniques.', 1, ['Asma', 'Julie', 'Antoine']),
+      q('Les plate-formes mettent gravement en danger l’avenir des salles de cinéma.', 1, ['Asma', 'Julie', 'Antoine']),
+      q('Les salles de cinéma ont des inconvénients que les plate-formes n’ont pas.', 1, ['Asma', 'Julie', 'Antoine']),
+      q('Les formules d’abonnement dans des salles de quartier permettent d’aller souvent au cinéma.', 1, ['Asma', 'Julie', 'Antoine'])
+    ]
+  };
+
+  /* ---------- Partie 3 — production écrite ---------- */
+
+  const ESSAY2 = {
+    title: 'Production écrite',
+    points: 25,
+    minWords: 250,
+    type: 'letter',
+    prompt: 'Vous avez voyagé en France le mois dernier et votre train a subi un retard d’une heure. Arrivé à la gare, vous avez raté le bus qui devait vous conduire à votre hôtel. Vous avez donc dû prendre un taxi et cela vous a coûté 80 euros. Vous écrivez une lettre à la société de train française pour expliquer les faits et réclamer le remboursement de votre billet et la prise en charge du paiement de votre taxi (250 mots).',
     note: 'Vous disposez d’une feuille entière pour réaliser l’épreuve de production écrite le jour de l’examen.'
   };
 
@@ -358,6 +681,34 @@
         title: 'Production écrite',
         points: 25,
         essay: ESSAY
+      }
+    ]
+  }, {
+    id: 'blanc-2',
+    number: 2,
+    level: 'DELF B2',
+    title: 'Examen blanc n°2',
+    subtitle: 'Épreuve complète : oral, écrits et production écrite',
+    folder: 'exam/No.2/',
+    hours: 24,
+    parts: [
+      {
+        id: 'oral',
+        title: 'Compréhension de l’oral',
+        points: 25,
+        exercises: [ORAL2_1, ORAL2_2, ORAL2_3]
+      },
+      {
+        id: 'ecrit',
+        title: 'Compréhension des écrits',
+        points: 25,
+        exercises: [ECRIT2_1, ECRIT2_2, ECRIT2_3]
+      },
+      {
+        id: 'production',
+        title: 'Production écrite',
+        points: 25,
+        essay: ESSAY2
       }
     ]
   }];
