@@ -31,16 +31,31 @@ module.exports = H.wrap(async function (req, res) {
     days[key] = (days[key] || 0) + 1;
   });
 
+  // Accounts created before lastLoginAt existed fall back to their most recent
+  // session, which is still a real sign-in date.
+  const sessions = await db.collection('sessions').find({}).toArray();
+  const lastSession = Object.create(null);
+  sessions.forEach(function (s) {
+    if (!s.createdAt) return;
+    const at = new Date(s.createdAt).getTime();
+    if (!isFinite(at)) return;
+    const key = String(s.userId);
+    if (!lastSession[key] || at > lastSession[key]) lastSession[key] = at;
+  });
+
   const today = new Date().toISOString().slice(0, 10);
   const users = rows.map(function (u) {
+    const key = String(u._id);
     const streak = Quests.streakView(u.streak, today, false);
+    const seen = u.lastLoginAt ? new Date(u.lastLoginAt).getTime() : lastSession[key];
     return {
-      id: String(u._id),
+      id: key,
       name: u.name || 'Learner',
       email: A.maskEmail(u.email),
       joinedAt: u.createdAt ? new Date(u.createdAt).toISOString() : null,
+      lastLoginAt: seen && isFinite(seen) ? new Date(seen).toISOString() : null,
       streak: { current: streak.current, best: streak.best },
-      daysCompleted: days[String(u._id)] || 0
+      daysCompleted: days[key] || 0
     };
   }).sort(function (a, b) {
     // Newest members first, then alphabetical, so the order is stable.

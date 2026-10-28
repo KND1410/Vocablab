@@ -31,6 +31,10 @@ module.exports = H.wrap(async function (req, res) {
   if (!ok) return H.fail(res, 401, 'Email or password is wrong.');
 
   const token = await A.createSession(db, user._id);
+  await db.collection('users').updateOne(
+    { _id: user._id },
+    { $set: { lastLoginAt: new Date() } }
+  );
   A.setSessionCookie(res, req, token);
   H.json(res, 200, { user: A.publicUser(user) });
 });

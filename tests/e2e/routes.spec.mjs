@@ -121,11 +121,12 @@ test('the exam room lists its papers and community lists its members', async ({ 
   await expect(page.locator('#routeCommunity h1')).toHaveText('Community');
   await expect(page.locator('.community-card')).toHaveCount(3);
   await expect(page.locator('#communityCount')).toHaveText('3 learners');
-  await expect(page.locator('.community-card').first().locator('.community-name')).toHaveText('E2E Learner');
+  await expect(page.locator('.community-card').first().locator('.community-name-text')).toHaveText('E2E Learner');
   await expect(page.locator('.community-email').first()).toContainText('***');
   await expect(page.locator('.community-avatar').first()).toHaveText('EL');
   await expect(page.locator('.community-card').first()).toContainText('2-day streak');
   await expect(page.locator('.community-card').first()).toContainText('12 days practised');
+  await expect(page.locator('.community-card').first()).toContainText('Last login: 2 hours ago');
   await expect(page.locator('.community-card').nth(1)).toContainText('New member');
 });
 

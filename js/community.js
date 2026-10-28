@@ -35,6 +35,29 @@
     return h;
   }
 
+  /** "2 hours ago", localised; older than a month shows the date. */
+  function timeAgo(iso) {
+    if (!iso) return '';
+    const then = new Date(iso).getTime();
+    if (!isFinite(then)) return '';
+    const diff = Date.now() - then;
+    const locale = I18n.lang();
+    const minute = 60000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    try {
+      const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+      if (diff < minute) return rtf.format(0, 'second');
+      if (diff < hour) return rtf.format(-Math.round(diff / minute), 'minute');
+      if (diff < day) return rtf.format(-Math.round(diff / hour), 'hour');
+      if (diff < 30 * day) return rtf.format(-Math.round(diff / day), 'day');
+      return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric' })
+        .format(new Date(then));
+    } catch (e) {
+      return new Intl.DateTimeFormat(locale).format(new Date(then));
+    }
+  }
+
   function avatar(user) {
     const node = document.createElement('span');
     node.className = 'community-avatar';
@@ -64,7 +87,18 @@
 
     const name = document.createElement('h2');
     name.className = 'community-name';
-    name.textContent = user.name || 'Learner';
+    const nameText = document.createElement('span');
+    nameText.className = 'community-name-text';
+    nameText.textContent = user.name || 'Learner';
+    name.appendChild(nameText);
+
+    const lastSeen = timeAgo(user.lastLoginAt);
+    if (lastSeen) {
+      const meta = document.createElement('span');
+      meta.className = 'community-last';
+      meta.textContent = I18n.t('community.lastLogin', { when: lastSeen });
+      name.appendChild(meta);
+    }
 
     const email = document.createElement('p');
     email.className = 'community-email';

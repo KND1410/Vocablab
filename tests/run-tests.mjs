@@ -2998,6 +2998,7 @@ ok(listed.email.indexOf('***') !== -1 && listed.email !== apiEmail, 'community e
 ok(!('password' in listed) && !('recovery' in listed), 'private fields never leave the community API');
 eq(listed.streak.current, 1, 'the community list shows the current streak');
 eq(listed.daysCompleted, 1, 'the community list counts the finished day');
+ok(/^\d{4}-\d{2}-\d{2}T/.test(listed.lastLoginAt || ''), 'the community list shows the last login');
 eq(communityRes.data.total, communityRes.data.users.length, 'the total matches the listed members');
 const anonCommunity = await apiCall(communityApi, 'GET', '/api/community', {});
 eq(anonCommunity.status, 401, 'the community list needs a session');

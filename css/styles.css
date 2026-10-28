@@ -1345,9 +1345,12 @@ body:not(.auth-locked) #authScreen { display: none !important; }
 .route-grid-2 > .card, .route-grid-3 > .card { min-width: 0; }
 /* Community member directory: three per row, two on tablets, one on phones. */
 .community-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-.community-card { display: flex; flex-direction: column; gap: .75rem; min-width: 0; padding: .9rem 1rem; }
-.community-head { display: flex; align-items: center; gap: .85rem; min-width: 0; }
-.community-stats { display: flex; flex-wrap: wrap; gap: .35rem; }
+.community-card { display: flex; align-items: center; gap: 1rem; min-width: 0; padding: .9rem 1rem; }
+.community-head { display: flex; align-items: center; gap: .85rem; min-width: 0; flex: 1 1 auto; }
+.community-stats {
+  margin-left: auto; flex: 0 0 auto;
+  display: flex; flex-direction: column; align-items: flex-end; gap: .3rem;
+}
 .community-stats .pill { font-size: .7rem; padding: .18rem .5rem; }
 .community-avatar {
   flex: 0 0 auto; width: 2.9rem; height: 2.9rem; border-radius: 50%;
@@ -1362,8 +1365,10 @@ body:not(.auth-locked) #authScreen { display: none !important; }
 .community-text { min-width: 0; }
 .community-name {
   margin: 0; font-size: .98rem; letter-spacing: -.02em;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: flex; align-items: baseline; gap: .45rem; flex-wrap: wrap;
 }
+.community-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.community-last { color: var(--muted); font-size: .7rem; font-weight: 500; white-space: nowrap; }
 .community-email { margin: .1rem 0 0; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
 .community-loading { grid-column: 1 / -1; padding: 1.4rem .2rem; }
 .community-empty {

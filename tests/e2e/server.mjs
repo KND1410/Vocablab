@@ -126,10 +126,11 @@ async function apiHandler(req, res) {
 
   if (route === '/api/community') {
     if (!account.signedIn) return send(res, 401, { error: 'Please sign in.' });
+    const now = Date.now();
     const members = [
-      { id: account.user.id, name: account.user.name, email: Auth.maskEmail(account.user.email), joinedAt: '2026-10-04T09:00:00.000Z', streak: { current: 2, best: 3 }, daysCompleted: 12 },
-      { id: 'e2e-luc', name: 'Luc Martin', email: 'l***n@example.com', joinedAt: '2026-10-03T09:00:00.000Z', streak: { current: 0, best: 0 }, daysCompleted: 0 },
-      { id: 'e2e-mai', name: 'Mai Nguyen', email: 'm***i@example.com', joinedAt: '2026-10-02T09:00:00.000Z', streak: { current: 5, best: 9 }, daysCompleted: 40 }
+      { id: account.user.id, name: account.user.name, email: Auth.maskEmail(account.user.email), joinedAt: '2026-10-04T09:00:00.000Z', lastLoginAt: new Date(now - 2 * 3600 * 1000).toISOString(), streak: { current: 2, best: 3 }, daysCompleted: 12 },
+      { id: 'e2e-luc', name: 'Luc Martin', email: 'l***n@example.com', joinedAt: '2026-10-03T09:00:00.000Z', lastLoginAt: new Date(now - 5 * 24 * 3600 * 1000).toISOString(), streak: { current: 0, best: 0 }, daysCompleted: 0 },
+      { id: 'e2e-mai', name: 'Mai Nguyen', email: 'm***i@example.com', joinedAt: '2026-10-02T09:00:00.000Z', lastLoginAt: new Date(now - 10 * 60 * 1000).toISOString(), streak: { current: 5, best: 9 }, daysCompleted: 40 }
     ].sort(function (a, b) { return b.joinedAt.localeCompare(a.joinedAt); });
     return send(res, 200, { users: members, total: members.length });
   }
