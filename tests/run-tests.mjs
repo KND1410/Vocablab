@@ -3362,11 +3362,7 @@ eq(oral.map(function (ex) { return ex.piste; }), [25, 26, 27], 'the three audio 
 eq(oral.map(function (ex) { return ex.src; }),
   ['exam/No.1/delf_b2_ibk_25.mp3', 'exam/No.1/delf_b2_ibk_26.mp3', 'exam/No.1/delf_b2_ibk_27.mp3'],
   'each exercise points at its own mp3');
-// The tracks are copyrighted course audio and stay local (exam/ is git-ignored),
-// so only check the files when they are actually present.
-if (oral.every(function (ex) { return fs.existsSync(path.join(root, ex.src)); })) {
-  ok(true, 'all three mp3 files exist on disk');
-}
+ok(oral.every(function (ex) { return fs.existsSync(path.join(root, ex.src)); }), 'all three mp3 files exist on disk');
 eq(ExamData.pisteFrom('delf_b2_ibk_27.mp3'), 27, 'the piste number is detected from the file name');
 eq(ExamData.pisteFrom('not-a-track.mp3'), null, 'a file without a number has no piste');
 eq(oral.reduce(function (n, ex) { return n + ex.questions.length; }, 0), 20, 'the oral part asks 20 questions');
@@ -3410,9 +3406,7 @@ eq(oral2.map(function (ex) { return ex.piste; }), [28, 29, 30], 'the second pape
 eq(oral2.map(function (ex) { return ex.src; }),
   ['exam/No.2/delf_b2_ibk_28.mp3', 'exam/No.2/delf_b2_ibk_29.mp3', 'exam/No.2/delf_b2_ibk_30.mp3'],
   'each second-paper exercise points at its own mp3');
-if (oral2.every(function (ex) { return fs.existsSync(path.join(root, ex.src)); })) {
-  ok(true, 'all three second-paper mp3 files exist on disk');
-}
+ok(oral2.every(function (ex) { return fs.existsSync(path.join(root, ex.src)); }), 'all three second-paper mp3 files exist on disk');
 eq(oral2.reduce(function (n, ex) { return n + ex.questions.length; }, 0), 20, 'the second oral part asks 20 questions');
 eq(exam2.parts[1].exercises.reduce(function (n, ex) { return n + ex.questions.length; }, 0), 20, 'the second written part asks 20 questions');
 eq(exam2.parts[1].exercises.map(function (ex) { return ex.points; }), [9, 9, 7], 'the second written exercises keep the 9/9/7 weighting');

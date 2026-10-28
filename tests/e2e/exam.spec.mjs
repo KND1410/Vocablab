@@ -1,12 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { signIn, seedApp, openRoute, fakeAi } from './helpers.mjs';
 
 const SESSION_KEY = 'vocablab.exam.blanc-1';
-// exam/ holds copyrighted course assets and is git-ignored, so the audio checks
-// only run when the tracks are present on this machine.
-const HAS_AUDIO = fs.existsSync(path.join(process.cwd(), 'exam/No.1/delf_b2_ibk_26.mp3'));
 let lastTutorPrompt = '';
 
 test.beforeEach(async ({ request, page }) => {
@@ -149,15 +144,12 @@ test('the DELF paper renders with all questions, tick boxes and three audio trac
     'exam/No.1/delf_b2_ibk_27.mp3'
   ]);
 
-  if (HAS_AUDIO) {
-    const audio = await request.get('/exam/No.1/delf_b2_ibk_26.mp3', { headers: { range: 'bytes=0-99' } });
-    expect(audio.status()).toBe(206);
-    expect(audio.headers()['content-type']).toContain('audio/mpeg');
-  }
+  const audio = await request.get('/exam/No.1/delf_b2_ibk_26.mp3', { headers: { range: 'bytes=0-99' } });
+  expect(audio.status()).toBe(206);
+  expect(audio.headers()['content-type']).toContain('audio/mpeg');
 });
 
 test('the first listening track actually plays in the page', async ({ page }) => {
-  test.skip(!HAS_AUDIO, 'the local exam audio is not installed');
   await openExam(page);
   const played = await page.locator('audio.exam-player').first().evaluate(async function (el) {
     el.muted = true;
