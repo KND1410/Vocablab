@@ -102,10 +102,11 @@ sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
 for (const f of ['js/util.js', 'js/demo.js', 'js/sources.js', 'js/ai.js', 'js/generator.js', 'js/quiz.js',
-  'js/speech.js', 'js/quests.js', 'js/grammar-data.js', 'js/grammar-handbook.js', 'js/grammar.js']) {
+  'js/speech.js', 'js/quests.js', 'js/grammar-data.js', 'js/grammar-handbook.js', 'js/grammar.js',
+  'js/exam-data.js', 'js/exam-guide.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sandbox, { filename: f });
 }
-const { Util, Sources, Gen, Quiz, Ai, DemoDeck, Speech, Quests, GrammarData, GrammarHandbook, Grammar } = sandbox;
+const { Util, Sources, Gen, Quiz, Ai, DemoDeck, Speech, Quests, GrammarData, GrammarHandbook, Grammar, ExamData, ExamGuide } = sandbox;
 
 /* ---------- tiny test harness ---------- */
 let passed = 0, failed = 0;
@@ -1156,6 +1157,18 @@ eq(Ai.pickDefaultModel([{ id: 'some/small-model' }, { id: 'x/y:free' }], 'openai
 eq(Ai.pickDefaultModel([], 'openai'), 'openrouter/free', 'openai default without a model list');
 eq(Ai.pickDefaultModel([{ id: 'gemini-2.5-flash' }, { id: 'gemini-2.5-pro' }], 'gemini'), 'gemini-2.5-flash', 'gemini default unchanged');
 
+/* The Model dropdown must offer a way off a broken model before any catalogue
+   fetch, so providers ship fallback ids — each list including its own default. */
+const seededProviders = Ai.providers.filter(function (p) { return Array.isArray(p.models) && p.models.length; });
+ok(seededProviders.length >= 6, 'providers ship a fallback model list (' + seededProviders.length + ')');
+seededProviders.forEach(function (p) {
+  ok(p.models.every(function (id) { return typeof id === 'string' && id.length; }),
+    p.id + ': every fallback id is a non-empty string');
+  ok(p.models.indexOf(p.model) !== -1, p.id + ': the default model is among the offered ids');
+});
+eq(JSON.stringify(Ai.providerById('pollinations').models), JSON.stringify(['openai-fast', 'openai']),
+  'Simple mode offers both keyless free models to switch between');
+
 /* ---------- Keys copied from the wrong dashboard ---------- */
 section('API keys');
 eq(Ai.normalizeKey('  AIzaSyDemo  '), 'AIzaSyDemo', 'surrounding spaces dropped');
@@ -1195,6 +1208,15 @@ eq(Ai.providerById('xai').base, 'https://api.x.ai/v1', 'xAI base URL');
 eq(Ai.providerById('xai').keyPrefix, 'xai-', 'xAI key prefix');
 eq(Ai.keyFormat('xai'), 'xai-…', 'xAI says what its keys look like');
 ok(/Gemini/.test(Ai.keyShapeWarning('groq', 'AIzaSyDemo')), 'a Gemini key in the Groq field is named');
+/* Google issues keys in two shapes: the classic 'AIza…' and the newer 'AQ.…'.
+   A real key of either shape must never be told it came from elsewhere. */
+eq(Ai.keyShapeWarning('gemini', 'AQ.' + 'b'.repeat(50)), '',
+  'the newer AQ.… key shape is accepted on Gemini');
+eq(Ai.keyFormat('gemini'), 'AIza… or AQ.…', 'Gemini says it accepts both key shapes');
+ok(/different service/.test(Ai.keyShapeWarning('groq', 'AQ.' + 'b'.repeat(50))),
+  'an AQ.… key still cannot belong to Groq');
+ok(/different service/.test(Ai.keyShapeWarning('gemini', 'zzz-not-a-google-key')),
+  'a key of no known shape is still called out on Gemini');
 ok(/space or line break/.test(Ai.keyShapeWarning('groq', 'gsk_a b')), 'an embedded space is called out');
 const aiSrc = fs.readFileSync(path.join(root, 'js/ai.js'), 'utf8');
 ok(/rejected this key \(401\/403\)/.test(aiSrc) && /providerForBase\(opts\.base/.test(aiSrc),
@@ -2059,6 +2081,12 @@ const dupNotes = Ai.normalizeCorrection({
     { text: 'habitant', fix: 'habitants', why: 'plural again' }]
 }, kwWords, { direction: 'vi2fr', userText: 'Les habitant constatent.' });
 eq(dupNotes.notes.length, 1, 'the same fix is only listed once');
+// The learner wants every error in one reply, so notes are never truncated.
+const manyNotes = Ai.normalizeCorrection({
+  score: 55, corrected: 'Les habitant constatent.',
+  notes: Array.from({ length: 15 }, (_, i) => ({ text: 'mot' + i, fix: 'mot' + (i + 1), why: 'fix ' + i }))
+}, kwWords, { direction: 'vi2fr', userText: 'Les habitant constatent.' });
+eq(manyNotes.notes.length, 15, 'every error is listed — correction notes are not capped at 10');
 // Without the model’s “used” list, the app still marks the words it can see.
 const localUsed = Ai.normalizeCorrection({ score: 40, corrected: 'y' }, kwWords,
   { direction: 'vi2fr', userText: 'Les habitants constatent la pollution.' });
@@ -2268,6 +2296,9 @@ ok(/function paragraphIsGood/.test(appSrc) && /function finalizeParagraph/.test(
   /paraAttempts/.test(appSrc) && /Apply fixes and edit/.test(appSrc) &&
   /Check again/.test(appSrc) && /Finish anyway/.test(appSrc),
   'paragraph correction supports apply-fix, retry and a final decision');
+ok(!/3 checks used|third AI check/.test(appSrc) &&
+  !/notes\.length >= 10/.test(aiSrc) && /no maximum number of notes/.test(aiSrc),
+  'paragraph checks and correction notes are not capped');
 ok(/q\.paraLastCheck && q\.paraLastCheck\.text === text/.test(appSrc),
   'an unchanged paragraph is not sent to the AI twice');
 
@@ -2628,6 +2659,7 @@ eq(qa.quests.length, 3, 'three quests a day');
 eq(qa.quests.map(function (q) { return Quests.def(q.id).group; }), ['quiz', 'production', 'review'],
   'one quiz, one production and one review every day');
 ok(qa.quests.every(function (q) { return q.progress === 0 && !q.done; }), 'new quests start at zero');
+ok(!Quests.isAnyDone(qa), 'a fresh day earns nothing yet');
 ok(JSON.stringify(Quests.newDaily('user-b', '2026-10-23').quests) !== JSON.stringify(qa.quests),
   'a different profile gets a different daily set');
 eq(Quests.newDaily('user-a', '2026-10-24').date, '2026-10-24', 'a new date starts a new daily set');
@@ -2646,7 +2678,8 @@ eq(firstQuest.progress, 2, 'progress never goes backwards');
 Quests.setProgress(dp, firstQuest.id, firstQuest.target + 99);
 eq(firstQuest.progress, firstQuest.target, 'progress is clamped to the target');
 ok(firstQuest.done, 'a quest is done at its target');
-ok(!Quests.isAllDone(dp), 'the day is not complete until every quest is done');
+ok(Quests.isAnyDone(dp), 'one finished quest already earns the day');
+ok(!Quests.isAllDone(dp), 'the list is not fully done until every quest is done');
 dp.quests.forEach(function (q) { Quests.setProgress(dp, q.id, q.target); });
 ok(Quests.isAllDone(dp), 'all three done completes the day');
 eq(Quests.addProgress(dp, 'not-a-quest', 1), null, 'an unknown quest is ignored');
@@ -2906,16 +2939,21 @@ eq(homeRes.status, 200, 'home loads for a signed-in user');
 eq(homeRes.data.daily.quests.length, 3, 'home returns three daily quests');
 eq(homeRes.data.streak.current, 0, 'a new account starts at a 0-day streak');
 
+let firstProgress = null;
 let lastProgress = null;
 for (const quest of homeRes.data.daily.quests) {
-  lastProgress = await apiCall(progressApi, 'POST', '/api/daily/progress', {
+  const res = await apiCall(progressApi, 'POST', '/api/daily/progress', {
     headers: { cookie: apiCookie },
     body: { date: apiDate, questId: quest.id, progress: quest.target }
   });
-  eq(lastProgress.status, 200, 'progress is accepted for ' + quest.id);
+  if (!firstProgress) firstProgress = res;
+  lastProgress = res;
+  eq(res.status, 200, 'progress is accepted for ' + quest.id);
 }
-eq(lastProgress.data.completedNow, true, 'the last quest marks the day complete');
-eq(lastProgress.data.streak.current, 1, 'a completed day starts the streak');
+eq(firstProgress.data.completedNow, true, 'finishing one quest marks the day complete');
+eq(firstProgress.data.streak.current, 1, 'one finished quest starts the streak');
+eq(lastProgress.data.completedNow, false, 'later quests never advance the same day twice');
+eq(lastProgress.data.streak.current, 1, 'the streak stays at one day');
 ok(!!lastProgress.data.daily.completedAt, 'the daily document records its completion time');
 const repeatProgress = await apiCall(progressApi, 'POST', '/api/daily/progress', {
   headers: { cookie: apiCookie },
@@ -3032,16 +3070,20 @@ const localHome = await apiCall(lHome, 'GET', '/api/home?date=' + localDate, { h
 eq(localHome.status, 200, 'home loads from the local store');
 eq(localHome.data.daily.quests.length, 3, 'a local account gets three daily quests');
 
+let localFirst = null;
 let localLast = null;
 for (const quest of localHome.data.daily.quests) {
-  localLast = await apiCall(lProgress, 'POST', '/api/daily/progress', {
+  const res = await apiCall(lProgress, 'POST', '/api/daily/progress', {
     headers: { cookie: localCookie },
     body: { date: localDate, questId: quest.id, progress: quest.target }
   });
-  eq(localLast.status, 200, 'local progress is accepted for ' + quest.id);
+  if (!localFirst) localFirst = res;
+  localLast = res;
+  eq(res.status, 200, 'local progress is accepted for ' + quest.id);
 }
-eq(localLast.data.completedNow, true, 'the local store records a completed day');
-eq(localLast.data.streak.current, 1, 'the local store advances the streak');
+eq(localFirst.data.completedNow, true, 'the local store records the day on the first quest');
+eq(localLast.data.completedNow, false, 'the local store does not count the day again');
+eq(localLast.data.streak.current, 1, 'the local store advances the streak once');
 
 const localLogin = await apiCall(lLogin, 'POST', '/api/auth/login', {
   body: { email: localEmail, password: 'longpassword' }
@@ -3282,6 +3324,103 @@ qMode = 'unauthorized';
 await QAccount.logout();
 eq(QAccount.queueCount('u3'), 0, 'an already-expired session can still clear local data');
 qMode = 'ok';
+
+/* ---------- Examen blanc n°1 (DELF B2) ---------- */
+section('Exam paper — Examen blanc n°1');
+
+ok(ExamData && ExamData.list.length === 1, 'one exam paper is bundled');
+const exam = ExamData.list[0];
+eq(exam.id, 'blanc-1', 'the exam has a stable id');
+eq(exam.hours, 24, 'the session lasts 24 hours');
+eq(exam.parts.length, 3, 'the paper has three parts');
+eq(exam.parts.map(function (p) { return p.title; }),
+  ['Compréhension de l’oral', 'Compréhension des écrits', 'Production écrite'],
+  'the three DELF parts are present');
+eq(exam.parts.map(function (p) { return p.points; }), [25, 25, 25], 'each part is worth 25 points');
+eq(exam.points, 75, 'the paper totals 75 points');
+eq(exam.questionCount, 40, '40 tick-box questions are included');
+
+const allQuestions = [];
+exam.parts.forEach(function (part) {
+  (part.exercises || []).forEach(function (ex) {
+    ex.questions.forEach(function (q) { allQuestions.push({ part: part, ex: ex, q: q }); });
+  });
+});
+eq(allQuestions.length, 40, 'every question is reachable');
+ok(allQuestions.every(function (row) { return row.q.options.length === 3; }), 'every question offers three choices');
+ok(allQuestions.every(function (row) { return row.q.points > 0; }), 'every question carries points');
+ok(allQuestions.every(function (row) { return row.q.text.trim().length > 10; }), 'every question has its full wording');
+ok(allQuestions.every(function (row) { return row.q.options.every(function (o) { return o.label.trim().length > 0; }); }),
+  'no empty answer choice');
+
+const qIds = allQuestions.map(function (row) { return row.q.id; });
+eq(new Set(qIds).size, qIds.length, 'question ids are unique');
+ok(qIds.every(function (id) { return /^[a-z0-9]+$/.test(id); }), 'question ids stay URL-safe');
+
+const oral = exam.parts[0].exercises;
+eq(oral.map(function (ex) { return ex.piste; }), [25, 26, 27], 'the three audio tracks use pistes 25–27');
+eq(oral.map(function (ex) { return ex.src; }),
+  ['exam/No.1/delf_b2_ibk_25.mp3', 'exam/No.1/delf_b2_ibk_26.mp3', 'exam/No.1/delf_b2_ibk_27.mp3'],
+  'each exercise points at its own mp3');
+// The tracks are copyrighted course audio and stay local (exam/ is git-ignored),
+// so only check the files when they are actually present.
+if (oral.every(function (ex) { return fs.existsSync(path.join(root, ex.src)); })) {
+  ok(true, 'all three mp3 files exist on disk');
+}
+eq(ExamData.pisteFrom('delf_b2_ibk_27.mp3'), 27, 'the piste number is detected from the file name');
+eq(ExamData.pisteFrom('not-a-track.mp3'), null, 'a file without a number has no piste');
+eq(oral.reduce(function (n, ex) { return n + ex.questions.length; }, 0), 20, 'the oral part asks 20 questions');
+eq(exam.parts[1].exercises.reduce(function (n, ex) { return n + ex.questions.length; }, 0), 20, 'the written part asks 20 questions');
+
+const write = exam.parts[2].essay;
+ok(write && write.minWords === 250, 'the writing task asks for 250 words');
+ok(/association/.test(write.prompt) && /lecture/.test(write.prompt), 'the essay prompt is the book’s reading-association task');
+
+ok(htmlSrc.indexOf('js/exam-data.js') !== -1 &&
+  htmlSrc.indexOf('js/exam-data.js') < htmlSrc.indexOf('js/exam-guide.js') &&
+  htmlSrc.indexOf('js/exam-guide.js') < htmlSrc.indexOf('js/exam.js') &&
+  htmlSrc.indexOf('js/exam.js') < htmlSrc.indexOf('js/app.js'),
+  'exam scripts load before the app in dependency order');
+ok(htmlSrc.indexOf('id="examRoot"') !== -1, 'the exam route has a mount point');
+
+/* ---------- DELF B2 writing method (essay feedback) ---------- */
+const guide = ExamGuide.guide;
+eq(guide.author, 'Stéphane Wattier', 'the writing method is attributed to its author');
+eq(guide.year, 2017, 'the guide is the 2017 edition');
+eq([guide.contentPoints, guide.formPoints, guide.totalPoints], [14, 11, 25], 'the grid keeps the guide’s 14 + 11 = 25 weighting');
+eq([guide.minWords, guide.targetWords, guide.maxWords], [225, 250, 275], 'the word tolerance is 250 ±10 %');
+eq(guide.criteria.reduce(function (n, c) { return n + c.points; }, 0), 25, 'the criteria add up to 25 points');
+const contentCriteria = guide.criteria.filter(function (c) { return c.group === 'content'; });
+const formCriteria = guide.criteria.filter(function (c) { return c.group === 'form'; });
+eq(contentCriteria.reduce(function (n, c) { return n + c.points; }, 0), 14, 'content criteria total 14 points');
+eq(formCriteria.reduce(function (n, c) { return n + c.points; }, 0), 11, 'form criteria total 11 points');
+ok(guide.criteria.every(function (c) { return c.label && c.checks && c.points > 0; }), 'every criterion has a label, checks and points');
+const criterionIds = guide.criteria.map(function (c) { return c.id; });
+eq(criterionIds.length, new Set(criterionIds).size, 'criterion ids are unique');
+ok(/titre/.test(guide.article) && /chapeau/.test(guide.article) && /signature/.test(guide.article),
+  'the article format requires a title, a chapeau and a signature');
+eq(guide.steps.length, 4, 'the method has four stages');
+ok(guide.steps.every(function (step) { return step.length > 40; }), 'every method stage is explained');
+
+const essayPrompt = ExamData.list[0].parts[2].essay.prompt;
+const builtGuide = ExamGuide.buildFeedbackPrompt({
+  task: essayPrompt,
+  essay: 'Mon article explique pourquoi notre association existe et demande une salle.',
+  words: 230,
+  language: 'vi'
+});
+ok(/Wattier/.test(builtGuide.prompt), 'the examiner prompt names the method');
+ok(/PRODUCTION DU CANDIDAT/.test(builtGuide.prompt), 'the prompt keeps the fixture marker');
+ok(builtGuide.prompt.indexOf('CONSIGNE DE L’ÉPREUVE') !== -1, 'the prompt repeats the task');
+ok(builtGuide.prompt.indexOf('225') !== -1 && builtGuide.prompt.indexOf('275') !== -1, 'the prompt states the word tolerance');
+ok(builtGuide.prompt.indexOf('MÉTHODE') !== -1 && builtGuide.prompt.indexOf('Analyser la situation') !== -1,
+  'the prompt carries the writing method');
+ok(guide.criteria.every(function (c) { return builtGuide.prompt.indexOf(c.label) !== -1; }), 'every criterion reaches the examiner');
+ok(builtGuide.system.indexOf('Vietnamese') !== -1, 'the feedback language follows the request');
+ok(builtGuide.system.indexOf('14') !== -1 && builtGuide.system.indexOf('11') !== -1, 'the system prompt states the weighting');
+ok(builtGuide.prompt.length < 9000, 'the prompt stays compact enough for a small model');
+const shortGuide = ExamGuide.buildFeedbackPrompt({ task: essayPrompt, essay: 'Trop court.', words: 12, language: 'en' });
+ok(/trop court/i.test(shortGuide.prompt), 'a short essay is flagged against the 225-word minimum');
 
 /* ---------- summary ---------- */
 console.log('\n' + '─'.repeat(46));

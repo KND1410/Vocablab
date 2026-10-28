@@ -20,37 +20,37 @@
      review     — light review / course work */
   var TYPES = [
     {
-      id: 'mc30', group: 'quiz', mode: 'quiz', icon: '🎯', target: 30,
+      id: 'mc30', group: 'quiz', mode: 'quiz', icon: 'target', target: 30,
       title: 'Multiple choice ×30',
       desc: 'Answer 30 multiple-choice questions.'
     },
     {
-      id: 'mixed20', group: 'quiz', mode: 'quiz', icon: '🧩', target: 20,
+      id: 'mixed20', group: 'quiz', mode: 'quiz', icon: 'layers', target: 20,
       title: 'Mixed quiz ×20',
       desc: 'Answer 20 questions in any format.'
     },
     {
-      id: 'correct10', group: 'quiz', mode: 'quiz', icon: '✅', target: 10,
+      id: 'correct10', group: 'quiz', mode: 'quiz', icon: 'check', target: 10,
       title: '10 correct answers',
       desc: 'Get 10 answers right in any quiz.'
     },
     {
-      id: 'paragraph1', group: 'production', mode: 'paragraph', icon: '✍️', target: 1,
+      id: 'paragraph1', group: 'production', mode: 'paragraph', icon: 'pen', target: 1,
       title: 'Paragraph translation',
       desc: 'Translate one AI-written paragraph.'
     },
     {
-      id: 'shadow3', group: 'production', mode: 'shadowing', icon: '🎙️', target: 3,
+      id: 'shadow3', group: 'production', mode: 'shadowing', icon: 'mic', target: 3,
       title: 'Shadowing ×3',
       desc: 'Record three sentences out loud.'
     },
     {
-      id: 'cards20', group: 'review', mode: 'flashcards', icon: '🃏', target: 20,
+      id: 'cards20', group: 'review', mode: 'flashcards', icon: 'cards', target: 20,
       title: 'Flashcards ×20',
       desc: 'Review 20 cards with Again or Got it.'
     },
     {
-      id: 'grammar1', group: 'review', mode: 'grammar', icon: '📖', target: 1,
+      id: 'grammar1', group: 'review', mode: 'grammar', icon: 'book', target: 1,
       title: 'Grammar lesson',
       desc: 'Finish one French tenses lesson.'
     }
@@ -170,6 +170,12 @@
     return daily.quests.every(function (q) { return !!q.done || q.progress >= q.target; });
   }
 
+  /** One finished quest already earns the day: the streak only needs activity. */
+  function isAnyDone(daily) {
+    if (!daily || !Array.isArray(daily.quests) || !daily.quests.length) return false;
+    return daily.quests.some(function (q) { return !!q.done || q.progress >= q.target; });
+  }
+
   /**
    * Set one quest's absolute progress. Progress never goes down inside a day,
    * and never past the target. Returns the quest (mutated) or null.
@@ -234,7 +240,7 @@
   }
 
   /**
-   * Called when every quest on `day` is done.
+   * Called when the day is earned — finishing any one quest is enough.
    * - yesterday completed → +1
    * - one missed day        → +1 (grace day, shown as “!” before completing)
    * - two missed days       → restart at 1
@@ -307,6 +313,7 @@
     newDaily: newDaily,
     findQuest: findQuest,
     isAllDone: isAllDone,
+    isAnyDone: isAnyDone,
     setProgress: setProgress,
     addProgress: addProgress,
     mergeDaily: mergeDaily,

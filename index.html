@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VocabLab — Learn vocabulary from your Google Sheet</title>
 <meta name="description" content="Turn any Google Sheet of vocabulary into AI-made quizzes: multiple choice, fill in the blank, and translation drills.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📚</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><rect width=%2224%22 height=%2224%22 rx=%225%22 fill=%22%232f6bff%22/><g fill=%22none%22 stroke=%22%23fff%22 stroke-width=%221.7%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22M6 19.5A2.5 2.5 0 0 1 8.5 17H20%22/><path d=%22M8.5 3H20v18H8.5A2.5 2.5 0 0 1 6 18.5v-13A2.5 2.5 0 0 1 8.5 3z%22/></g></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body class="auth-locked">
@@ -16,7 +16,7 @@
 <!-- ======================= AUTH ======================= -->
 <section id="authScreen" class="auth-screen">
   <div class="auth-panel">
-    <div class="auth-brand"><span class="auth-logo">📚</span><span>VocabLab</span></div>
+    <div class="auth-brand"><span class="auth-logo" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></span><span>VocabLab</span></div>
     <h1 id="authTitle">Welcome back</h1>
     <p id="authSub" class="muted auth-sub">Sign in to keep your daily streak going.</p>
 
@@ -61,7 +61,7 @@
   <div class="topbar-left">
     <button id="btnNavToggle" class="icon-btn nav-toggle" type="button" title="Open navigation" aria-label="Open navigation" aria-controls="sideNav" aria-expanded="false">☰</button>
     <button id="btnHome" class="brand brand-home" type="button" title="Back to home" aria-label="Back to home">
-      <span class="brand-logo" aria-hidden="true">📚</span>
+      <span class="brand-logo" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></span>
       <span class="brand-name">VocabLab</span>
       <span class="brand-sub" data-i18n="brand.tagline">DELF B2 studio</span>
     </button>
@@ -77,8 +77,8 @@
       </select>
     </label>
     <button id="btnHelp" class="icon-btn" title="Help &amp; setup guide" aria-label="Help">?</button>
-    <button id="btnTheme" class="icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme">🌙</button>
-    <button id="btnSettings" class="icon-btn" title="Settings" aria-label="Settings">⚙️</button>
+    <button id="btnTheme" class="icon-btn" title="Toggle light/dark theme" aria-label="Toggle theme"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg></button>
+    <button id="btnSettings" class="icon-btn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></button>
     <button id="btnSignOut" class="account-pill" type="button" title="Sign out">Sign out</button>
   </div>
 </header>
@@ -113,7 +113,7 @@
         <strong id="navDeckName">No deck</strong>
       </div>
       <div class="side-mini-row">
-        <span id="navStreak" class="pill pill-accent">🔥 0</span>
+        <span id="navStreak" class="pill pill-accent"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>0</span>
         <span id="navLevel" class="pill pill-muted">B1/B2</span>
       </div>
     </div>
@@ -293,7 +293,7 @@
           sentence at a time: listen, record, replay, then check your pronunciation.</p>
         <p id="shadowStartHint" class="muted small" hidden></p>
         <button id="btnStartShadowing" class="btn btn-primary btn-block" disabled>Start shadowing</button>
-        <button id="btnShadowSavedSetup" class="btn btn-subtle btn-block" type="button">💾 Saved recordings</button>
+        <button id="btnShadowSavedSetup" class="btn btn-subtle btn-block" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Saved recordings</button>
       </div>
     </section>
 
@@ -379,12 +379,7 @@
 
     <!-- Exam -->
     <section id="routeExam" class="route-page" hidden>
-      <div class="empty-page">
-        <span class="empty-ico">◇</span>
-        <h1 data-i18n="exam.title">Exam room</h1>
-        <p class="muted" data-i18n="exam.body">A focused DELF B2 exam space is next. For now, use Practice for timed paragraphs and quizzes.</p>
-        <a class="btn btn-primary" href="#/practice" data-i18n="exam.cta">Go to practice</a>
-      </div>
+      <div id="examRoot"></div>
     </section>
 
     <!-- Community -->
@@ -438,10 +433,10 @@
             <button id="btnCancelName" class="btn btn-ghost btn-sm" type="button">Cancel</button>
           </div>
         </div>
-        <div id="streakChip" class="streak-chip" title="Days with all daily quests done">
-          <span class="streak-flame" aria-hidden="true">🔥</span>
+        <div id="streakChip" class="streak-chip" title="Days you finished at least one daily quest">
+          <span class="streak-flame" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg></span>
           <span class="streak-main"><strong id="streakCount">0</strong><span class="streak-label">day streak</span></span>
-          <span id="streakWarn" class="streak-warn" hidden title="You missed a day. Finish today's quests to keep the streak.">!</span>
+          <span id="streakWarn" class="streak-warn" hidden title="You missed a day. Finish any quest today to keep the streak.">!</span>
         </div>
       </div>
 
@@ -449,15 +444,15 @@
         <div class="quest-head">
           <div>
             <h2>Today's quests</h2>
-            <p id="questSub" class="muted small">Finish all three to earn today's streak.</p>
+            <p id="questSub" class="muted small">Finish any one to earn today's streak.</p>
           </div>
           <span id="questCount" class="pill pill-accent">0 / 3</span>
         </div>
         <div id="questList" class="quest-list"></div>
         <div id="questAllDone" class="quest-alldone" hidden>
-          <span class="quest-cheer">🎉</span>
+          <span class="quest-cheer" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg></span>
           <div>
-            <strong>All quests done!</strong>
+            <strong id="questDoneTitle">All quests done!</strong>
             <p id="questStreakLine" class="muted small">Your streak is safe for today.</p>
           </div>
         </div>
@@ -465,7 +460,7 @@
       </section>
 
       <div class="home-tools">
-        <button id="btnTestVoice" class="btn btn-ghost btn-sm" type="button" title="Play a short French test phrase">🔊 Test speaker</button>
+        <button id="btnTestVoice" class="btn btn-ghost btn-sm" type="button" title="Play a short French test phrase"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg> Test speaker</button>
         <span id="voiceHint" class="muted tiny">Uses your browser's system voices</span>
       </div>
 
@@ -502,7 +497,7 @@
         <div class="quiz-top-row">
           <span id="qProgressText" class="muted small">–</span>
           <span class="quiz-chips">
-            <span id="qStreak" class="pill pill-muted" hidden>🔥 <span>0</span></span>
+            <span id="qStreak" class="pill pill-muted" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg> <span>0</span></span>
             <span id="qScore" class="pill pill-ok">0 ✓</span>
             <button id="btnExitQuiz" class="btn btn-ghost btn-xs" title="End this quiz">✕ End</button>
           </span>
@@ -513,7 +508,7 @@
         <div class="qmeta">
           <span id="qTypeBadge" class="pill pill-accent">Multiple choice</span>
           <span id="qTopicBadge" class="pill pill-muted" hidden></span>
-          <button id="btnSpeakPrompt" class="icon-btn icon-btn-sm" title="Listen" hidden>🔊</button>
+          <button id="btnSpeakPrompt" class="icon-btn icon-btn-sm" title="Listen" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg></button>
         </div>
         <p id="qPrompt" class="qprompt"></p>
         <p id="qHintBox" class="qhint" hidden></p>
@@ -525,7 +520,7 @@
                 <div class="para-source">
                   <div class="para-top">
                     <span id="paraDir" class="pill pill-accent">French → Vietnamese</span>
-                    <button id="btnParaSpeak" class="icon-btn icon-btn-sm" title="Listen to the paragraph" type="button">🔊</button>
+                    <button id="btnParaSpeak" class="icon-btn icon-btn-sm" title="Listen to the paragraph" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg></button>
                   </div>
                   <p id="paraText" class="para-text"></p>
                 </div>
@@ -588,7 +583,7 @@
           <div id="fbWord" class="wordbox">
             <div class="wordbox-main">
               <span id="fbTerm" class="wordbox-term"></span>
-              <button id="fbSpeak" class="icon-btn icon-btn-sm" title="Listen">🔊</button>
+              <button id="fbSpeak" class="icon-btn icon-btn-sm" title="Listen"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg></button>
             </div>
             <div id="fbPron" class="wordbox-pron muted small"></div>
             <div id="fbMeaning" class="wordbox-meaning"></div>
@@ -607,7 +602,7 @@
         <div class="quiz-top-row">
           <span id="shProgressText" class="muted small">Sentence 1 of 1</span>
           <span class="quiz-chips">
-            <button id="btnShadowSaved" class="btn btn-ghost btn-xs" type="button">💾 Saved <span id="shSavedCount">0</span></button>
+            <button id="btnShadowSaved" class="btn btn-ghost btn-xs" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Saved <span id="shSavedCount">0</span></button>
             <button id="btnShadowExit" class="btn btn-ghost btn-xs" title="End shadowing">✕ End</button>
           </span>
         </div>
@@ -620,7 +615,7 @@
         </div>
         <p id="shSentence" class="sh-sentence" lang="fr"></p>
         <div class="sh-tools">
-          <button id="btnShadowListen" class="btn btn-subtle btn-sm" type="button">🔊 Listen</button>
+          <button id="btnShadowListen" class="btn btn-subtle btn-sm" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg> Listen</button>
           <label class="sh-speed">Speed
             <select id="selShadowSpeed" class="input input-sm">
               <option value="0.8">Slow</option>
@@ -628,7 +623,7 @@
               <option value="1.1">Fast</option>
             </select>
           </label>
-          <button id="btnShadowTranslate" class="btn btn-ghost btn-sm" type="button">👁 Show translation</button>
+          <button id="btnShadowTranslate" class="btn btn-ghost btn-sm" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> Show translation</button>
         </div>
         <div id="shTranslation" class="sh-translation" hidden></div>
 
@@ -638,10 +633,10 @@
             <span id="shTimer" class="sh-timer">0:00</span>
           </div>
           <div class="sh-record-actions">
-            <button id="btnShadowRecord" class="btn btn-primary" type="button">🎙 Record</button>
+            <button id="btnShadowRecord" class="btn btn-primary" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg> Record</button>
             <button id="btnShadowStop" class="btn btn-subtle" type="button" hidden>⏹ Stop</button>
             <button id="btnShadowReplay" class="btn btn-ghost" type="button" hidden>▶ Replay</button>
-            <button id="btnShadowSave" class="btn btn-subtle" type="button" hidden>💾 Save</button>
+            <button id="btnShadowSave" class="btn btn-subtle" type="button" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Save</button>
             <button id="btnShadowDelete" class="btn btn-ghost" type="button" hidden>Delete</button>
           </div>
           <p id="shAudioMeta" class="muted tiny" hidden></p>
@@ -667,7 +662,7 @@
           <div id="shWords" class="sh-words"></div>
           <div id="shTips" class="sh-tips"></div>
           <div class="btn-row">
-            <button id="btnShadowRetry" class="btn btn-subtle" type="button">🎙 Record again</button>
+            <button id="btnShadowRetry" class="btn btn-subtle" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg> Record again</button>
             <button id="btnShadowNext" class="btn btn-primary" type="button">Next sentence</button>
           </div>
         </div>
@@ -733,7 +728,7 @@
       <div class="fc-top">
         <span id="fcProgress" class="muted small">1 / 1</span>
         <div class="btn-row">
-          <button id="btnFcShuffle" class="btn btn-ghost btn-sm">🔀 Shuffle</button>
+          <button id="btnFcShuffle" class="btn btn-ghost btn-sm"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg> Shuffle</button>
           <button id="btnFcExit" class="btn btn-ghost btn-sm">✕ Exit</button>
         </div>
       </div>
@@ -742,7 +737,7 @@
           <div class="fc-face fc-front">
             <span id="fcTerm" class="fc-term"></span>
             <span id="fcPron" class="fc-pron muted"></span>
-            <button id="fcSpeak" class="icon-btn" title="Listen" onclick="event.stopPropagation()">🔊</button>
+            <button id="fcSpeak" class="icon-btn" title="Listen" onclick="event.stopPropagation()"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg></button>
           </div>
           <div class="fc-face fc-back">
             <span id="fcMeaning" class="fc-meaning"></span>
@@ -752,8 +747,8 @@
       </div>
       <p class="muted small center">Click / press Space to flip</p>
       <div class="fc-actions">
-        <button id="btnFcAgain" class="btn btn-subtle btn-block">😅 Again</button>
-        <button id="btnFcGood" class="btn btn-primary btn-block">👍 Got it</button>
+        <button id="btnFcAgain" class="btn btn-subtle btn-block">Again</button>
+        <button id="btnFcGood" class="btn btn-primary btn-block">Got it</button>
       </div>
       <div class="btn-row center-row">
         <button id="btnFcPrev" class="btn btn-ghost">‹ Prev</button>
@@ -774,7 +769,7 @@
       You need it, together with your email, to set a new password.</p>
     <div id="recoveryCode" class="recovery-code">XXXXX-XXXXX</div>
     <div class="btn-row">
-      <button id="btnCopyRecovery" class="btn btn-subtle" type="button">📋 Copy code</button>
+      <button id="btnCopyRecovery" class="btn btn-subtle" type="button"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy code</button>
       <button id="btnRecoveryDone" class="btn btn-primary" type="button">I saved it</button>
     </div>
     <p id="recoveryHint" class="muted tiny">Passwords cannot be recovered without this code.</p>
@@ -788,10 +783,10 @@
     <button class="icon-btn" value="close" aria-label="Close">✕</button>
   </form>
   <div class="tabs" role="tablist">
-    <button class="tab-btn active" data-tab="ai" role="tab">✨ AI</button>
-    <button class="tab-btn" data-tab="speech" role="tab">🎙 Speech</button>
-    <button class="tab-btn" data-tab="sheet" role="tab">📊 Google Sheet</button>
-    <button class="tab-btn" data-tab="data" role="tab">🗄 Data</button>
+    <button class="tab-btn active" data-tab="ai" role="tab"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"></path></svg>AI</button>
+    <button class="tab-btn" data-tab="speech" role="tab"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M8 10h8M8 13h5"></path></svg>Speech</button>
+    <button class="tab-btn" data-tab="sheet" role="tab"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line></svg>Google Sheet</button>
+    <button class="tab-btn" data-tab="data" role="tab"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>Data</button>
   </div>
 
   <!-- AI tab -->
@@ -831,7 +826,7 @@
         <div class="field">
           <label class="field-label" for="inpGeminiKey">Gemini API key <span class="muted">(free)</span></label>
           <div class="input-row">
-            <input id="inpGeminiKey" class="input" type="password" placeholder="AIza…" autocomplete="off" spellcheck="false">
+            <input id="inpGeminiKey" class="input" type="password" placeholder="AIza… or AQ.…" autocomplete="off" spellcheck="false">
             <button id="btnToggleKey" class="btn btn-subtle btn-sm" type="button">Show</button>
           </div>
           <p class="muted small">Get one free at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
@@ -857,10 +852,8 @@
       <div class="field">
         <div class="input-row">
           <button id="btnTestKey" class="btn btn-subtle" type="button">Test &amp; load models</button>
-          <input id="inpModel" class="input input-sm grow" list="modelList" placeholder="model id" aria-label="Model" autocomplete="off" spellcheck="false">
-          <datalist id="modelList">
-            <option value="gemini-2.5-flash"></option>
-          </datalist>
+          <select id="inpModel" class="input input-sm grow" aria-label="Model"></select>
+          <input id="inpModelCustom" class="input input-sm grow" type="text" placeholder="model id" aria-label="Custom model id" autocomplete="off" spellcheck="false" hidden>
           <button id="btnRefreshModels" class="btn btn-ghost btn-sm" type="button" title="Refresh model list">↻</button>
         </div>
       </div>
@@ -992,7 +985,7 @@
     </div>
     <div class="mode-cards">
       <label class="mode-card"><input type="radio" name="sheetMode" value="links" checked>
-        <div><strong>⭐ Sheet link — no key, zero setup</strong><span class="muted small">Paste your sheet link; every tab (topic) is detected automatically and new tabs appear by themselves.</span></div></label>
+        <div><strong>Sheet link — no key, zero setup</strong><span class="muted small">Paste your sheet link; every tab (topic) is detected automatically and new tabs appear by themselves.</span></div></label>
       <label class="mode-card"><input type="radio" name="sheetMode" value="script">
         <div><strong>Apps Script web app</strong><span class="muted small">No Google Cloud needed. Paste a small script once, get one URL.</span></div></label>
       <label class="mode-card"><input type="radio" name="sheetMode" value="api">
@@ -1009,7 +1002,7 @@
       <div class="field">
         <label class="field-label" for="inpSheetApiKey">API key <span class="muted">(Google Cloud — not the Gemini key)</span></label>
         <input id="inpSheetApiKey" class="input" type="text" placeholder="AIza…" autocomplete="off" spellcheck="false">
-        <p class="muted small">No key, and don't want to create one? Switch to the <strong>⭐ Sheet link</strong> mode above —
+        <p class="muted small">No key, and don't want to create one? Switch to the <strong>Sheet link</strong> mode above —
           it needs nothing from Google Cloud and detects your tabs automatically.</p>
       </div>
       <button id="btnLoadApi" class="btn btn-primary" type="button">Load all tabs</button>
@@ -1103,9 +1096,9 @@
       account and today's local date, so a reload never rerolls it, and it refreshes at your local midnight (or when
       you return to the tab). <strong>Start</strong> opens that exact practice. Bars fill as you answer, record or
       finish a lesson, and progress accumulates across sessions.</p>
-    <p class="muted small"><strong>Streak:</strong> finish all three quests to add a day. Missing one day keeps the
-      streak with a <strong>!</strong> warning; finish today and it continues. Missing a second day resets it to 0
-      (your best streak is kept).</p>
+    <p class="muted small"><strong>Streak:</strong> finish any one quest to add a day — the other two stay
+      optional. Missing one day keeps the streak with a <strong>!</strong> warning; finish today and it continues.
+      Missing a second day resets it to 0 (your best streak is kept).</p>
 
     <h3>1 · Sheet layout</h3>
     <p class="muted small">One tab per topic. First row = headers (optional). VocabLab auto-detects these columns
@@ -1193,11 +1186,11 @@
       only a guide to the meaning, never the answer you had to produce. The score still reflects the source's
       ideas and the required words: leaving out an idea or a required word costs points even when the grammar
       is fine. The feedback shows your text, the fixed
-      version, one short note per actual change, and which sheet words you used. When the AI finds something, the
-      paragraph stays editable: press <strong>Apply fixes and edit</strong>, change anything you like, then
-      <strong>Check again</strong>. Each paragraph gets at most three AI checks. The attempt is only scored when
-      the AI says it is all good; after the third check, <strong>Finish anyway</strong> is offered (using the last
-      score), and the feedback shows each attempt's score. This exercise is
+      version, one short note per actual change — every error is listed, with no cap — and which sheet words you
+      used. When the AI finds something, the paragraph stays editable: press <strong>Apply fixes and edit</strong>,
+      change anything you like, then <strong>Check again</strong>. There is no limit on checks: fix everything the
+      feedback lists and check again until the AI gives 100/100 with no notes left. <strong>Finish anyway</strong>
+      is offered (using the last score), and the feedback shows each attempt's score. This exercise is
       AI-only: if AI is not set up, <strong>Start paragraph</strong> is disabled and says why, and a failed
       generation is reported in Settings → AI rather than replaced by another question type. The quiz Generator
       setting does not affect paragraph practice — it always uses AI.</p>
@@ -1309,6 +1302,9 @@
 <script src="js/grammar-data.js"></script>
 <script src="js/grammar-handbook.js"></script>
 <script src="js/grammar.js"></script>
+<script src="js/exam-data.js"></script>
+<script src="js/exam-guide.js"></script>
+<script src="js/exam.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

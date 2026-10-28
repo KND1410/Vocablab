@@ -112,7 +112,7 @@
       'settingsDialog', 'selProvider', 'providerHint', 'paneGemini', 'inpGeminiKey', 'btnToggleKey',
       'paneOai', 'inpOaiBase', 'inpOaiKey', 'btnToggleOaiKey',
       'modeSimple', 'modeAdvanced', 'paneSimple', 'aiAdvanced', 'selSimpleModel', 'btnTestSimple',
-      'btnTestKey', 'inpModel', 'modelList', 'btnRefreshModels',
+      'btnTestKey', 'inpModel', 'inpModelCustom', 'btnRefreshModels',
       'aiStatus', 'aiIssue', 'usageToday', 'cachedCount', 'btnClearQCache', 'inpTargetLang', 'inpTargetCode',
       'inpAzureKey', 'btnToggleAzureKey', 'inpAzureRegion', 'selAzureVoice', 'azureVoiceField', 'azureVoiceNote', 'chkCloudVoice', 'btnTestAzure', 'speechStatus',
       'browserVoiceLabel', 'browserVoiceIntro', 'azureVoiceIntro', 'speechLimitNote',
@@ -128,18 +128,41 @@
       'authToReset', 'authToSignin', 'authOffline', 'btnSignOut',
       'homeDate', 'homeGreeting', 'homeName', 'btnEditName', 'nameEditor', 'inpName', 'btnSaveName', 'btnCancelName',
       'streakChip', 'streakCount', 'streakWarn', 'questCard', 'questSub', 'questCount', 'questList',
-      'questAllDone', 'questStreakLine', 'questOffline', 'recoveryDialog', 'recoveryCode',
+      'questAllDone', 'questDoneTitle', 'questStreakLine', 'questOffline', 'recoveryDialog', 'recoveryCode',
       'btnCopyRecovery', 'btnRecoveryDone', 'recoveryHint'];
     ids.forEach(function (id) { E[id] = U.$('#' + id); });
   }
 
   /* ---------- Theme ---------- */
+  const ICON_SUN = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32l1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>';
+  const ICON_MOON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+  /* One monochrome line-icon set, so no control falls back to a colour emoji. */
+  const ICONS = {
+    flame: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>',
+    speaker: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>',
+    mic: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>',
+    save: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>',
+    eye: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+    eyeOff: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>',
+    shuffle: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>',
+    copy: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+    lock: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>',
+    target: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>',
+    layers: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>',
+    check: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
+    pen: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>',
+    cards: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="13" height="18" rx="2"></rect><path d="M3 7v12a2 2 0 0 0 2 2h9"></path></svg>',
+    book: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>',
+    sparkle: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"></path></svg>',
+    award: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>'
+  };
+  function iconSvg(name) { return ICONS[name] || ''; }
   function applyTheme(pref) {
     const stored = pref || U.lsGet('theme', 'auto');
     const dark = stored === 'dark' ||
       (stored === 'auto' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-    E.btnTheme.textContent = dark ? '☀️' : '🌙';
+    E.btnTheme.innerHTML = dark ? ICON_SUN : ICON_MOON;
   }
   function toggleTheme() {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -530,6 +553,7 @@
     setActiveNav(VIEWS[name].nav);
     if (name === 'welcome' || name === 'files') placeClassFile(name);
     if (name === 'welcome') renderHome();
+    if (name === 'exam' && window.Exam) Exam.render();
     if (name === 'files') updateSourceUI();
     if (!opts.fromRouter) setHash(VIEW_ROUTE[name] || 'home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -854,7 +878,7 @@
     const daily = state.daily && state.daily.date === date ? state.daily : null;
     const completed = !!(daily && daily.completedAt);
     const view = Quests.streakView(state.streak || Quests.defaultStreak(), date, completed);
-    if (E.navStreak) E.navStreak.textContent = '🔥 ' + view.current;
+    if (E.navStreak) E.navStreak.innerHTML = iconSvg('flame') + ' ' + U.esc(String(view.current));
     if (E.progressStreak) {
       E.progressStreak.textContent = view.current + (view.current === 1 ? ' day' : ' days');
     }
@@ -886,26 +910,35 @@
     E.questList.innerHTML = '';
     daily.quests.forEach(function (q) { E.questList.appendChild(renderQuestRow(q)); });
 
-    const allDone = Quests.isAllDone(daily);
-    E.questAllDone.hidden = !allDone;
-    if (allDone) {
+    // The day is earned by any one finished quest, so the card confirms the
+    // streak as soon as that happens; the other two quests stay optional.
+    const secured = !!daily.completedAt;
+    E.questAllDone.hidden = !secured;
+    if (secured) {
+      const allDone = Quests.isAllDone(daily);
       const n = view.current;
-      E.questStreakLine.textContent = flags && flags.justCompleted
-        ? 'Streak +1 — you are on ' + n + ' day' + (n === 1 ? '' : 's') + '. Come back tomorrow.'
-        : 'Today\'s streak is locked in — ' + n + ' day' + (n === 1 ? '' : 's') + '. Come back tomorrow.';
+      if (allDone) {
+        E.questDoneTitle.textContent = 'All quests done!';
+        E.questStreakLine.textContent = flags && flags.justCompleted
+          ? I18n.t(n === 1 ? 'home.questJustCompletedOne' : 'home.questJustCompleted', { n: n })
+          : I18n.t(n === 1 ? 'home.questLockedInOne' : 'home.questLockedIn', { n: n });
+      } else {
+        E.questDoneTitle.textContent = 'Today\'s streak is secured';
+        E.questStreakLine.textContent = 'The other quests stay optional — come back tomorrow.';
+      }
     }
     updateQuestOffline();
   }
 
   function renderQuestRow(q) {
-    const def = Quests.def(q.id) || { icon: '⭐', title: q.id, desc: '', mode: '' };
+    const def = Quests.def(q.id) || { icon: 'sparkle', title: q.id, desc: '', mode: '' };
     const row = document.createElement('article');
     row.className = 'quest' + (q.done ? ' is-done' : '');
     row.dataset.quest = q.id;
 
     const icon = document.createElement('span');
     icon.className = 'quest-ico';
-    icon.textContent = def.icon;
+    icon.innerHTML = iconSvg(def.icon);
 
     const main = document.createElement('div');
     main.className = 'quest-main';
@@ -1020,12 +1053,14 @@
     Quests.setProgress(state.daily, id, before + (amount || 1));
     if (quest.progress === before) return;
 
+    // One finished quest earns the day: the streak only needs activity, not
+    // every quest on the list.
     let justCompleted = false;
-    if (Quests.isAllDone(state.daily) && !state.daily.completedAt) {
+    if (Quests.isAnyDone(state.daily) && !state.daily.completedAt) {
       state.daily.completedAt = new Date().toISOString();
       state.streak = Quests.nextStreak(state.streak, state.daily.date);
       justCompleted = true;
-      U.toast('All daily quests done — streak +1! 🔥', 'ok', 6500);
+      U.toast('Quest complete — streak +1!', 'ok', 6500);
     }
     Account.updateCachedDaily(state.daily);
     Account.updateCachedStreak(state.user.id, state.streak);
@@ -1862,7 +1897,7 @@
     if (s.streak >= 2) { E.qStreak.hidden = false; E.qStreak.querySelector('span').textContent = String(s.streak); }
     else E.qStreak.hidden = true;
 
-    E.qTypeBadge.textContent = Quiz.typeLabel(q.type) + (q.source === 'ai' ? ' ✨' : '');
+    E.qTypeBadge.textContent = Quiz.typeLabel(q.type);
     E.qTopicBadge.hidden = !q.word.topicName;
     E.qTopicBadge.textContent = q.word.topicName || '';
 
@@ -2225,20 +2260,17 @@
     return el;
   }
 
-  /** “All good” is stricter than the old 70/100 pass mark: no notes, no missing words. */
+  /** A paragraph is finished only at a perfect 100/100: no notes, no missing words. */
   function paragraphIsGood(fb) {
     if (!fb) return false;
     const notes = fb.notes || [];
     const missing = (fb.used || []).filter(function (u) { return !u.used; });
-    return Number(fb.score) >= 90 && notes.length === 0 && missing.length === 0;
+    return Number(fb.score) === 100 && notes.length === 0 && missing.length === 0;
   }
 
-  /** Level-up is stricter: a perfect grammar score, no notes, all words used. */
+  /** Level-up uses the same perfect gate — the name is kept for readability. */
   function paragraphIsPerfect(fb) {
-    if (!fb) return false;
-    const notes = fb.notes || [];
-    const missing = (fb.used || []).filter(function (u) { return !u.used; });
-    return Number(fb.score) === 100 && notes.length === 0 && missing.length === 0;
+    return paragraphIsGood(fb);
   }
 
   function setInspectorTab(tab) {
@@ -2318,10 +2350,6 @@
   async function submitParagraph() {
     const q = currentQuestion();
     if (!q || q.type !== 'paragraph' || state.answered || state.paraBusy) return;
-    if ((q.paraChecks || 0) >= 3 && !q.paraComplete) {
-      U.toast('That was the third AI check. Apply the fixes if you like, then press “Finish anyway”.', 'warn', 9000);
-      return;
-    }
     const text = E.paraInput.value.trim();
     if (!text) { U.toast('Write your translation first.', 'warn'); E.paraInput.focus(); return; }
     // The learner already reached a good score and may have applied optional
@@ -2397,16 +2425,16 @@
 
     E.paraInput.disabled = false;
     E.btnParaSkip.disabled = false;
-    E.btnParaSubmit.disabled = !good && q.paraChecks >= 3;
-    E.btnParaSubmit.textContent = good ? 'Complete'
-      : (q.paraChecks >= 3 ? '3 checks used' : 'Check again');
+    // No cap on checks: every failed check keeps the button live so the learner
+    // can fix what the feedback lists and recheck until 100/100.
+    E.btnParaSubmit.disabled = false;
+    E.btnParaSubmit.textContent = good ? 'Complete' : 'Check again';
     // A good paragraph stays editable until the learner presses “Complete”, so
     // the optional B1/B2 upgrades can still be applied to the finished text.
     renderParaFeedback(text, fb, good);
     if (!good) {
       E.paraInput.focus();
-      U.toast('Not complete yet — apply the fixes or edit the text, then check again. ' +
-        (q.paraChecks >= 3 ? 'You can also finish anyway.' : ''), 'warn', 8000);
+      U.toast('Not complete yet — fix everything the feedback lists, then check again.', 'warn', 8000);
     }
   }
 
@@ -2541,19 +2569,9 @@
       });
       actions.appendChild(next);
       next.focus();
-    } else if ((q && q.paraChecks) >= 3) {
-      actions.appendChild(paraEl('p', 'muted small',
-        'Third check used. Apply the fixes above in your own words if you like, then finish this paragraph.'));
-      const finish = paraEl('button', 'btn btn-primary', 'Finish anyway');
-      finish.type = 'button';
-      finish.addEventListener('click', function () {
-        const textNow = E.paraInput.value.trim() || text;
-        finalizeParagraph(q, textNow, fb);
-      });
-      actions.appendChild(finish);
-      finish.focus();
     } else {
-      if (fb.corrected && fb.corrected !== text) {
+      const canApply = fb.corrected && fb.corrected !== text;
+      if (canApply) {
         const apply = paraEl('button', 'btn btn-primary', 'Apply fixes and edit');
         apply.type = 'button';
         apply.addEventListener('click', function () {
@@ -2565,10 +2583,22 @@
         });
         actions.appendChild(apply);
       }
-      const again = paraEl('button', 'btn btn-subtle', 'Check again');
+      // Checks are unlimited: this button never goes away until the paragraph
+      // reaches 100/100 or the learner chooses to stop.
+      const again = paraEl('button', 'btn ' + (canApply ? 'btn-subtle' : 'btn-primary'), 'Check again');
       again.type = 'button';
       again.addEventListener('click', submitParagraph);
       actions.appendChild(again);
+      // A quiet escape hatch, not a limit: the attempt is still recorded.
+      if (q && q.paraChecks) {
+        const finish = paraEl('button', 'btn btn-subtle', 'Finish anyway');
+        finish.type = 'button';
+        finish.addEventListener('click', function () {
+          const textNow = E.paraInput.value.trim() || text;
+          finalizeParagraph(q, textNow, fb);
+        });
+        actions.appendChild(finish);
+      }
       again.focus();
     }
     box.appendChild(actions);
@@ -2627,7 +2657,9 @@
 
     if (!perfect) {
       const locked = paraEl('div', 'levelup-locked');
-      locked.appendChild(paraEl('span', 'levelup-lock-ico', '🔒'));
+      const lockIco = paraEl('span', 'levelup-lock-ico');
+    lockIco.innerHTML = iconSvg('lock');
+    locked.appendChild(lockIco);
       locked.appendChild(paraEl('p', 'pf-title', I18n.t('levelUp.locked')));
       locked.appendChild(paraEl('p', 'muted small', I18n.t('corrections.allGood')));
       E.paraLevelUp.appendChild(locked);
@@ -2784,7 +2816,8 @@
   function shadowTranslationToggle(show) {
     const hidden = !show;
     E.shTranslation.hidden = hidden;
-    E.btnShadowTranslate.textContent = hidden ? '👁 Show translation' : '🙈 Hide translation';
+    E.btnShadowTranslate.innerHTML = iconSvg(hidden ? 'eye' : 'eyeOff') +
+      (hidden ? ' Show translation' : ' Hide translation');
   }
 
   function shadowCurrent() {
@@ -3100,8 +3133,7 @@
     E.btnShadowStop.hidden = true;
     E.btnShadowReplay.hidden = false;
     E.btnShadowSave.hidden = false;
-    E.btnShadowSave.disabled = false;
-    E.btnShadowSave.textContent = '💾 Save';
+    E.btnShadowSave.disabled = false;      E.btnShadowSave.innerHTML = iconSvg('save') + ' Save';
     E.btnShadowDelete.hidden = false;
     E.btnShadowAssess.disabled = !scoreReady();
     E.btnShadowAssess.textContent = 'Check pronunciation';
@@ -3141,7 +3173,7 @@
       }
       current.saved = true;
       E.shAudioMeta.textContent = 'Saved on this device. This recording stays until you delete it.';
-      E.btnShadowSave.textContent = '💾 Saved';
+      E.btnShadowSave.innerHTML = iconSvg('save') + ' Saved';
       E.btnShadowSave.disabled = true;
       updateShadowSavedCount();
       if (!quiet) U.toast('Recording saved on this device.', 'ok');
@@ -3459,8 +3491,8 @@
     });
 
     E.resTitle.textContent = paraOnly
-      ? (pct >= 90 ? 'Excellent translation! 🎉' : pct >= 70 ? 'Translation complete!' : pct >= 50 ? 'Good effort' : 'Keep practising')
-      : (pct >= 90 ? 'Outstanding! 🎉' : pct >= 70 ? 'Nice work!' : pct >= 50 ? 'Good effort' : 'Keep practising');
+      ? (pct >= 90 ? 'Excellent translation!' : pct >= 70 ? 'Translation complete!' : pct >= 50 ? 'Good effort' : 'Keep practising')
+      : (pct >= 90 ? 'Outstanding!' : pct >= 70 ? 'Nice work!' : pct >= 50 ? 'Good effort' : 'Keep practising');
     const elapsed = Date.now() - s.startedAt;
     E.resMeta.textContent = correct + ' of ' + total +
       (paraOnly ? (total === 1 ? ' paragraph passed' : ' paragraphs passed') : ' correct') +
@@ -3498,7 +3530,7 @@
     E.resMistakeList.innerHTML = mistakes.map(function (m) {
       return '<li class="mistake-row"><span class="mistake-term">' + U.esc(m.word.term) + '</span>' +
         '<span class="mistake-meaning">' + U.esc(m.word.meaning) + '</span>' +
-        '<button class="icon-btn icon-btn-sm speak-btn" data-term="' + U.esc(m.word.term) + '" title="Listen">🔊</button>' +
+        '<button class="icon-btn icon-btn-sm speak-btn" data-term="' + U.esc(m.word.term) + '" title="Listen">' + iconSvg('speaker') + '</button>' +
         '<span class="mistake-count">×' + m.count + '</span></li>';
     }).join('');
     E.resMistakeList.querySelectorAll('.speak-btn').forEach(function (b) {
@@ -3568,7 +3600,7 @@
     if (correct) {
       fc.index += 1;
       if (fc.index >= fc.list.length) {
-        U.toast('You reached the end of the deck! 🎉', 'ok');
+        U.toast('You reached the end of the deck!', 'ok');
         fc.index = 0;
       }
     } else {
@@ -3686,8 +3718,8 @@
     if (mode === 'simple') renderSimpleModels();
     const model = activeModel();
     if (mode === 'advanced') {
-      ensureModelOption(model);
-      E.inpModel.value = model;
+      seedModelOptions();
+      renderModelSelect(model);
       E.btnTestKey.textContent = transport === 'openai' ? 'Test & load models' : 'Test key & load models';
     }
     // A key/provider change decides whether paragraph practice is available.
@@ -3700,7 +3732,8 @@
     if (!sel) return;
     const model = simpleModel();
     const saved = Array.isArray(settings.simpleModels) ? settings.simpleModels : [];
-    const list = saved.length ? saved.slice() : [{ id: model, label: model }];
+    const list = saved.length ? saved.slice()
+      : (FREE_PROVIDER.models || [model]).map(function (id) { return { id: id, label: id }; });
     if (!list.some(function (m) { return m && m.id === model; })) list.unshift({ id: model, label: model });
     sel.innerHTML = '';
     list.forEach(function (m) {
@@ -3832,14 +3865,68 @@
     return activeProvider() === 'openai' ? id : Ai.prettifyModel(id);
   }
 
+  /* The model field is a list, not free text: a typed id is one character away
+     from a 404, and the provider already told us which ids work. “Other…” keeps
+     the escape hatch for an endpoint that cannot list its models. */
+  const CUSTOM_MODEL = '__custom';
+
+  /* The Model dropdown belongs to the active provider: its last fetched
+     catalogue when one exists, otherwise the known-good ids the provider ships
+     with — so a broken model can always be swapped for another right here,
+     without a fetch and without typing an id blind. */
+  const catalogues = {};   // provider id → [{ id, label }] from “Test & load models”
+  function seedModelOptions() {
+    const id = activeProviderId();
+    const live = catalogues[id];
+    const entries = live && live.length
+      ? live.map(function (m) { return { id: m.id, label: m.label || modelLabel(m.id) }; })
+      : [activeModel()].concat(providerDef(id).models || [])
+          .map(function (mid) { return { id: mid, label: modelLabel(mid) }; });
+    const seen = {};
+    E.inpModel.innerHTML = '';
+    entries.forEach(function (m) {
+      if (!m.id || seen[m.id]) return;
+      seen[m.id] = 1;
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.label;
+      E.inpModel.appendChild(opt);
+    });
+    ensureCustomOption();
+  }
+
+  function ensureCustomOption() {
+    let opt = Array.from(E.inpModel.options).find(function (o) { return o.value === CUSTOM_MODEL; });
+    if (!opt) {
+      opt = document.createElement('option');
+      opt.value = CUSTOM_MODEL;
+      opt.textContent = 'Other model — type an id…';
+      E.inpModel.appendChild(opt);
+    }
+    return opt;
+  }
+
   function ensureModelOption(id) {
     if (!id) return;
-    const exists = Array.from(E.modelList.options).some(function (o) { return o.value === id; });
+    const exists = Array.from(E.inpModel.options).some(function (o) { return o.value === id; });
     if (!exists) {
       const opt = document.createElement('option');
       opt.value = id;
-      opt.label = modelLabel(id);
-      E.modelList.appendChild(opt);
+      opt.textContent = modelLabel(id);
+      // Keep “Other…” last, however many models arrive.
+      E.inpModel.insertBefore(opt, ensureCustomOption());
+    }
+  }
+
+  /** Show `id` in the model list (adding it if the provider list left it out). */
+  function renderModelSelect(id) {
+    const model = String(id || activeModel() || '').trim();
+    if (!model) return;
+    ensureModelOption(model);
+    E.inpModel.value = model;
+    if (E.inpModelCustom) {
+      E.inpModelCustom.hidden = true;
+      E.inpModelCustom.value = '';
     }
   }
 
@@ -3900,19 +3987,21 @@
   }
 
   function populateModels(models) {
-    E.modelList.innerHTML = '';
+    // Remember the live list: a later provider switch rebuilds from it.
+    catalogues[activeProviderId()] = models.map(function (m) { return { id: m.id, label: m.label || m.id }; });
+    E.inpModel.innerHTML = '';
     models.forEach(function (m) {
       const opt = document.createElement('option');
       opt.value = m.id;
-      opt.label = m.label || m.id;
-      E.modelList.appendChild(opt);
+      opt.textContent = m.label || m.id;
+      E.inpModel.appendChild(opt);
     });
+    ensureCustomOption();
     const current = activeModel();
     const preferred = models.some(function (m) { return m.id === current; })
       ? current
       : (Ai.pickDefaultModel(models, activeProvider()) || current);
-    ensureModelOption(preferred);
-    E.inpModel.value = preferred;
+    renderModelSelect(preferred);
     setActiveModel(preferred);
   }
 
@@ -3991,7 +4080,6 @@
       settings.geminiModel = info.model;
       saveSettings();
       syncAiUI();
-      if (E.inpModel) E.inpModel.value = info.model;
       const why = info.reason === 'unavailable'
         ? ' is overloaded and did not answer'
         : ' is not available';
@@ -4023,7 +4111,6 @@
       rememberConn();
       saveSettings();
       syncAiUI();
-      if (E.inpModel) E.inpModel.value = info.model;
       U.toast('“' + (info.previous || 'That model') + '” is not served any more — using “' +
         info.model + '” instead.', 'warn', 10000);
     }
@@ -4438,8 +4525,7 @@
       const guess = defaultModelForBase(typed);
       if (guess && guess !== settings.oaiModel) {
         settings.oaiModel = guess;
-        ensureModelOption(guess);
-        E.inpModel.value = guess;
+        renderModelSelect(guess);
       }
       rememberConn();
       saveSettings();
@@ -4469,8 +4555,26 @@
       updateControls();
       U.toast('Free model: ' + settings.simpleModel, 'ok');
     });
-    E.inpModel.addEventListener('change', function () { setActiveModel(E.inpModel.value.trim()); });
-    E.inpModel.addEventListener('input', function () { setActiveModel(E.inpModel.value.trim()); });
+    function pickModel() {
+      const picked = E.inpModel.value.trim();
+      // “Other…” opens the free-text box; it is a route to an id, never the id.
+      if (picked === CUSTOM_MODEL) {
+        if (E.inpModelCustom) { E.inpModelCustom.hidden = false; E.inpModelCustom.focus(); }
+        return;
+      }
+      setActiveModel(picked);
+    }
+    E.inpModel.addEventListener('change', pickModel);
+    E.inpModel.addEventListener('input', pickModel);
+    function keepCustomModel() {
+      const typed = E.inpModelCustom ? E.inpModelCustom.value.trim() : '';
+      if (!typed || typed === CUSTOM_MODEL) return;
+      setActiveModel(typed);
+    }
+    if (E.inpModelCustom) {
+      E.inpModelCustom.addEventListener('change', keepCustomModel);
+      E.inpModelCustom.addEventListener('blur', keepCustomModel);
+    }
     /** Speech code that belongs to a language in the list ('' when unknown). */
     function defaultCodeFor(name) {
       const option = Array.from(E.inpTargetLang.options).find(function (o) { return o.value === name; });
@@ -4729,6 +4833,13 @@
     if (window.Speech) Speech.configure(settings);
     U.initVoices();
     updateVoiceHint();
+    if (window.Exam) {
+      Exam.init({
+        askTutor: askTutor,
+        aiReady: aiReady,
+        toast: U.toast
+      });
+    }
     if (window.Grammar) {
       Grammar.init({
         screen: E.screenGrammar,

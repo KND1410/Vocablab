@@ -19,6 +19,9 @@ Thumbs.db
 # Source PDFs for the grammar course — kept local, never published.
 *.pdf
 
+# Exam papers and their audio — copyrighted course material, kept local.
+exam/
+
 # Agent guidance — kept local, never committed.
 AGENTS.md
 

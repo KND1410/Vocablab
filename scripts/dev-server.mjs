@@ -59,6 +59,7 @@ const TYPES = {
   '.ico': 'image/x-icon',
   '.woff2': 'font/woff2',
   '.pdf': 'application/pdf',
+  '.mp3': 'audio/mpeg',
   '.csv': 'text/csv; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.map': 'application/json; charset=utf-8'
@@ -92,7 +93,7 @@ export function isBlocked(rel) {
     rel === 'AGENTS.md';
 }
 
-function serveStatic(res, pathname) {
+function serveStatic(res, pathname, req) {
   const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname).replace(/^\/+/, '');
   const file = path.resolve(root, rel);
   // Never serve outside the project.
@@ -110,7 +111,33 @@ function serveStatic(res, pathname) {
     if (!path.extname(target)) target = path.join(root, 'index.html');
     else { sendJson(res, 404, { error: 'Not found.' }); return; }
   }
-  send(res, 200, fs.readFileSync(target), TYPES[path.extname(target)] || 'application/octet-stream');
+  sendFile(req, res, target, TYPES[path.extname(target)] || 'application/octet-stream');
+}
+
+/** Serve one file, honouring a single byte range so the exam audio can seek. */
+function sendFile(req, res, target, type) {
+  const stat = fs.statSync(target);
+  const range = req && req.headers && req.headers.range;
+  const match = range && /^bytes=(\d*)-(\d*)$/.exec(String(range));
+  res.setHeader('Accept-Ranges', 'bytes');
+  if (match && stat.size) {
+    let start = match[1] ? parseInt(match[1], 10) : 0;
+    let end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
+    if (!isFinite(start) || !isFinite(end) || start > end || start >= stat.size) {
+      res.statusCode = 416;
+      res.setHeader('Content-Range', 'bytes */' + stat.size);
+      res.end();
+      return;
+    }
+    end = Math.min(end, stat.size - 1);
+    res.statusCode = 206;
+    res.setHeader('Content-Range', 'bytes ' + start + '-' + end + '/' + stat.size);
+    res.setHeader('Content-Length', String(end - start + 1));
+    if (type) res.setHeader('Content-Type', type);
+    fs.createReadStream(target, { start: start, end: end }).pipe(res);
+    return;
+  }
+  send(res, 200, fs.readFileSync(target), type);
 }
 
 /* Only listen when executed directly, so tests can import isBlocked(). */
@@ -122,7 +149,7 @@ if (startedDirectly) {
     const pathname = String(req.url || '/').split('?')[0];
     try {
       if (pathname.startsWith('/api/')) serveApi(req, res, pathname);
-      else serveStatic(res, pathname);
+      else serveStatic(res, pathname, req);
     } catch (err) {
       console.error('[dev-server]', err);
       if (!res.headersSent) sendJson(res, 500, { error: 'Server error.' });

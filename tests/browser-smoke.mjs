@@ -123,7 +123,7 @@ function startFakeApi() {
         const q = Quests.findQuest(state.daily, b.questId);
         if (q) {
           Quests.setProgress(state.daily, b.questId, b.progress);
-          if (Quests.isAllDone(state.daily) && !state.daily.completedAt) {
+          if (Quests.isAnyDone(state.daily) && !state.daily.completedAt) {
             state.daily.completedAt = new Date().toISOString();
             state.streak = Quests.nextStreak(state.streak, b.date);
             completedNow = true;
@@ -578,6 +578,9 @@ function buildProbe(deadPort, blockedPort, paraPort) {
     '        " free-model=" + JSON.stringify(byId("selSimpleModel").value));',
     '    byId("modeAdvanced").click();',
     '    await wait(40);',
+    '    out("model options: n=" + byId("inpModel").options.length +',
+    '        " ids=" + JSON.stringify(Array.prototype.map.call(byId("inpModel").options, function (o) { return o.value; })) +',
+    '        " value=" + byId("inpModel").value);',
     '    out("advanced mode: on=" + byId("modeAdvanced").classList.contains("is-on") +',
     '        " advanced-visible=" + !byId("aiAdvanced").hidden + " simple-hidden=" + byId("paneSimple").hidden);',
     '    var providerIds = Array.prototype.map.call(byId("selProvider").options, function (o) { return o.value; });',
@@ -1096,6 +1099,8 @@ check(/^simple mode: on=true pane=true advanced-hidden=true models=[1-9]\d* free
   'Settings starts in Simple mode — free AI with no key to paste', (log.match(/^simple mode: .*/m) || [''])[0]);
 check(/^advanced mode: on=true advanced-visible=true simple-hidden=true/m.test(log),
   'Advanced reveals the provider list and key fields', (log.match(/^advanced mode: .*/m) || [''])[0]);
+check(/^model options: n=4 ids=\["gemini-2\.5-flash","gemini-2\.5-pro","gemini-2\.5-flash-lite","__custom"\] value=gemini-2\.5-flash/m.test(log),
+  'Advanced offers switchable Gemini models before any key test', (log.match(/^model options: .*/m) || [''])[0]);
 check(/^deepseek picked: base=https:\/\/api\.deepseek\.com\/v1 model=deepseek-flash gemini-pane=false oai-pane=true hint-has-link=true/m.test(log),
   'picking DeepSeek fills in its base URL, model and key link', (log.match(/^deepseek picked: .*/m) || [''])[0]);
 check(/^groq picked: base=https:\/\/api\.groq\.com\/openai\/v1 key=""$/m.test(log),
@@ -1171,7 +1176,7 @@ check(/^shadowing save: count=1 meta="Saved on this device/m.test(log),
 check(/^scoring engine: status="Scoring uses Gemini .* saved=gemini$/m.test(log),
   'the scoring engine can be switched to Gemini and is saved',
   (log.match(/^scoring engine: .*/m) || [''])[0]);
-check(/^gemini request: audio=true ref=true model=gemini-flash-latest$/m.test(log),
+check(/^gemini request: audio=true ref=true model=gemini-2\.5-flash$/m.test(log),
   'Gemini scoring receives the recording and the reference sentence',
   (log.match(/^gemini request: .*/m) || [''])[0]);
 check(/^shadowing gemini: score=77 source="AI estimate — not a real test" tips="GEMINI-TIP-OK" calls=1$/m.test(log),

@@ -17,26 +17,36 @@
    * Model names change often: “Test & load models” asks the provider what it
    * really serves and picks the best of that list, so these are only starting
    * points. `cost` is what the provider's offer really is, not marketing.
+   * `models` is the fallback picker: known-good ids offered in the Model
+   * dropdown so a broken model can be swapped without waiting for (or before
+   * ever running) a catalogue fetch; a live list replaces it when it loads.
    */
   const PROVIDERS = [
     {
       id: 'pollinations', label: 'Free AI — no key, no account', short: 'Free AI', transport: 'openai',
       base: 'https://text.pollinations.ai/openai', modelsUrl: 'https://text.pollinations.ai/models',
-      model: 'openai-fast', keyUrl: 'https://pollinations.ai', keyPrefix: '', cost: 'free', keyless: true
+      model: 'openai-fast', models: ['openai-fast', 'openai'],
+      keyUrl: 'https://pollinations.ai', keyPrefix: '', cost: 'free', keyless: true
     },
     {
       id: 'gemini', label: 'Google Gemini — free tier', short: 'Google Gemini', transport: 'gemini',
-      base: '', model: 'gemini-2.5-flash', keyUrl: 'https://aistudio.google.com/apikey',
-      keyPrefix: 'AIza', cost: 'free'
+      base: '', model: 'gemini-2.5-flash',
+      models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite'],
+      keyUrl: 'https://aistudio.google.com/apikey',
+      // Google issues keys in two shapes now: the classic 'AIza…' and the
+      // newer 'AQ.…'. Both are real Gemini keys.
+      keyPrefix: 'AIza', keyPrefixes: ['AIza', 'AQ.'], cost: 'free'
     },
     {
       id: 'groq', label: 'Groq — free tier, very fast (not Grok)', short: 'Groq', transport: 'openai',
       base: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b',
+      models: ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
       keyUrl: 'https://console.groq.com/keys', keyPrefix: 'gsk_', keyLen: 56, cost: 'free'
     },
     {
       id: 'cerebras', label: 'Cerebras — very fast, trial credit', short: 'Cerebras', transport: 'openai',
       base: 'https://api.cerebras.ai/v1', model: 'gpt-oss-120b',
+      models: ['gpt-oss-120b', 'llama-3.3-70b'],
       keyUrl: 'https://cloud.cerebras.ai', keyPrefix: '', cost: 'trial'
     },
     {
@@ -47,11 +57,13 @@
     {
       id: 'mistral', label: 'Mistral — free tier', short: 'Mistral', transport: 'openai',
       base: 'https://api.mistral.ai/v1', model: 'mistral-small-latest',
+      models: ['mistral-small-latest', 'mistral-large-latest'],
       keyUrl: 'https://console.mistral.ai/api-keys', keyPrefix: '', cost: 'free'
     },
     {
       id: 'deepseek', label: 'DeepSeek — paid, very cheap', short: 'DeepSeek', transport: 'openai',
       base: 'https://api.deepseek.com/v1', model: 'deepseek-flash',
+      models: ['deepseek-flash', 'deepseek-chat'],
       keyUrl: 'https://platform.deepseek.com/api_keys', keyPrefix: 'sk-', cost: 'paid'
     },
     {
@@ -115,7 +127,11 @@
   /** What a key looks like, e.g. “gsk_…” — '' when the format is not known. */
   function keyFormat(id) {
     const p = providerById(id);
-    return (p && p.keyPrefix) ? p.keyPrefix + '…' : '';
+    if (!p) return '';
+    if (p.keyPrefixes && p.keyPrefixes.length) {
+      return p.keyPrefixes.map(function (x) { return x + '…'; }).join(' or ');
+    }
+    return p.keyPrefix ? p.keyPrefix + '…' : '';
   }
 
   /**
@@ -133,6 +149,10 @@
     if (!key || !def) return '';
     if (def.keyPrefix) {
       const lower = key.toLowerCase();
+      // Any of this provider's own shapes is a non-event — Google issues both
+      // 'AIza…' and 'AQ.…' keys, and only one of them matches keyPrefix.
+      const mine = def.keyPrefixes || [def.keyPrefix];
+      const mineMatch = mine.some(function (p) { return lower.indexOf(p.toLowerCase()) === 0; });
       // A key can match several prefixes (OpenRouter's “sk-or-” also starts with
       // DeepSeek's “sk-”), so the longest match is the one that issued it.
       const matches = PROVIDERS
@@ -144,10 +164,10 @@
           ' — but ' + def.short + ' is selected. Providers never share keys: make one for ' +
           def.short + (def.keyUrl ? ' at ' + def.keyUrl : '') + ' and paste that instead.';
       }
-      if (!owner) {
+      if (!owner && !mineMatch) {
         // Nothing we know issues keys like this — the usual cause is a key from
         // a similarly named site, which is why Groq/Grok gets confused.
-        return def.short + ' keys start with “' + def.keyPrefix + '”' +
+        return def.short + ' keys start with “' + mine.join('” or “') + '”' +
           (def.keyLen ? ' and are ' + def.keyLen + ' characters' : '') +
           ', but this one starts with “' + key.slice(0, 6) + '…' + '” and has ' + key.length +
           '. It came from a different service — copy a key from ' + (def.keyUrl || 'the provider console') +
@@ -1223,7 +1243,8 @@
       'an error, leave it unchanged — a missing note is better than a wrong one.\n' +
       '• One note per individual fix: "text" quotes the learner\'s exact wording, "fix" is the corrected ' +
       'wording, "why" explains it in English in at most 15 words. Never bundle several fixes into one note, ' +
-      'and never write a note whose "fix" is the same as its "text". At most 10 notes.\n' +
+      'and never write a note whose "fix" is the same as its "text". There is no maximum number of notes: ' +
+      'find and list every separate error in the text, all of them in this one reply.\n' +
       '• Check the meaning first: the learner\'s text must convey the ideas of the SOURCE. If it is unrelated, ' +
       'or leaves out or contradicts a whole idea, that is a meaning error — score it below 50 and say what is ' +
       'missing in "comment". Do not rewrite the text for this and do not add notes for ideas that are simply absent.\n' +
@@ -1484,8 +1505,8 @@
       const key = flat(note.text) + '|' + flat(note.fix);
       if (seen.has(key)) continue;
       seen.add(key);
+      // No cap: the learner wants every error at once, not the first ten.
       notes.push(note);
-      if (notes.length >= 10) break;
     }
     // Unchanged text + no notes means there is no wording fix to make. What can
     // still be missing is a required word: 10 points each. With all of them
@@ -1528,13 +1549,13 @@
           key: cfg.key, model: cfg.model, system: built.system, user: extra.user,
           // The repair pass asks for a colder, tighter answer — forward it, or
           // every Gemini attempt silently runs at the default temperature.
-          temperature: extra.temperature, maxTokens: extra.maxTokens,
+          temperature: extra.temperature, maxTokens: extra.maxTokens || cfg.maxTokens,
           signal: cfg.signal, noSchema: true
         });
       }
       return oaiCallWithFallbacks({
         baseUrl: cfg.baseUrl, key: cfg.key, model: cfg.model, system: built.system,
-        user: extra.user, temperature: extra.temperature, maxTokens: extra.maxTokens,
+        user: extra.user, temperature: extra.temperature, maxTokens: extra.maxTokens || cfg.maxTokens,
         signal: cfg.signal, onWait: cfg.onWait
       });
     };
@@ -1602,7 +1623,9 @@
   async function correctParagraph(cfg) {
     const built = buildCorrectionPrompt(cfg);
     const keywords = cfg.keywords || [];
-    return askForJson(makeCaller(cfg, built), built,
+    // The reply lists every error, so allow a long notes array instead of
+    // truncating the JSON halfway through the list.
+    return askForJson(makeCaller(Object.assign({ maxTokens: 8192 }, cfg), built), built,
       function (raw) { return normalizeCorrection(raw, keywords, cfg); },
       '“' + cfg.model + '”', fixShape(cfg), 'correction');
   }

@@ -22,6 +22,7 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
   '.csv': 'text/csv; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.mp3': 'audio/mpeg',
   '.png': 'image/png',
   '.ico': 'image/x-icon'
 };
@@ -141,7 +142,7 @@ async function apiHandler(req, res) {
       const quest = Quests.findQuest(account.daily, body.questId);
       if (quest) {
         Quests.setProgress(account.daily, body.questId, body.progress);
-        if (Quests.isAllDone(account.daily) && !account.daily.completedAt) {
+        if (Quests.isAnyDone(account.daily) && !account.daily.completedAt) {
           account.daily.completedAt = new Date().toISOString();
           account.streak = Quests.nextStreak(account.streak, body.date);
           completedNow = true;
@@ -176,8 +177,33 @@ const server = http.createServer(function (req, res) {
     res.end('not found');
     return;
   }
+  const type = MIME[path.extname(file)] || 'application/octet-stream';
+  const stat = fs.statSync(file);
+  const range = req.headers.range;
+  const match = range && /^bytes=(\d*)-(\d*)$/.exec(String(range));
+  if (match && stat.size) {
+    let start = match[1] ? parseInt(match[1], 10) : 0;
+    let end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
+    if (!isFinite(start) || !isFinite(end) || start > end || start >= stat.size) {
+      res.writeHead(416, { 'content-range': 'bytes */' + stat.size });
+      res.end();
+      return;
+    }
+    end = Math.min(end, stat.size - 1);
+    res.writeHead(206, {
+      'content-type': type,
+      'accept-ranges': 'bytes',
+      'content-range': 'bytes ' + start + '-' + end + '/' + stat.size,
+      'content-length': String(end - start + 1),
+      'cache-control': 'no-store'
+    });
+    fs.createReadStream(file, { start: start, end: end }).pipe(res);
+    return;
+  }
   res.writeHead(200, {
-    'content-type': MIME[path.extname(file)] || 'application/octet-stream',
+    'content-type': type,
+    'accept-ranges': 'bytes',
+    'content-length': String(stat.size),
     'cache-control': 'no-store'
   });
   res.end(fs.readFileSync(file));

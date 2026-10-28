@@ -188,6 +188,40 @@ test('a French → Vietnamese paragraph never offers upgrades', async ({ page })
   await expect(page.locator('#paraLevelUp')).toContainText('No safe B1/B2 upgrade');
 });
 
+test('a paragraph can be checked without limit and lists every error at once', async ({ page }) => {
+  await fakeAi(page, {
+    correction: function (ctx) {
+      const notes = [];
+      for (let i = 0; i < 12; i++) {
+        notes.push({ text: 'mot' + i, fix: 'mot' + (i + 1), why: 'fix ' + i });
+      }
+      return {
+        score: 60,
+        verdict: 'fair',
+        corrected: ctx.userText + ' Encore.',
+        notes: notes,
+        used: ctx.words.map(function (w) { return w.term; }),
+        comment: 'Several fixes.',
+        upgrades: []
+      };
+    }
+  });
+  await openParagraph(page);
+
+  let text = FRENCH_TEXT;
+  for (let i = 0; i < 4; i++) {
+    text += ' mot' + i;
+    await page.locator('#paraInput').fill(text);
+    await page.locator('#btnParaSubmit').click();
+    await expect(page.locator('#btnParaSubmit')).toHaveText('Check again', { timeout: 15_000 });
+  }
+
+  // Four checks — more than the old three — and a fifth is still allowed.
+  await expect(page.locator('#btnParaSubmit')).toBeEnabled();
+  await expect(page.locator('#paraFeedback .pf-note')).toHaveCount(12);
+  await expect(page.getByRole('button', { name: 'Finish anyway' })).toBeVisible();
+});
+
 /* ---------- Quiz upgrades ---------- */
 
 async function openQuiz(page, settings) {

@@ -168,6 +168,15 @@
     return node;
   }
 
+  /* Monochrome line icons, matching the rest of the interface. */
+  var ICON = {
+    tip: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"></path></svg>',
+    warn: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+    note: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>',
+    english: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
+    speaker: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>'
+  };
+
   function button(label, action, cls, data) {
     var b = el('button', cls || 'btn btn-subtle', label);
     b.type = 'button';
@@ -549,7 +558,7 @@
       return el('div', 'lesson-formula', langText(block));
     }
     if (block.type === 'callout') {
-      var kinds = { tip: '💡', warn: '⚠️', note: '📝', english: '🇬🇧' };
+      var kinds = { tip: ICON.tip, warn: ICON.warn, note: ICON.note, english: ICON.english };
       var labels = {
         tip: { vi: 'Mẹo nhớ', en: 'Memory tip' },
         warn: { vi: 'Chú ý, dễ sai', en: 'Common trap' },
@@ -558,7 +567,9 @@
       };
       var box = el('div', 'lesson-callout lesson-callout-' + block.kind);
       var title = el('div', 'lesson-callout-title');
-      title.appendChild(el('span', '', kinds[block.kind] || '•'));
+      var calloutIco = el('span', 'callout-ico');
+      calloutIco.innerHTML = kinds[block.kind] || '•';
+      title.appendChild(calloutIco);
       title.appendChild(el('strong', '', langText(labels[block.kind] || labels.note)));
       box.appendChild(title);
       box.appendChild(el('p', '', langText(block)));
@@ -573,7 +584,8 @@
         var meaning = item[state.lang] || item.en || item.vi || '';
         main.appendChild(el('p', 'ex-tr muted', meaning));
         row.appendChild(main);
-        var speak = el('button', 'icon-btn icon-btn-sm ex-speak', '🔊');
+        var speak = el('button', 'icon-btn icon-btn-sm ex-speak');
+        speak.innerHTML = ICON.speaker;
         speak.type = 'button';
         speak.title = tr('listen');
         speak.setAttribute('data-action', 'speak');

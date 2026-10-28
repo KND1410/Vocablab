@@ -196,6 +196,10 @@ export async function fakeAi(page, handlers) {
     } else if (user.indexOf('Suggest up to 12 optional upgrades') !== -1) {
       const userText = quotedAfter(user, 'LEARNER\'S CORRECT ANSWER');
       payload = h.upgrade ? h.upgrade({ user: user, userText: userText }) : { upgrades: [] };
+    } else if (user.indexOf('PRODUCTION DU CANDIDAT') !== -1) {
+      payload = h.tutor
+        ? h.tutor({ user: user })
+        : 'Respect de la consigne : le sujet est traité.\nOrganisation : le plan est clair.\nLangue : quelques accords à revoir.\nEstimation : 14/25.\nConseil : ajoutez un exemple précis.';
     } else {
       payload = {};
     }
@@ -206,7 +210,7 @@ export async function fakeAi(page, handlers) {
         id: 'e2e',
         object: 'chat.completion',
         model: body.model || 'e2e-model',
-        choices: [{ index: 0, message: { role: 'assistant', content: JSON.stringify(payload) }, finish_reason: 'stop' }],
+        choices: [{ index: 0, message: { role: 'assistant', content: typeof payload === 'string' ? payload : JSON.stringify(payload) }, finish_reason: 'stop' }],
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
       })
     });

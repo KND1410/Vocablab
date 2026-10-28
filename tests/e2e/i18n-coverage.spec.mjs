@@ -24,8 +24,8 @@ const ALLOWED = [
   // The grammar course keeps its book title untranslated in every language.
   'Grammaire progressive du français',
   '(AI)',
-  '✨ AI',
-  '📊 Google Sheet',
+  'AI',
+  'Google Sheet',
   'Google Gemini',
   'Groq',
   'console.groq.com/keys',
@@ -52,6 +52,9 @@ const ALLOWED = [
   // French words that are spelled exactly like their English label.
   'Quiz',
   'Questions',
+  // Exam totals read the same in English and French.
+  '40 questions',
+  '75 points',
   'Standard',
   'Simple',
   'E2E Learner',

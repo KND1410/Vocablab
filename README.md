@@ -14,8 +14,9 @@ out of the box), but works with any language.
   Ollama — with a solid built-in generator when AI is unavailable.
 - **Daily quests + streak**: the home page greets you, shows the date, and picks
   three small daily quests — one quiz, one production (paragraph or shadowing) and
-  one review (flashcards or grammar). Finish all three to extend your streak; one
-  missed day is a grace day (the flame shows a **!**), two resets it. Progress is
+  one review (flashcards or grammar). Finish any one to extend your streak — the
+  other two are optional; one missed day is a grace day (the flame shows a **!**),
+  two resets it. Progress is
   filled HP-style as you practise, and every quest's **Start** jumps straight into
   that exact practice. Click the **VocabLab logo** (or **Home** on the results
   screen) to return to the dashboard and see the updated quest bars.
@@ -30,8 +31,9 @@ out of the box), but works with any language.
   Vietnamese/English explanations, tables, short exercises and a lesson-aware AI
   tutor, and each keeps its own progress in this browser. The source PDFs stay local.- **Full-screen pages** behind hash routes — `#/home`, `#/files`, `#/lessons`,
   `#/practice`, `#/exam`, `#/community`, `#/progress`. Every existing feature lives
-  on one of them; Exam and Community are finished placeholders until they are
-  defined. A deep link survives a reload, and the sidebar marks the current page.
+  on one of them; Exam holds a full DELF B2 white paper and Community is a finished
+  placeholder until it is defined. A deep link survives a reload, and the sidebar
+  marks the current page.
   The class file itself (source, reload, topics) is shown straight on the home page,
   so there is no separate Files entry in the sidebar — `#/files` still opens the same
   cards in their own page.
@@ -412,6 +414,42 @@ and space, pronouns and sentences, verbs through time, hypothesis and formal Fre
 - **Explanations are bilingual, examples stay French**. Switch **VI / EN** at the top of
   a lesson; the choice and the per-chapter progress are remembered in this browser.
 
+### Exam room — Examen blanc n°1 (DELF B2)
+
+**Exam** keeps a list of papers, starting with a scanned white paper transcribed into
+the app: the complete listening comprehension (20 questions on pistes 25–27),
+reading comprehension (20 questions on the *small talk*, *écocirque* and
+*gentillesse* texts) and the 250-word written production. Pick a paper, review its
+three parts, then press **Start exam**. Every question is a tick box with the paper's
+three choices, and the written task has an editor with a live word count.
+
+- **Choose, then start**: opening a paper only shows its overview. Answers and the
+  24-hour clock exist only after **Start exam**, and an unfinished attempt shows
+  **Continue exam** until it expires. To add Examen 2 later, append it to the `EXAMS`
+  array in `js/exam-data.js` and drop its pistes under `exam/No.2/`; the catalogue
+  picks it up automatically.
+- **24-hour session**: the countdown starts at **Start exam**. Answers and the essay
+  are saved in this browser as you type; after 24 hours the attempt is cleared and
+  the paper returns to its overview for a fresh Start.
+- **Audio**: each listening exercise plays its own `exam/No.1/delf_b2_ibk_*.mp3`
+  track directly in the page — pause, seek and replay as often as you like.
+- **No answer key**: the book's corrigé is not part of the scan, so **Review answers**
+  shows your choices (and the unanswered questions) for self-checking instead of a
+  score.
+- **AI feedback** on the essay follows the DELF B2 writing method of Stéphane
+  Wattier (*Production écrite DELF B2*, 2017), distilled into `js/exam-guide.js`:
+  content 14/25 (consigne, register, facts, argumentation, coherence) + form 11/25
+  (vocabulary range and control, spelling, grammar forms, sentence complexity), the
+  250-word target with its 225–275 tolerance, and the article requirements (title,
+  chapeau, signature, one main idea per paragraph, examples). The reply gives a
+  criterion-by-criterion /25, three targeted corrections and two priorities in the
+  interface language, using the same **Settings → AI** setup as the rest of the app.
+  The book PDF itself stays local and git-ignored; only this distilled rubric is in
+  the app.
+- The scanned PDF and the MP3 tracks stay local in the git-ignored `exam/` folder
+  (copyrighted course material), so the player works when the tracks are installed
+  next to the app; the paper, questions and writing grid are all in `js/`.
+
 ### Vocabulary practice
 
 - **Question types**: Multiple choice · Fill in the blank (AI sentence with `___`,
@@ -474,10 +512,13 @@ and space, pronouns and sentences, verbs through time, hypothesis and formal Fre
 
   When the AI finds something to fix, the paragraph stays editable. Press
   **Apply fixes and edit**, adjust anything you like, and **Check again**; only the
-  final attempt is scored and added to the results. Each paragraph gets at most
-  three AI checks; after the third, **Finish anyway** is offered (the score is the
-  last check). Re-checking the exact same text does not spend another AI request.
-  Each feedback panel shows the previous attempt scores.
+  final attempt is scored and added to the results. The correction lists **every**
+  error it finds in that one reply — there is no cap on the number of notes — and
+  there is no limit on the number of checks: keep fixing what the feedback lists
+  and rechecking until the AI gives **100/100** with no notes left. **Finish
+  anyway** stops early with the last score. Re-checking the exact same text does
+  not spend another AI request. Each feedback panel shows the previous attempt
+  scores.
 
   Paragraphs are never faked locally: when AI is unavailable (Advanced with no key)
   **Start paragraph** is disabled with the reason, and a failed generation or
@@ -546,11 +587,11 @@ Grammar courses (French tenses and *Grammaire progressive*) remain French lesson
 | Free AI stuck on “Generating…” (Simple) | Every request now has a deadline, and a keyless failure falls back to built-in questions at once instead of retrying into another 30-second slot — a whole quiz no longer waits minutes. If the service itself answers `500`, that is their outage, not your setup: the quiz starts with built-in questions and the reason is shown. Paragraph practice needs AI, so it offers Advanced (a free Groq or Gemini key) instead of spinning. **Check the free AI** now asks for a real reply, so it reports an outage instead of “works” |
 | Gemini stuck on “Generating… / Checking…” | Advanced mode now defaults to **`gemini-2.5-flash`**; an old saved `gemini-flash-latest` is migrated on load, because that alias can point at a model that accepts the request and never answers. If a model is overloaded (`503`) or silent (deadline), the app switches to a stable Flash model your key can use and saves it, saying so. Every Gemini request is cut off after 50 seconds and the whole step after 100 seconds, then the reason is shown (and a quiz falls back to built-in questions) — reload the page if your copy predates this, as an old tab keeps the old scripts. Quota (`429`) is reported immediately instead of being retried. **Test key & load models** asks for a real reply, so “✓ Works” means the model answered. A retired model is also replaced automatically |
 | Every AI action says it failed in Simple mode | The model saved in Settings → AI is probably one the free service has retired — it answers `404` for every request from then on. The app now asks what is served, switches to it, saves it, and repeats the request; the message names the old and new model. Press **Check the free AI** in Settings → AI to see the list yourself. Advanced providers get the same treatment when they retire a model |
-| Provider rejects the key (`401`/`403`) | The app now names the provider and its own reason (“Invalid API Key”). Keys are *not* shared between providers: `gsk_…` (56 chars) = Groq, `xai-…` = xAI **Grok**, `sk-or-…` = OpenRouter, `sk-…` = DeepSeek, `AIza…` = Gemini. **Groq (fast inference, free) and Grok (xAI, paid) are different companies one letter apart** — a key from a “Grok” page will never work on the Groq provider. A key that matches no provider's format, or another provider's, is called out the moment you paste it, with the console it should come from. A pasted `Bearer ` prefix, quotes or a stray newline are stripped automatically (keys saved earlier are repaired on load). On OpenRouter use a `:free` model; on Cloudflare include your account ID in the Base URL |
+| Provider rejects the key (`401`/`403`) | The app now names the provider and its own reason (“Invalid API Key”). Keys are *not* shared between providers: `gsk_…` (56 chars) = Groq, `xai-…` = xAI **Grok**, `sk-or-…` = OpenRouter, `sk-…` = DeepSeek, `AIza…` or `AQ.…` = Gemini (Google issues both shapes). **Groq (fast inference, free) and Grok (xAI, paid) are different companies one letter apart** — a key from a “Grok” page will never work on the Groq provider. A key that matches no provider's format, or another provider's, is called out the moment you paste it, with the console it should come from. A pasted `Bearer ` prefix, quotes or a stray newline are stripped automatically (keys saved earlier are repaired on load). On OpenRouter use a `:free` model; on Cloudflare include your account ID in the Base URL |
 | AI replies, but the quiz still shows built-in questions | The model answered in a shape VocabLab can't use. The prompt now spells out the exact JSON (`{"questions":[…]}`, one object per word) and the app retries once, colder and with more room, before giving up. If it still fails, the model ignores JSON mode: open Settings → AI (the box shows how the reply began) and pick a plain chat model instead of a reasoning one |
 | Paragraph translation is greyed out | It is AI-only, by design: use Simple mode (free, no key) in Settings → AI, or add your own key in Advanced. The quiz Generator setting does **not** affect paragraph practice — it always uses AI. A paragraph is written **and** corrected by AI, so it is never replaced by a built-in question; if a generation fails mid-session the reason is kept in Settings → AI |
 | Shadowing is greyed out | **Start shadowing** needs AI to write the paragraph (Simple mode is enough). Recording and replay then work without a scoring key; **Check pronunciation** needs a free Gemini key (Settings → AI) or an Azure key (Settings → Speech). If there is no microphone, allow the site permission and use `https://` or `localhost` |
-| Gemini pronunciation check fails | The key must be a Google AI Studio key (`AIza…`); test it in **Settings → AI**. A 429 means the free-tier audio limit is briefly used up — wait a minute or switch scoring to Azure. A 403 can mean audio input is unavailable for that key's region. Gemini scores are an **estimate**, not a certified test |
+| Gemini pronunciation check fails | The key must be a Google AI Studio key (`AIza…` or the newer `AQ.…`); test it in **Settings → AI**. A 429 means the free-tier audio limit is briefly used up — wait a minute or switch scoring to Azure. A 403 can mean audio input is unavailable for that key's region. Gemini scores are an **estimate**, not a certified test |
 | Can't reach the provider (CORS/network) | The message says which side is broken. *“nothing is running there”* → for a local server: it isn't installed/started (`ollama serve`, then `ollama pull <model>`; check `http://localhost:11434/api/tags` in a new tab); *“a server answered, but it blocked this page”* → CORS: restart Ollama with `OLLAMA_ORIGINS=*` and serve the page over `http(s)://`, not `file://`. Gemini, Groq, OpenRouter and Mistral need no CORS setup |
 | A renamed tab shows up twice | Only happens with a manual tab-name list: Google serves the *first* tab for an unknown name. Delete/rename that line, or use the link-only mode for auto-detection |
 | New words/tabs don't show up | Press **↻ Reload** in the header |
@@ -558,7 +599,7 @@ Grammar courses (French tenses and *Grammaire progressive*) remain French lesson
 | Sign-in says “server is not reachable” | The page needs the `/api` functions. Run `npm run dev:local` (plain Node, works without a database) or `npx vercel dev` (not `python3 -m http.server`), or use the deployed site. With `MONGODB_URI` set but unreachable, add `VOCABLAB_DB_MODE=local` to fall back to the local account store. |
 | `npm run db:init` cannot connect | Check the Atlas database user's password, the cluster hostname in `MONGODB_URI`, and Atlas **Network Access** for your current IP. A pasted password should be rotated. |
 | I lost my recovery code | There is no email reset by design. Create a new account; only the name, daily quests and streak are lost — the local deck, mastery, grammar progress and recordings stay in this browser. |
-| The flame shows **!** | You missed one day. Finish all three quests today and the streak continues; a second missed day resets it (the best streak is kept). |
+| The flame shows **!** | You missed one day. Finish any one quest today and the streak continues; a second missed day resets it (the best streak is kept). |
 | A quest target is bigger than my deck | Progress accumulates across sessions: start the quest again and the bar continues from where it was. |
 | Voice is silent | Press **Test speaker** on the home screen; it tests Azure first when configured, otherwise reports how many browser voices are available. On Linux, Chrome does not use speech-dispatcher — use Firefox and restart it after speech-dispatcher starts. Also pick a BCP-47 code matching an installed voice (`fr-FR`); some browsers require one user interaction first |
 | French sounds robotic or wrong | On Linux/Firefox the default is speech-dispatcher's eSpeak voice, which mispronounces many French words. Open **Settings → Speech**, choose a different installed voice, and press **Test browser voice**. If the list only has eSpeak, install a Piper/RHVoice French voice in the system or add Azure Speech (free F0 tier), which is much more natural. Check that the language code in Settings → AI is `fr-FR`, not `en-US` |
@@ -593,11 +634,14 @@ Vietnamese diacritics, typos and comma/slash lists with bracketed clarifications
 building, question planning, the cache path, the full quiz pipeline, the grammar
 course data (18 chapters, 123 exercises, bilingual feedback), grammar progress,
 the prose tutor transport, Azure voice mapping, WAV encoding, shadowing sentence
-splitting, and the `app.js` ↔ `index.html` element wiring. It also covers the daily
+splitting, the exam paper data (40 questions, three parts at 25 points, pistes
+25–27, the three MP3 files on disk, the 250-word task), the Wattier writing grid
+(criteria summing to 14 + 11 = 25, the 225–275 word band, article layout, and the
+compact examiner prompt), and the `app.js` ↔ `index.html` element wiring. It also covers the daily
 quest picker (deterministic per user + date, one of each group, all seven types over
 time), progress clamping/merging, every streak transition (perfect day, grace day,
 reset, idempotent sync), scrypt password hashing, recovery-code rotation, validation,
-and a full in-memory API flow: signup → home → complete all quests → streak → rename →
+and a full in-memory API flow: signup → home → complete a quest → streak → rename →
 logout → login → reset → old sessions invalidated.
 
 The browser smoke test serves the folder with a fake `/api`, opens it in headless
@@ -618,7 +662,13 @@ The Playwright suite (`npm run test:e2e`) is the browser-level contract for the
 routes and the level-up feature. It starts `tests/e2e/server.mjs` (static files plus
 an in-memory `/api` and fake AI/dictionary providers, so no key or database is
 needed), signs in through that API and checks: all seven pages open, mark their nav
-item and survive a deep-link reload; Exam and Community are usable placeholders; the
+item and survive a deep-link reload; the exam catalogue opens a paper overview and
+starts nothing until **Start exam**; the paper renders all 40 tick boxes and three
+audio tracks (with byte-range seeking and real playback), keeps answers and the
+essay across a reload, continues an unfinished attempt, restarts after the 24-hour
+session expires, lists every answer on review, scrolls from the parts list without
+leaving the route, asks the AI for essay feedback and checks the request carries the
+Wattier rubric, and Community stays a usable placeholder; the
 interface language switch reaches every visible string on every page plus the
 Settings and Help dialogs; French course content is never translated by that switch;
 the dictionary chain answers from FreeDictionaryAPI, then Wiktionary, then reports a
@@ -642,9 +692,10 @@ cookie (30 days) and no other browser identifier. Passwords are hashed with Node
 Everything else stays in this browser: the deck cache, settings, per-word mastery,
 quiz/stats history, grammar progress and the question cache are in `localStorage`;
 saved shadowing recordings are in IndexedDB. The other network calls are: your
-Google Sheet, the AI provider you configure (with your key), Gemini when it scores
-a recording, Azure Speech when you use the cloud voice or ask it for pronunciation
-scoring, the pinned Azure Speech SDK from jsDelivr, and the Google Fonts stylesheet.
+Google Sheet, the AI provider you configure (with your key — this includes the
+exam essay when you press **AI feedback**), Gemini when it scores a recording,
+Azure Speech when you use the cloud voice or ask it for pronunciation scoring, the
+pinned Azure Speech SDK from jsDelivr, and the Google Fonts stylesheet.
 Azure receives text for synthesis and (only if you choose Azure scoring) the
 recorded sentence; Gemini receives the short WAV clip. Saved audio is never
 uploaded. No analytics, no ads.
