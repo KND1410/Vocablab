@@ -441,6 +441,7 @@
     exam: { el: 'routeExam', nav: 'exam' },
     community: { el: 'routeCommunity', nav: 'community' },
     progress: { el: 'routeProgress', nav: 'progress' },
+    admin: { el: 'routeAdmin', nav: 'admin' },
     grammar: { el: 'screenGrammar', nav: 'lessons' },
     quiz: { el: 'screenQuiz', nav: 'practice' },
     shadowing: { el: 'screenShadowing', nav: 'practice' },
@@ -460,11 +461,12 @@
     'practice/flashcards': 'flashcards',
     'exam': 'exam',
     'community': 'community',
-    'progress': 'progress'
+    'progress': 'progress',
+    'admin': 'admin'
   };
   const VIEW_ROUTE = {
     welcome: 'home', files: 'files', lessons: 'lessons', practice: 'practice',
-    exam: 'exam', community: 'community', progress: 'progress', grammar: 'lessons/grammar',
+    exam: 'exam', community: 'community', progress: 'progress', admin: 'admin', grammar: 'lessons/grammar',
     quiz: 'practice/quiz', shadowing: 'practice/shadowing',
     results: 'practice/results', flashcards: 'practice/flashcards'
   };
@@ -555,6 +557,7 @@
     if (name === 'welcome') renderHome();
     if (name === 'exam' && window.Exam) Exam.render();
     if (name === 'community' && window.Community) Community.render();
+    if (name === 'admin' && window.Admin) Admin.render();
     if (name === 'files') updateSourceUI();
     if (!opts.fromRouter) setHash(VIEW_ROUTE[name] || 'home');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -746,6 +749,12 @@
 
       if (data && data.recoveryCode) await showRecovery(data.recoveryCode);
       E.authOffline.hidden = true;
+      if (data && data.pending) {
+        // Created, but the admin has not approved it: no session was issued.
+        setAuthMode('signin');
+        showAuthMessage(I18n.t('auth.pending'));
+        return;
+      }
       await enterApp(data.user);
       if (state.authMode === 'signup') U.toast('Welcome to VocabLab!', 'ok');
     } catch (err) {
@@ -871,6 +880,7 @@
     E.homeName.textContent = state.user.name || 'there';
     if (E.navUserName) E.navUserName.textContent = state.user.name || 'there';
     if (E.navUserEmail) E.navUserEmail.textContent = state.user.email || '';
+    if (window.Admin) Admin.syncNav(state.user);
     if (E.navAvatar) E.navAvatar.textContent = String(state.user.name || 'L').trim().charAt(0).toUpperCase() || 'L';
     if (E.accountInfo) {
       E.accountInfo.textContent = 'Signed in as ' + (state.user.name || 'there') +
@@ -1138,6 +1148,8 @@
     state.streak = null;
     state.offline = false;
     Account.forget();
+    if (window.Admin) Admin.reset();
+    if (window.Admin) Admin.syncNav(null);
     if (E.btnSignOut) E.btnSignOut.hidden = true;
     showAuth();
     if (message) showAuthMessage(message);

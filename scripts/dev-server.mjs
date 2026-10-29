@@ -41,7 +41,10 @@ const HANDLERS = {
   '/api/auth/logout': 'api/auth/logout.js',
   '/api/auth/me': 'api/auth/me.js',
   '/api/auth/reset': 'api/auth/reset.js',
-  '/api/daily/progress': 'api/daily/progress.js'
+  '/api/daily/progress': 'api/daily/progress.js',
+  '/api/admin/users': 'api/admin/users.js',
+  '/api/admin/user': 'api/admin/user.js',
+  '/api/admin/settings': 'api/admin/settings.js'
 };
 const loaded = Object.create(null);
 

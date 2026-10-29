@@ -8,5 +8,7 @@ module.exports = H.wrap(async function (req, res) {
   const db = await D.ready();
   const user = await A.requireUser(db, req, res);
   if (!user) return;
+  // This is also the moment an existing database gets its first admin.
+  await A.claimAdmin(db, user);
   H.json(res, 200, { user: A.publicUser(user) });
 });

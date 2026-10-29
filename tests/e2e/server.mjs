@@ -32,7 +32,7 @@ function today() { return Quests.dateKey(new Date()); }
 
 const account = {
   signedIn: false,
-  user: { id: 'e2e-user', name: 'E2E Learner', email: 'e2e@local.test' },
+  user: { id: 'e2e-user', name: 'E2E Learner', email: 'e2e@local.test', role: 'user', status: 'active' },
   password: 'local-test-password',
   streak: { current: 2, best: 3, lastCompletedDate: Quests.addDays(today(), -1) },
   daily: {
@@ -80,6 +80,80 @@ function resetDailyIfNeeded() {
   };
 }
 
+/* ---------- Admin panel fixture ----------
+   Three seeded accounts so the table always has one of each status to act on,
+   plus whichever account the test signed up as. */
+const panel = { settings: { signupApproval: false }, audit: [], members: [] };
+
+function resetPanel(role) {
+  account.user.role = role === 'admin' ? 'admin' : 'user';
+  account.user.status = 'active';
+  panel.settings = { signupApproval: false };
+  panel.audit = [];
+  const day = 24 * 3600 * 1000;
+  panel.members = [
+    {
+      id: 'e2e-pending', name: 'Pending Pat', email: 'pat@example.com', role: 'user', status: 'pending',
+      joinedAt: new Date(Date.now() - 2 * day).toISOString(), lastLoginAt: null,
+      streak: { current: 0, best: 0 }, daysCompleted: 0
+    },
+    {
+      id: 'e2e-banned', name: 'Banned Bea', email: 'bea@example.com', role: 'user', status: 'banned',
+      joinedAt: new Date(Date.now() - 9 * day).toISOString(),
+      lastLoginAt: new Date(Date.now() - 8 * day).toISOString(),
+      streak: { current: 0, best: 4 }, daysCompleted: 11
+    },
+    {
+      id: 'e2e-learner', name: 'Luc Martin', email: 'luc@example.com', role: 'user', status: 'active',
+      joinedAt: new Date(Date.now() - 30 * day).toISOString(),
+      lastLoginAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+      streak: { current: 9, best: 11 }, daysCompleted: 60
+    }
+  ];
+}
+
+function adminRows() {
+  const self = {
+    id: account.user.id, name: account.user.name, email: account.user.email,
+    role: account.user.role, status: account.user.status,
+    joinedAt: new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString(),
+    lastLoginAt: new Date().toISOString(), streak: { current: 2, best: 3 }, daysCompleted: 12
+  };
+  const rank = { pending: 0, banned: 1, active: 2 };
+  return [self].concat(panel.members).sort(function (a, b) {
+    return (rank[a.status] == null ? 9 : rank[a.status]) - (rank[b.status] == null ? 9 : rank[b.status]);
+  });
+}
+
+function adminStats(rows) {
+  return {
+    learners: rows.length,
+    admins: rows.filter(function (u) { return u.role === 'admin'; }).length,
+    pending: rows.filter(function (u) { return u.status === 'pending'; }).length,
+    banned: rows.filter(function (u) { return u.status === 'banned'; }).length,
+    joinedThisWeek: 1,
+    activeThisWeek: 2,
+    daysCompleted: rows.reduce(function (n, u) { return n + (u.daysCompleted || 0); }, 0)
+  };
+}
+
+function logAction(action, target, detail) {
+  panel.audit.unshift({
+    at: new Date().toISOString(),
+    actorName: account.user.name,
+    action: action,
+    targetName: target ? target.name : '',
+    targetEmail: target ? target.email : '',
+    detail: detail || ''
+  });
+}
+
+function adminGuard(res) {
+  if (!account.signedIn) { send(res, 401, { error: 'Please sign in.' }); return false; }
+  if (account.user.role !== 'admin') { send(res, 403, { error: 'Admins only.' }); return false; }
+  return true;
+}
+
 async function apiHandler(req, res) {
   const url = new URL(req.url, 'http://127.0.0.1');
   const route = url.pathname;
@@ -94,7 +168,10 @@ async function apiHandler(req, res) {
       account.user = {
         id: 'e2e-user',
         name: String(body.name).slice(0, 60),
-        email: String(body.email).slice(0, 160)
+        email: String(body.email).slice(0, 160),
+        // The panel role belongs to the fixture, not to the signup form.
+        role: account.user.role || 'user',
+        status: 'active'
       };
       account.password = String(body.password);
     }
@@ -122,6 +199,47 @@ async function apiHandler(req, res) {
     const body = await readBody(req);
     if (body.name) account.user.name = String(body.name).slice(0, 60);
     return send(res, 200, { user: account.user });
+  }
+
+  if (route === '/api/admin/users' && (req.method === 'GET' || !req.method)) {
+    if (!adminGuard(res)) return;
+    const rows = adminRows();
+    return send(res, 200, {
+      users: rows,
+      stats: adminStats(rows),
+      audit: panel.audit,
+      settings: panel.settings,
+      adminId: account.user.id
+    });
+  }
+
+  if (route === '/api/admin/user') {
+    if (!adminGuard(res)) return;
+    const body = await readBody(req);
+    const target = adminRows().filter(function (u) { return String(u.id) === String(body.id); })[0];
+    if (!target) return send(res, 404, { error: 'That account no longer exists.' });
+    if (String(target.id) === String(account.user.id)) {
+      return send(res, 400, { error: 'You cannot change your own access.' });
+    }
+    const next = body.action === 'ban' ? 'banned' : 'active';
+    const member = panel.members.filter(function (u) { return String(u.id) === String(body.id); })[0];
+    if (member) member.status = next;
+    else account.user.status = next;
+    logAction(body.action, target, '');
+    return send(res, 200, { ok: true, user: Object.assign({}, target, { status: next }) });
+  }
+
+  if (route === '/api/admin/settings') {
+    if (!adminGuard(res)) return;
+    if (req.method === 'PATCH') {
+      const body = await readBody(req);
+      if (typeof body.signupApproval !== 'boolean') {
+        return send(res, 400, { error: 'signupApproval must be true or false.' });
+      }
+      panel.settings = { signupApproval: body.signupApproval };
+      logAction('settings', null, 'Signup approval ' + (body.signupApproval ? 'on' : 'off'));
+    }
+    return send(res, 200, panel.settings);
   }
 
   if (route === '/api/community') {
@@ -175,8 +293,9 @@ async function apiHandler(req, res) {
 }
 
 const server = http.createServer(function (req, res) {
-  if (req.url === '/__e2e__/reset') {
+  if (String(req.url).indexOf('/__e2e__/reset') === 0) {
     account.signedIn = false;
+    resetPanel(new URL(req.url, 'http://127.0.0.1').searchParams.get('role'));
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('ok');
     return;

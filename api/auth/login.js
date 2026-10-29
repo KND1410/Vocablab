@@ -3,6 +3,7 @@ const H = require('../../lib/http');
 const A = require('../../lib/auth');
 const C = require('../../lib/crypto');
 const D = require('../../lib/db');
+const Admin = require('../../lib/admin');
 
 module.exports = H.wrap(async function (req, res) {
   if (!H.method(req, res, ['POST'])) return;
@@ -30,10 +31,16 @@ module.exports = H.wrap(async function (req, res) {
   const ok = await A.verifyPassword(password, user.password);
   if (!ok) return H.fail(res, 401, 'Email or password is wrong.');
 
+  // Suspended and unapproved accounts are refused after the password check, so
+  // the message never tells a stranger which emails exist.
+  if (Admin.isBanned(user)) return H.fail(res, 403, 'This account is suspended.');
+  if (Admin.isPending(user)) return H.fail(res, 403, 'This account is waiting for approval.');
+
+  await A.claimAdmin(db, user);
   const token = await A.createSession(db, user._id);
   await db.collection('users').updateOne(
     { _id: user._id },
-    { $set: { lastLoginAt: new Date() } }
+    { $set: { lastLoginAt: new Date(), lastSeenAt: new Date() } }
   );
   A.setSessionCookie(res, req, token);
   H.json(res, 200, { user: A.publicUser(user) });

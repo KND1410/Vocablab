@@ -43,7 +43,9 @@ test('the home page shows the class file itself, with no setup shortcuts', async
   await expect(page.locator('#btnQuickSheet')).toHaveCount(0);
   await expect(page.locator('#btnQuickAi')).toHaveCount(0);
   await expect(page.locator('.nav-item[data-route="files"]')).toHaveCount(0);
-  await expect(page.locator('.nav-item')).toHaveCount(6);
+  // Six learner routes are visible; the admin entry exists but stays hidden.
+  await expect(page.locator('.nav-item:visible')).toHaveCount(6);
+  await expect(page.locator('#navAdmin')).toBeHidden();
 });
 
 test('the files page still opens by URL and borrows the class file', async ({ page }) => {

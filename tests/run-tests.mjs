@@ -2811,7 +2811,7 @@ ok(/^\.env$/m.test(ignore) && /^\.env\.\*$/m.test(ignore) && /node_modules\//.te
 section('Account API (in-memory Mongo)');
 
 function createFakeDb() {
-  const store = { users: [], sessions: [], daily: [], throttle: [] };
+  const store = { users: [], sessions: [], daily: [], throttle: [], audit: [], settings: [] };
   let seq = 0;
   function nextId(prefix) { seq += 1; return prefix + seq; }
   function matches(doc, filter) {
@@ -2836,7 +2836,9 @@ function createFakeDb() {
     return changed;
   }
   function collection(name) {
-    const rows = store[name];
+    // The real driver creates a collection on first write; mirror that so a new
+    // feature (audit, settings) does not need a fixture entry here.
+    const rows = store[name] || (store[name] = []);
     return {
       createIndex: async function () { return 'ok'; },
       insertOne: async function (doc) {
@@ -2862,9 +2864,15 @@ function createFakeDb() {
         if (update.$setOnInsert) Object.assign(doc, update.$setOnInsert);
         return doc;
       },
-      updateOne: async function (filter, update) {
-        const doc = rows.find(function (d) { return matches(d, filter); });
-        if (!doc) return { modifiedCount: 0 };
+      updateOne: async function (filter, update, options) {
+        let doc = rows.find(function (d) { return matches(d, filter); });
+        if (!doc) {
+          if (!options || !options.upsert) return { modifiedCount: 0 };
+          doc = Object.assign({}, filter);
+          rows.push(doc);
+          applySet(doc, update);
+          return { modifiedCount: 0, upsertedCount: 1 };
+        }
         return { modifiedCount: applySet(doc, update) ? 1 : 0 };
       },
       deleteOne: async function (filter) {
@@ -3061,6 +3069,141 @@ const duplicate = await apiCall(signupApi, 'POST', '/api/auth/signup', {
   body: { name: 'Someone Else', email: apiEmail, password: 'longpassword' }
 });
 eq(duplicate.status, 409, 'one account per email address');
+
+section('Admin panel');
+const Admin = require('../lib/admin.js');
+const adminUsersApi = require('../api/admin/users.js');
+const adminUserApi = require('../api/admin/user.js');
+const adminSettingsApi = require('../api/admin/settings.js');
+
+eq(Admin.statusOf({}), 'active', 'accounts without a status are active');
+eq(Admin.statusOf({ status: 'banned' }), 'banned', 'a suspended account reads as banned');
+ok(!Admin.isAdmin({ role: 'admin', status: 'banned' }), 'a suspended admin loses the panel');
+eq(Admin.chooseRole({ _id: 'u1', email: 'a@b.co' }, { adminEmail: 'A@B.co', adminsExist: true }), 'admin',
+  'ADMIN_EMAIL always wins');
+eq(Admin.chooseRole({ _id: 'u2', email: 'x@y.co' }, { adminsExist: true }), 'user',
+  'a normal account stays a user');
+eq(Admin.chooseRole({ _id: 'u1', email: 'x@y.co' }, { adminsExist: false, oldestId: 'u1' }), 'admin',
+  'the oldest account claims an empty panel');
+eq(Admin.chooseRole({ _id: 'u2', email: 'x@y.co' }, { adminsExist: false, oldestId: 'u1' }), 'user',
+  'only the oldest account claims it');
+ok(Admin.canModerate({ _id: 'a', role: 'admin' }, { _id: 'b' }, 'ban').ok, 'an admin can suspend a learner');
+ok(!Admin.canModerate({ _id: 'b' }, { _id: 'c' }, 'ban').ok, 'a learner cannot moderate anyone');
+ok(!Admin.canModerate({ _id: 'a', role: 'admin' }, { _id: 'a', role: 'admin' }, 'ban').ok,
+  'an admin cannot lock themselves out');
+ok(!Admin.canModerate({ _id: 'a', role: 'admin' }, { _id: 'b', role: 'admin' }, 'ban').ok,
+  'another admin cannot be suspended');
+ok(!Admin.canModerate({ _id: 'a', role: 'admin' }, { _id: 'b', status: 'banned' }, 'ban').ok,
+  'an already suspended account is refused');
+ok(!Admin.canModerate({ _id: 'a', role: 'admin' }, { _id: 'b' }, 'unban').ok,
+  'there is nothing to restore on an active account');
+ok(!Admin.canModerate({ _id: 'a', role: 'admin' }, { _id: 'b' }, 'delete').ok,
+  'unknown actions are refused');
+eq(Admin.sortUsers([{ status: 'active' }, { status: 'banned' }, { status: 'pending' }])
+  .map(function (u) { return u.status; }).join(','), 'pending,banned,active',
+  'accounts that need attention are listed first');
+eq(Admin.normalizeSettings(null).signupApproval, false, 'signup approval is off by default');
+const adminPublic = Admin.publicAdminUser({
+  _id: 'u1', name: 'X', email: 'x@y.co', password: 'scrypt$secret', recovery: 'scrypt$secret'
+});
+ok(!('password' in adminPublic) && !('recovery' in adminPublic),
+  'a panel row never carries a password or recovery hash');
+
+const adminLogin = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: apiEmail, password: 'newpassword' }
+});
+eq(adminLogin.status, 200, 'the first account still signs in');
+eq(adminLogin.data.user.role, 'admin', 'the oldest account owns the panel');
+const adminCookie = String(adminLogin.headers['set-cookie'] || '').split(';')[0];
+
+const learnerEmail = 'learner-' + Date.now() + '@example.com';
+const learnerSignup = await apiCall(signupApi, 'POST', '/api/auth/signup', {
+  body: { name: 'Learner Two', email: learnerEmail, password: 'longpassword' }
+});
+eq(learnerSignup.data.user.role, 'user', 'a later account is not an admin');
+const learnerCookie = String(learnerSignup.headers['set-cookie'] || '').split(';')[0];
+
+const anonList = await apiCall(adminUsersApi, 'GET', '/api/admin/users', {});
+eq(anonList.status, 401, 'the account list needs a session');
+const learnerList = await apiCall(adminUsersApi, 'GET', '/api/admin/users', { headers: { cookie: learnerCookie } });
+eq(learnerList.status, 403, 'the account list is admin-only');
+const adminList = await apiCall(adminUsersApi, 'GET', '/api/admin/users', { headers: { cookie: adminCookie } });
+eq(adminList.status, 200, 'an admin can read the account list');
+ok(adminList.data.users.length >= 2, 'the list contains every account');
+ok(adminList.data.users.some(function (u) { return u.email === learnerEmail; }), 'the new learner is listed');
+ok(JSON.stringify(adminList.data.users).indexOf('scrypt$') === -1, 'no hash ever reaches the panel');
+eq(adminList.data.stats.learners, adminList.data.users.length, 'the learner count matches the list');
+ok(adminList.data.stats.admins >= 1, 'at least one admin is counted');
+
+const selfBan = await apiCall(adminUserApi, 'POST', '/api/admin/user', {
+  body: { id: adminLogin.data.user.id, action: 'ban' }, headers: { cookie: adminCookie }
+});
+eq(selfBan.status, 400, 'an admin cannot suspend their own account');
+const unknownUser = await apiCall(adminUserApi, 'POST', '/api/admin/user', {
+  body: { id: 'nope-nope', action: 'ban' }, headers: { cookie: adminCookie }
+});
+eq(unknownUser.status, 404, 'an unknown account id is refused');
+const learnerBan = await apiCall(adminUserApi, 'POST', '/api/admin/user', {
+  body: { id: learnerSignup.data.user.id, action: 'ban' }, headers: { cookie: adminCookie }
+});
+eq(learnerBan.status, 200, 'an admin can suspend a learner');
+eq(learnerBan.data.user.status, 'banned', 'the learner is now suspended');
+const cutOff = await apiCall(meApi, 'GET', '/api/auth/me', { headers: { cookie: learnerCookie } });
+// The ban deletes every session, so the old cookie is simply unknown now.
+eq(cutOff.status, 401, 'a suspension ends the existing session immediately');
+const bannedLogin = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: learnerEmail, password: 'longpassword' }
+});
+eq(bannedLogin.status, 403, 'a suspended account cannot sign in');
+const restored = await apiCall(adminUserApi, 'POST', '/api/admin/user', {
+  body: { id: learnerSignup.data.user.id, action: 'unban' }, headers: { cookie: adminCookie }
+});
+eq(restored.status, 200, 'an admin can lift a suspension');
+eq(restored.data.user.status, 'active', 'the learner is active again');
+const backLogin = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: learnerEmail, password: 'longpassword' }
+});
+eq(backLogin.status, 200, 'the restored account signs in again');
+
+const approvalOn = await apiCall(adminSettingsApi, 'PATCH', '/api/admin/settings', {
+  body: { signupApproval: true }, headers: { cookie: adminCookie }
+});
+eq(approvalOn.status, 200, 'an admin can require approval');
+eq(approvalOn.data.signupApproval, true, 'the setting is saved');
+const pendingEmail = 'pending-' + Date.now() + '@example.com';
+const pendingSignup = await apiCall(signupApi, 'POST', '/api/auth/signup', {
+  body: { name: 'Waiting', email: pendingEmail, password: 'longpassword' }
+});
+eq(pendingSignup.status, 201, 'a new account is still created');
+eq(pendingSignup.data.pending, true, 'the response says it is waiting for approval');
+ok(String(pendingSignup.headers['set-cookie'] || '') === '', 'a pending account gets no session');
+const pendingLogin = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: pendingEmail, password: 'longpassword' }
+});
+eq(pendingLogin.status, 403, 'a pending account cannot sign in');
+const approved = await apiCall(adminUserApi, 'POST', '/api/admin/user', {
+  body: { id: pendingSignup.data.user.id, action: 'approve' }, headers: { cookie: adminCookie }
+});
+eq(approved.status, 200, 'an admin can approve the account');
+eq(approved.data.user.status, 'active', 'the approved account is active');
+const approvedLogin = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: pendingEmail, password: 'longpassword' }
+});
+eq(approvedLogin.status, 200, 'the approved account signs in');
+const approvalOff = await apiCall(adminSettingsApi, 'PATCH', '/api/admin/settings', {
+  body: { signupApproval: false }, headers: { cookie: adminCookie }
+});
+eq(approvalOff.data.signupApproval, false, 'approval can be turned off again');
+const badSetting = await apiCall(adminSettingsApi, 'PATCH', '/api/admin/settings', {
+  body: { signupApproval: 'yes' }, headers: { cookie: adminCookie }
+});
+eq(badSetting.status, 400, 'the setting must be a real boolean');
+
+const afterAll = await apiCall(adminUsersApi, 'GET', '/api/admin/users', { headers: { cookie: adminCookie } });
+ok(afterAll.data.audit.length >= 3, 'every admin action is written to the log');
+ok(afterAll.data.audit.some(function (row) { return row.action === 'ban'; }), 'the suspension is in the log');
+ok(afterAll.data.audit.some(function (row) { return row.action === 'approve'; }), 'the approval is in the log');
+ok(afterAll.data.audit.every(function (row) { return row.at && row.actorName; }), 'log rows carry a time and an author');
 
 section('Local account store (no MongoDB)');
 

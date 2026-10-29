@@ -3,6 +3,7 @@ const H = require('../../lib/http');
 const A = require('../../lib/auth');
 const C = require('../../lib/crypto');
 const D = require('../../lib/db');
+const Admin = require('../../lib/admin');
 
 module.exports = H.wrap(async function (req, res) {
   if (!H.method(req, res, ['POST'])) return;
@@ -26,6 +27,16 @@ module.exports = H.wrap(async function (req, res) {
     return H.fail(res, 409, 'An account with that email already exists.');
   }
 
+  // When the admin requires approval, a new account is created but gets no
+  // session until it is approved. The very first account on an empty database
+  // is never held back, so the panel can always be reached.
+  const settings = await Admin.loadSettings(db);
+  let needsApproval = !!settings.signupApproval;
+  if (needsApproval) {
+    const everyone = await db.collection('users').find({}).toArray();
+    needsApproval = everyone.length > 0;
+  }
+
   const recoveryCode = C.recoveryCode();
   let user;
   try {
@@ -33,13 +44,19 @@ module.exports = H.wrap(async function (req, res) {
       name: name,
       email: email,
       password: password,
-      recoveryCode: recoveryCode
+      recoveryCode: recoveryCode,
+      status: needsApproval ? Admin.PENDING : Admin.ACTIVE
     });
   } catch (err) {
     if (err && err.code === 11000) {
       return H.fail(res, 409, 'An account with that email already exists.');
     }
     throw err;
+  }
+
+  await A.claimAdmin(db, user);
+  if (needsApproval) {
+    return H.json(res, 201, { user: A.publicUser(user), recoveryCode: recoveryCode, pending: true });
   }
 
   const token = await A.createSession(db, user._id);

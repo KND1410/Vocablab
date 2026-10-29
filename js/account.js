@@ -112,7 +112,9 @@
   /* ---------- API ---------- */
   async function signup(name, email, password) {
     const data = await api('/auth/signup', { method: 'POST', body: { name: name, email: email, password: password } });
-    remember(data.user);
+    // A pending account has no session yet: caching it would make the next
+    // page load think it is signed in and fail every request.
+    if (!data.pending) remember(data.user);
     return data;
   }
 

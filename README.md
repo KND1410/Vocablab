@@ -198,6 +198,36 @@ exam**.
 - To add a paper: append it to `EXAMS` in `js/exam-data.js` and put its audio under
   `exam/No.N/`. PDFs are git-ignored; the MP3s are tracked.
 
+## Admin
+
+One account can own the panel: the **Admin** entry appears in the sidebar only for
+that account, and every `/api/admin/*` route re-checks the role on the server — the
+front end is public JavaScript, so hiding the link is not the gate.
+
+**Who is the admin.** In order: the account whose email matches `ADMIN_EMAIL`; else,
+while no admin exists, the **oldest account** claims the panel the next time it signs
+in or loads the app. That means an existing database needs no migration script — just
+reload the app as the first account you ever created. Accounts created afterwards are
+ordinary learners.
+
+**What it does.**
+
+- **Accounts** — name, email, status, current streak, days practised and last seen,
+  with search. Accounts that need attention (awaiting approval, suspended) sort first.
+- **Approve** — required only when the approval setting is on. Until then the account
+  exists but has no session: it cannot sign in and sees “waiting for approval”.
+- **Suspend / Restore** — a suspension deletes every session immediately, so the
+  account is cut off on its next request, not on its next sign-in. Suspending asks for
+  a second click. An admin can never suspend themselves or another admin, so the panel
+  cannot be locked out.
+- **Signup approval** — off by default. Turn it on when you are opening the app to a
+  class: new accounts wait for you instead of walking in.
+- **Admin log** — the last 20 actions with who, what, who it was done to and when.
+
+Passwords and recovery hashes never leave the database; the panel only receives the
+fields listed above. Set `ADMIN_EMAIL` in Vercel if you want the role to follow a
+specific address rather than the first account.
+
 ## Settings
 
 | Tab | Contents |
@@ -249,11 +279,13 @@ override) and skips without one.
 The logic suite covers sheet parsing and discovery, link lists, the generator, AI
 transport and JSON repair, the quiz pipeline and grading, the daily quest and streak
 rules, accounts/API (scrypt, recovery codes, sessions), grammar data and progress,
-exam data and the Wattier rubric, plus `app.js` ↔ `index.html` wiring.
+exam data and the Wattier rubric, the admin rules (who owns the panel, who may be
+suspended, the audit entry) and the admin API, plus `app.js` ↔ `index.html` wiring.
 
 The Playwright suite covers all routes and deep links, i18n on every page, the exam
-flow (start, autosave, audio, review, AI feedback), the dictionary chain and the
-level-up gate.
+flow (start, autosave, audio, review, AI feedback), the dictionary chain, the
+level-up gate and the admin panel (hidden for learners, approve/suspend/local log for
+the admin).
 
 ## Privacy
 
