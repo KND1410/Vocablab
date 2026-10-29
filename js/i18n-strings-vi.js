@@ -601,5 +601,11 @@
     "Welcome to VocabLab!": "Chào mừng bạn đến với VocabLab!",
     "Write your translation first.": "Hãy viết bản dịch trước.",
     "You reached the end of the deck!": "Bạn đã đi hết bộ từ!",
+    "Attempt ended. Your answers are saved for review.": "Đã kết thúc bài. Câu trả lời đã được lưu để xem lại.",
+    "End exam": "Kết thúc bài thi",
+    "End this attempt? Your answers stay for review, but you cannot change them afterwards.": "Kết thúc bài này? Câu trả lời vẫn được giữ để xem lại, nhưng bạn sẽ không sửa được nữa.",
+    "Ended": "Đã kết thúc",
+    "Review attempt": "Xem lại bài đã dừng",
+    "This attempt has ended. Start over when you are ready for a new 24-hour session.": "Bài này đã kết thúc. Hãy chọn làm lại khi bạn sẵn sàng cho phiên 24 giờ mới.",
   });
 })();

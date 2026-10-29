@@ -288,6 +288,51 @@ test('part shortcuts scroll to the section without leaving the exam', async ({ p
   await expect(page.locator('.exam-part')).toHaveCount(3);
 });
 
+test('an attempt can be ended early and the paper closes', async ({ page }) => {
+  await openExam(page);
+  await page.locator('.exam-q').first().locator('.exam-opt').nth(1).click();
+  await page.locator('#examEssay').fill('Mon article sur le café de chats.');
+
+  page.on('dialog', function (dialog) { dialog.accept(); });
+  await page.locator('.exam-hero [data-act="end"]').click();
+
+  await expect(page.locator('.exam-review')).toBeVisible();
+  await expect(page.locator('.exam-ended-note')).toContainText('has ended');
+  await expect(page.locator('.exam-paper')).toHaveCount(0);
+  await expect(page.locator('.exam-review-row:not(.is-empty)')).toHaveCount(1);
+
+  // The answers survive the end, and so does the essay.
+  const saved = await page.evaluate(function (key) { return JSON.parse(localStorage.getItem(key)); }, SESSION_KEY);
+  expect(saved.endedAt).toBeGreaterThan(0);
+  expect(saved.essay).toContain('café de chats');
+
+  // There is no way back into the paper: only a fresh session.
+  await expect(page.locator('[data-act="paper"]')).toHaveCount(0);
+  await expect(page.locator('.exam-review [data-act="reset"]')).toBeVisible();
+});
+
+test('a saved attempt that was ended says so and only opens for review', async ({ page }) => {
+  await openCatalogue(page);
+  await page.evaluate(function (key) {
+    const now = Date.now();
+    localStorage.setItem(key, JSON.stringify({
+      examId: 'blanc-1', startedAt: now - 3600000, expiresAt: now + 3600000,
+      answers: {}, essay: '', feedback: '', endedAt: now - 60000, savedAt: now - 60000
+    }));
+  }, SESSION_KEY);
+
+  await page.reload();
+  const first = page.locator('.exam-choice').first();
+  await expect(first.locator('.exam-status')).toHaveText('Ended');
+  await expect(first.locator('[data-act="open"]')).toHaveText('Review attempt');
+
+  await first.locator('[data-act="open"]').click();
+  await expect(page.locator('.exam-detail [data-act="start"]')).toHaveText('Review attempt');
+  await page.locator('.exam-detail [data-act="start"]').click();
+  await expect(page.locator('.exam-review')).toBeVisible();
+  await expect(page.locator('.exam-paper')).toHaveCount(0);
+});
+
 test('the exam chrome follows the interface language', async ({ page }) => {
   await openExam(page);
   await page.evaluate(function () { window.I18n.setLang('vi'); });

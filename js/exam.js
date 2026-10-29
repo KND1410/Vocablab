@@ -39,6 +39,7 @@
       answers: {},
       essay: '',
       feedback: '',
+      endedAt: 0,
       savedAt: startedAt
     };
   }
@@ -64,7 +65,13 @@
     }
     if (!raw.answers || typeof raw.answers !== 'object') raw.answers = {};
     if (typeof raw.essay !== 'string') raw.essay = '';
+    if (typeof raw.endedAt !== 'number') raw.endedAt = 0;
     return { state: raw, expired: false };
+  }
+
+  /** What the button that opens a saved attempt says. */
+  function attemptLabel(saved) {
+    return saved && saved.endedAt ? t('exam.reviewAttempt') : t('exam.continue');
   }
 
   /** Begin a fresh 24-hour attempt, or resume one that is still running. */
@@ -81,14 +88,17 @@
     const found = peekSession(item);
     exam = item;
     feedbackBusy = false;
+    // An attempt the learner ended only opens for review: the point of the
+    // End button is that the answers are closed, not silently re-opened.
     if (found.state) {
       state = found.state;
+      view = state.endedAt ? 'review' : 'paper';
     } else {
       state = newSession(item);
       save();
       if (found.expired && api && api.toast) api.toast(t('exam.expiredToast'), 'warn', 8000);
+      view = 'paper';
     }
-    view = 'paper';
     render();
     if (root) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -266,6 +276,7 @@
   }
 
   function reviewBlock() {
+    const ended = !!(state && state.endedAt);
     const rows = questionsOf(exam).map(function (row) {
       const label = selectedLabel(row.q);
       return '<li class="exam-review-row' + (label ? '' : ' is-empty') + '">' +
@@ -284,8 +295,12 @@
     return '<div class="exam-review" data-i18n-skip>' +
       '<div class="exam-review-head"><div><h2>' + esc(t('exam.reviewTitle')) + '</h2>' +
       '<p class="muted small">' + esc(t('exam.reviewSub', { n: answeredCount(), total: questionsOf(exam).length })) + '</p></div>' +
-      '<div class="btn-row"><button type="button" class="btn btn-subtle btn-sm" data-act="paper">' + esc(t('exam.backToPaper')) + '</button>' +
+      '<div class="btn-row">' +
+      (ended
+        ? '<button type="button" class="btn btn-subtle btn-sm" data-act="reset">' + esc(t('exam.startOver')) + '</button>'
+        : '<button type="button" class="btn btn-subtle btn-sm" data-act="paper">' + esc(t('exam.backToPaper')) + '</button>') +
       '<button type="button" class="btn btn-primary btn-sm" data-act="feedback">' + esc(t('exam.feedback')) + '</button></div></div>' +
+      (ended ? '<p class="exam-review-note exam-ended-note">' + esc(t('exam.endedNote')) + '</p>' : '') +
       '<p class="exam-review-note">' + esc(t('exam.reviewNote')) + '</p>' +
       '<ul class="exam-review-list">' + rows + '</ul>' + essayPart +
       '</div>';
@@ -295,6 +310,9 @@
 
   function statusPill(item) {
     const peek = peekSession(item);
+    if (peek.state && peek.state.endedAt) {
+      return '<span class="exam-status is-ended">' + esc(t('exam.statusEnded')) + '</span>';
+    }
     if (peek.state) {
       return '<span class="exam-status is-active">' + esc(t('exam.statusActive', { time: fmtClock(peek.state.expiresAt - now()).slice(0, 5) })) + '</span>';
     }
@@ -330,7 +348,7 @@
       '<div class="exam-choice-foot">' +
       '<span class="muted tiny">' + esc(t('exam.startNoteShort')) + '</span>' +
       '<button type="button" class="btn btn-primary btn-sm" data-act="open" data-exam="' + esc(item.id) + '">' +
-      esc(peek.state ? t('exam.continue') : t('exam.open')) + '</button>' +
+      esc(peek.state ? attemptLabel(peek.state) : t('exam.open')) + '</button>' +
       '</div></article>';
   }
 
@@ -377,7 +395,7 @@
       '<span class="pill">' + esc(t('exam.hoursPill', { n: exam.hours })) + '</span>' +
       '</div></div>' +
       '<div class="exam-hero-actions">' + statusPill(exam) +
-      '<button type="button" class="btn btn-primary" data-act="start">' + esc(peek.state ? t('exam.continue') : t('exam.start')) + '</button>' +
+      '<button type="button" class="btn btn-primary" data-act="start">' + esc(peek.state ? attemptLabel(peek.state) : t('exam.start')) + '</button>' +
       '</div></header>' +
       '<section class="exam-detail-parts"><h2>' + esc(t('exam.partsTitle')) + '</h2>' +
       '<ol class="exam-detail-list">' + parts + '</ol></section>' +
@@ -408,6 +426,7 @@
       '<div class="btn-row">' +
       '<button type="button" class="btn btn-ghost btn-sm" data-act="list">' + esc(t('exam.allExams')) + '</button>' +
       '<button type="button" class="btn btn-subtle btn-sm" data-act="review">' + esc(t('exam.review')) + '</button>' +
+      '<button type="button" class="btn btn-danger-ghost btn-sm" data-act="end">' + esc(t('exam.end')) + '</button>' +
       '<button type="button" class="btn btn-ghost btn-sm" data-act="reset">' + esc(t('exam.startOver')) + '</button>' +
       '</div></div></header>' +
       '<div class="exam-body">' +
@@ -422,6 +441,7 @@
       '<div class="muted small">' + esc(t('exam.footSession')) + '</div>' +
       '<div class="btn-row">' +
       '<button type="button" class="btn btn-subtle btn-sm" data-act="review">' + esc(t('exam.review')) + '</button>' +
+      '<button type="button" class="btn btn-danger-ghost btn-sm" data-act="end">' + esc(t('exam.end')) + '</button>' +
       '</div></div></div></div></div>';
   }
 
@@ -451,7 +471,7 @@
 
   function updateTimer() {
     const el = document.getElementById('examTimer');
-    if (!el || !state || view !== 'paper') return;
+    if (!el || !state || view !== 'paper' || state.endedAt) return;
     const left = state.expiresAt - now();
     if (left <= 0) {
       // The attempt is void after 24 hours: drop the answers and return to the
@@ -505,6 +525,8 @@
       root.innerHTML = detailBlock();
       return;
     }
+    // A closed attempt never draws the paper again, whatever asked for it.
+    if (state.endedAt) view = 'review';
     root.innerHTML = view === 'review' ? reviewBlock() : shell();
     hydrateFeedback();
     if (view === 'paper') { updateTimer(); bindAudio(); }
@@ -566,6 +588,8 @@
           view = 'paper';
           render();
           window.scrollTo({ top: 0, behavior: 'smooth' });
+        } else if (act === 'end') {
+          endAttempt();
         } else if (act === 'reset') {
           resetSession(true);
         } else if (act === 'feedback') {
@@ -579,6 +603,23 @@
       ticker = setInterval(updateTimer, 1000);
     }
     render();
+  }
+
+  /**
+   * Give up on an attempt. The answers and essay are kept so the review and
+   * the AI feedback still work, but the paper is closed: no more ticking, no
+   * ticking clock. Only “start over” begins a new 24-hour session.
+   */
+  function endAttempt() {
+    if (!state || state.endedAt) return;
+    const ok = global.confirm(t('exam.endConfirm'));
+    if (!ok) return;
+    state.endedAt = now();
+    save();
+    view = 'review';
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (api && api.toast) api.toast(t('exam.endDone'), 'ok');
   }
 
   function resetSession(ask) {

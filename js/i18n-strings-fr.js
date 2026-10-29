@@ -595,5 +595,11 @@
     "Welcome to VocabLab!": "Bienvenue dans VocabLab !",
     "Write your translation first.": "Écrivez d'abord votre traduction.",
     "You reached the end of the deck!": "Vous avez atteint la fin du paquet !",
+    "Attempt ended. Your answers are saved for review.": "Tentative terminée. Vos réponses sont conservées pour la relecture.",
+    "End exam": "Terminer l’épreuve",
+    "End this attempt? Your answers stay for review, but you cannot change them afterwards.": "Terminer cette tentative ? Vos réponses restent consultables, mais vous ne pourrez plus les modifier.",
+    "Ended": "Terminée",
+    "Review attempt": "Revoir la tentative",
+    "This attempt has ended. Start over when you are ready for a new 24-hour session.": "Cette tentative est terminée. Recommencez quand vous êtes prêt pour une nouvelle session de 24 heures.",
   });
 })();

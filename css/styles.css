@@ -2121,6 +2121,8 @@ h1, h2, h3, h4 { font-weight: 800; }
 }
 .exam-status.is-active { background: var(--ok-soft); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); }
 .exam-status.is-expired { background: var(--warn-soft); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
+.exam-status.is-ended { background: var(--surface); color: var(--text); border-color: var(--border); }
+.exam-ended-note { border: 2px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); padding: .55rem .7rem; }
 .exam-choice-meta { display: flex; gap: .4rem; flex-wrap: wrap; margin: .7rem 0; }
 .exam-choice-meta .pill { border-color: var(--border); background: var(--surface-2); }
 .exam-choice-foot { display: flex; justify-content: space-between; align-items: center; gap: .6rem; flex-wrap: wrap; border-top: 1px dashed color-mix(in srgb, var(--border) 35%, transparent); padding-top: .65rem; }
