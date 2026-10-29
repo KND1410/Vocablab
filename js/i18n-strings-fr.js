@@ -495,6 +495,7 @@
     "Open navigation": "Ouvrir la navigation",
     "Collapse navigation": "Réduire la navigation",
     "Expand navigation": "Développer la navigation",
+    "Close navigation": "Fermer la navigation",
     "Back to home": "Retour à l'accueil",
     "Current vocabulary source": "Source de vocabulaire actuelle",
     "Interface language": "Langue de l'interface",

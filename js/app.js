@@ -125,7 +125,7 @@
       'authScreen', 'authTitle', 'authSub', 'authForm', 'authNameField', 'authName', 'authEmailField',
       'authEmail', 'authPasswordField', 'authPassword', 'authCodeField', 'authCode',
       'authNewPasswordField', 'authNewPassword', 'authError', 'authSubmit', 'authAlt', 'authDot',
-      'authToReset', 'authToSignin', 'authOffline', 'btnSignOut',
+      'authToReset', 'authToSignin', 'authOffline', 'btnSignOut', 'btnSignOutNav',
       'homeDate', 'homeGreeting', 'homeName', 'btnEditName', 'nameEditor', 'inpName', 'btnSaveName', 'btnCancelName',
       'streakChip', 'streakCount', 'streakWarn', 'questCard', 'questSub', 'questCount', 'questList',
       'questAllDone', 'questDoneTitle', 'questStreakLine', 'questOffline', 'recoveryDialog', 'recoveryCode',
@@ -796,6 +796,7 @@
     state.user = user;
     document.body.classList.remove('auth-locked');
     if (E.btnSignOut) E.btnSignOut.hidden = false;
+    if (E.btnSignOutNav) E.btnSignOutNav.hidden = false;
     if (!opts.skipLoad) {
       try {
         await loadHomeData();
@@ -1151,6 +1152,7 @@
     if (window.Admin) Admin.reset();
     if (window.Admin) Admin.syncNav(null);
     if (E.btnSignOut) E.btnSignOut.hidden = true;
+    if (E.btnSignOutNav) E.btnSignOutNav.hidden = true;
     showAuth();
     if (message) showAuthMessage(message);
   }
@@ -1216,6 +1218,7 @@
       });
     }
     E.btnSignOut.addEventListener('click', signOut);
+    if (E.btnSignOutNav) E.btnSignOutNav.addEventListener('click', signOut);
     E.btnEditName.addEventListener('click', openNameEditor);
     E.btnSaveName.addEventListener('click', saveName);
     E.btnCancelName.addEventListener('click', closeNameEditor);
@@ -4242,27 +4245,75 @@
         } catch (e) {}
         syncCollapseUi();
       };
+      /*
+       * The phone drawer needs a real way out. Before, the only controls sat
+       * under the overlay: the hamburger was covered by the drawer, and the ≡
+       * inside it collapsed the desktop rail instead of closing. So: one close
+       * path used by the ×, the scrim, Escape and a route change.
+       */
+      const sidebarEl = document.getElementById('sideNav');
+      let navReturnFocus = null;
+      const isDesktopNav = function () { return window.matchMedia('(min-width: 921px)').matches; };
+      const navIsOpen = function () { return document.body.classList.contains('nav-open'); };
+      const closeNav = function (refocus) {
+        if (!navIsOpen()) return;
+        document.body.classList.remove('nav-open');
+        E.btnNavToggle.setAttribute('aria-expanded', 'false');
+        if (refocus && navReturnFocus && navReturnFocus.isConnected) navReturnFocus.focus();
+        navReturnFocus = null;
+      };
+      const openNav = function () {
+        // Some screens hide the sidebar entirely (during a quiz); opening an
+        // empty drawer behind a dark overlay would be worse than doing nothing.
+        // A fixed element has no offsetParent, so ask for its computed display.
+        if (!sidebarEl || window.getComputedStyle(sidebarEl).display === 'none') return;
+        navReturnFocus = document.activeElement;
+        document.body.classList.add('nav-open');
+        E.btnNavToggle.setAttribute('aria-expanded', 'true');
+        const close = document.getElementById('btnNavClose');
+        if (close) close.focus({ preventScroll: true });
+      };
+
       E.btnNavToggle.addEventListener('click', function () {
-        const isDesktop = window.matchMedia('(min-width: 921px)').matches;
-        if (isDesktop) {
+        if (isDesktopNav()) {
           toggleCollapse();
-        } else {
-          const open = document.body.classList.toggle('nav-open');
-          E.btnNavToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+          return;
         }
+        if (navIsOpen()) closeNav(true);
+        else openNav();
       });
       const btnSidebarToggle = document.getElementById('btnSidebarToggle');
       if (btnSidebarToggle) {
-        btnSidebarToggle.addEventListener('click', toggleCollapse);
+        btnSidebarToggle.addEventListener('click', function () {
+          if (isDesktopNav()) toggleCollapse();
+          else closeNav(true);
+        });
       }
+      const btnNavClose = document.getElementById('btnNavClose');
+      if (btnNavClose) btnNavClose.addEventListener('click', function () { closeNav(true); });
+      const scrim = document.getElementById('navScrim');
+      if (scrim) scrim.addEventListener('click', function () { closeNav(true); });
+      document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape' && navIsOpen()) closeNav(true);
+      });
+      // Rotating a phone or resizing a window past the breakpoint must not
+      // leave the overlay behind.
+      window.addEventListener('resize', function () {
+        if (isDesktopNav()) closeNav(false);
+      });
       // Set initial aria-expanded based on state
-      if (window.matchMedia('(min-width: 921px)').matches) syncCollapseUi();
+      if (isDesktopNav()) syncCollapseUi();
     }
     U.$$('.nav-item').forEach(function (a) {
       a.addEventListener('click', function () {
         document.body.classList.remove('nav-open');
         if (E.btnNavToggle) E.btnNavToggle.setAttribute('aria-expanded', 'false');
       });
+    });
+    // A route change from anywhere (back button, brand link, quests) closes it.
+    window.addEventListener('hashchange', function () {
+      document.body.classList.remove('nav-open');
+      if (E.btnNavToggle) E.btnNavToggle.setAttribute('aria-expanded', 'false');
     });
     U.$$('[data-go]').forEach(function (btn) {
       btn.addEventListener('click', function () {
