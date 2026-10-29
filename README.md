@@ -238,6 +238,19 @@ Passwords and recovery hashes never leave the database; the panel only receives 
 fields listed above. Set `ADMIN_EMAIL` in Vercel if you want the role to follow a
 specific address rather than the first account.
 
+**Promote an account by hand.** When you want a named account to own the panel
+straight away — a database whose oldest account is not yours, or one where someone
+else already claimed it — run:
+
+```bash
+npm run admin:make khoind1410@gmail.com   # promote
+npm run admin:make khoind1410@gmail.com --remove   # back to a learner
+```
+
+It reads `.env.local` like `npm run db:init`, only flips `role` (and clears a pending
+status), and never reads or changes a password. It works against MongoDB, or the
+local file store when `MONGODB_URI` is unset.
+
 ## Settings
 
 | Tab | Contents |

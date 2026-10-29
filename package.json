@@ -8,6 +8,7 @@
     "smoke": "node tests/browser-smoke.mjs",
     "test:e2e": "playwright test",
     "db:init": "node scripts/init-db.mjs",
+    "admin:make": "node scripts/make-admin.mjs",
     "dev": "npx vercel dev",
     "dev:local": "node scripts/dev-server.mjs"
   },
