@@ -2911,15 +2911,15 @@ require.cache[dbPath] = {
   exports: fakeDbModule
 };
 
-const signupApi = require('../api/auth/signup.js');
-const loginApi = require('../api/auth/login.js');
-const logoutApi = require('../api/auth/logout.js');
-const meApi = require('../api/auth/me.js');
-const resetApi = require('../api/auth/reset.js');
-const profileApi = require('../api/profile.js');
-const homeApi = require('../api/home.js');
-const communityApi = require('../api/community.js');
-const progressApi = require('../api/daily/progress.js');
+const signupApi = require('../handlers/auth/signup.js');
+const loginApi = require('../handlers/auth/login.js');
+const logoutApi = require('../handlers/auth/logout.js');
+const meApi = require('../handlers/auth/me.js');
+const resetApi = require('../handlers/auth/reset.js');
+const profileApi = require('../handlers/profile.js');
+const homeApi = require('../handlers/home.js');
+const communityApi = require('../handlers/community.js');
+const progressApi = require('../handlers/daily/progress.js');
 
 async function apiCall(handler, method, url, opts) {
   const options = opts || {};
@@ -2930,6 +2930,7 @@ async function apiCall(handler, method, url, opts) {
     body: options.body,
     socket: {}
   };
+  if (options.query) req.query = options.query;
   const res = {
     statusCode: 0, headers: {}, body: '', headersSent: false,
     setHeader: function (key, value) { this.headers[String(key).toLowerCase()] = value; },
@@ -3072,9 +3073,9 @@ eq(duplicate.status, 409, 'one account per email address');
 
 section('Admin panel');
 const Admin = require('../lib/admin.js');
-const adminUsersApi = require('../api/admin/users.js');
-const adminUserApi = require('../api/admin/user.js');
-const adminSettingsApi = require('../api/admin/settings.js');
+const adminUsersApi = require('../handlers/admin/users.js');
+const adminUserApi = require('../handlers/admin/user.js');
+const adminSettingsApi = require('../handlers/admin/settings.js');
 
 eq(Admin.statusOf({}), 'active', 'accounts without a status are active');
 eq(Admin.statusOf({ status: 'banned' }), 'banned', 'a suspended account reads as banned');
@@ -3207,8 +3208,8 @@ ok(afterAll.data.audit.every(function (row) { return row.at && row.actorName; })
 
 /* ---- Exam reference briefs ---- */
 const Script = require('../lib/script.js');
-const scriptApi = require('../api/exam-script.js');
-const adminScriptApi = require('../api/admin/script.js');
+const scriptApi = require('../handlers/exam-script.js');
+const adminScriptApi = require('../handlers/admin/script.js');
 
 eq(Script.cleanExamId(' Blanc-1 '), 'blanc-1', 'exam ids are normalised');
 ok(!/[./]/.test(Script.cleanExamId('../../etc/passwd')), 'a brief id cannot contain a path');
@@ -3278,17 +3279,17 @@ require.cache[dbPath] = {
   exports: realDbModule
 };
 const localApiFiles = [
-  '../api/auth/signup.js', '../api/auth/login.js', '../api/auth/logout.js',
-  '../api/auth/me.js', '../api/home.js', '../api/daily/progress.js', '../api/health.js'
+  '../handlers/auth/signup.js', '../handlers/auth/login.js', '../handlers/auth/logout.js',
+  '../handlers/auth/me.js', '../handlers/home.js', '../handlers/daily/progress.js', '../handlers/health.js'
 ];
 localApiFiles.forEach(function (file) { delete require.cache[require.resolve(file)]; });
-const lSignup = require('../api/auth/signup.js');
-const lLogin = require('../api/auth/login.js');
-const lLogout = require('../api/auth/logout.js');
-const lMe = require('../api/auth/me.js');
-const lHome = require('../api/home.js');
-const lProgress = require('../api/daily/progress.js');
-const lHealth = require('../api/health.js');
+const lSignup = require('../handlers/auth/signup.js');
+const lLogin = require('../handlers/auth/login.js');
+const lLogout = require('../handlers/auth/logout.js');
+const lMe = require('../handlers/auth/me.js');
+const lHome = require('../handlers/home.js');
+const lProgress = require('../handlers/daily/progress.js');
+const lHealth = require('../handlers/health.js');
 
 const localEmail = 'local-test-' + Date.now() + '@example.com';
 const localDate = Quests.dateKey(new Date());
@@ -3377,11 +3378,29 @@ function walkApi(dir) {
     return acc;
   }, []);
 }
-const missingRoutes = walkApi('api').filter(function (file) {
-  const route = '/api/' + file.replace(/^api\//, '').replace(/\.js$/, '');
+const missingRoutes = walkApi('handlers').filter(function (file) {
+  if (file === 'handlers/routes.js') return false;
+  const route = '/api/' + file.replace(/^handlers\//, '').replace(/\.js$/, '');
   return !devServer.HANDLERS[route];
 });
-eq(missingRoutes, [], 'every serverless function has a route in the local dev server');
+eq(missingRoutes, [], 'every handler has a route in the local dev server');
+const brokenRoutes = Object.keys(devServer.HANDLERS).filter(function (route) {
+  return typeof devServer.HANDLERS[route] !== 'function';
+});
+eq(brokenRoutes, [], 'every route resolves to a handler function');
+
+/* The Hobby plan rejects a deployment with more than 12 Serverless
+   Functions, so the whole API is served by one catch-all function and the
+   handlers live outside api/. Keep both facts true. */
+const apiFiles = walkApi('api');
+eq(apiFiles, ['api/[...path].js'], 'api/ holds a single catch-all Serverless Function');
+ok(apiFiles.length <= 12, 'the deployment stays inside the Hobby plan limit of 12 functions');
+const routerApi = require('../api/[...path].js');
+const unknownRoute = await apiCall(routerApi, 'GET', '/api/nope', {});
+eq(unknownRoute.status, 404, 'the catch-all answers 404 for an unknown route');
+const dispatched = await apiCall(routerApi, 'GET', '/api/health', { query: { path: ['health'] } });
+ok(dispatched.status === 200 || dispatched.status === 500,
+  'the catch-all dispatches req.query.path like Vercel does');
 ok(fs.existsSync(path.join(root, 'package.json')) &&
   /"dev:local": "node scripts\/dev-server\.mjs"/.test(fs.readFileSync(path.join(root, 'package.json'), 'utf8')),
   'npm run dev:local points at the local server');
@@ -3389,8 +3408,8 @@ ok(fs.existsSync(path.join(root, 'package.json')) &&
 /* The relay endpoint behind the localhost 403: the browser asks its own origin,
    the server sends the provider a request with no Origin header — which is the
    whole point, since the provider challenges browser pages opened as localhost. */
-section('Free AI relay endpoint (api/ai-free.js)');
-const aiFreeApi = require('../api/ai-free.js');
+section('Free AI relay endpoint (handlers/ai-free.js)');
+const aiFreeApi = require('../handlers/ai-free.js');
 const upstreamFetch = global.fetch;
 const relayHits = [];
 function stubUpstream(status, body) {
@@ -3442,7 +3461,7 @@ const downRes = await apiCall(aiFreeApi, 'GET', '/api/ai-free?what=models', { he
 eq(downRes.status, 502, 'an unreachable provider becomes a clean 502');
 global.fetch = upstreamFetch;
 
-eq(devServer.HANDLERS['/api/ai-free'], 'api/ai-free.js',
+eq(typeof devServer.HANDLERS['/api/ai-free'], 'function',
   'the relay has a route in the local dev server');
 
 section('Offline quest queue');

@@ -30,25 +30,9 @@ if (fs.existsSync(envFile)) {
   });
 }
 
-const HANDLERS = {
-  '/api/health': 'api/health.js',
-  '/api/ai-free': 'api/ai-free.js',
-  '/api/home': 'api/home.js',
-  '/api/profile': 'api/profile.js',
-  '/api/community': 'api/community.js',
-  '/api/exam-script': 'api/exam-script.js',
-  '/api/auth/signup': 'api/auth/signup.js',
-  '/api/auth/login': 'api/auth/login.js',
-  '/api/auth/logout': 'api/auth/logout.js',
-  '/api/auth/me': 'api/auth/me.js',
-  '/api/auth/reset': 'api/auth/reset.js',
-  '/api/daily/progress': 'api/daily/progress.js',
-  '/api/admin/users': 'api/admin/users.js',
-  '/api/admin/user': 'api/admin/user.js',
-  '/api/admin/settings': 'api/admin/settings.js',
-  '/api/admin/script': 'api/admin/script.js'
-};
-const loaded = Object.create(null);
+/* The same table the deployed catch-all function (api/[...path].js) uses, so
+   the local server can never drift from what Vercel actually serves. */
+const { ROUTES: HANDLERS } = require(path.join(root, 'handlers', 'routes.js'));
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -82,13 +66,13 @@ function sendJson(res, status, payload) {
 }
 
 function serveApi(req, res, pathname) {
-  const file = HANDLERS[pathname];
-  if (!file) {
+  const key = String(pathname || '').replace(/\/+$/, '');
+  const handler = Object.prototype.hasOwnProperty.call(HANDLERS, key) ? HANDLERS[key] : null;
+  if (!handler) {
     sendJson(res, 404, { error: 'Not found.' });
     return;
   }
-  if (!loaded[file]) loaded[file] = require(path.join(root, file));
-  loaded[file](req, res);
+  handler(req, res);
 }
 
 /** Never serve secrets or local-only material: .env*, .data/, .git/, my-sheet*,
