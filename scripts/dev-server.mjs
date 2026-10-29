@@ -30,9 +30,13 @@ if (fs.existsSync(envFile)) {
   });
 }
 
-/* The same table the deployed catch-all function (api/[...path].js) uses, so
-   the local server can never drift from what Vercel actually serves. */
+/* The same table the deployed function (api/index.js) uses, so the local
+   server can never drift from what Vercel actually serves. */
 const { ROUTES: HANDLERS } = require(path.join(root, 'handlers', 'routes.js'));
+/* The function Vercel deploys. Local requests go through it too, with the
+   /api route placed in req.query.path exactly as the vercel.json rewrite does
+   — otherwise the dev server could keep working while production 404s. */
+const dispatch = require(path.join(root, 'api', 'index.js'));
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -66,13 +70,12 @@ function sendJson(res, status, payload) {
 }
 
 function serveApi(req, res, pathname) {
-  const key = String(pathname || '').replace(/\/+$/, '');
-  const handler = Object.prototype.hasOwnProperty.call(HANDLERS, key) ? HANDLERS[key] : null;
-  if (!handler) {
-    sendJson(res, 404, { error: 'Not found.' });
-    return;
-  }
-  handler(req, res);
+  const route = String(pathname || '').replace(/^\/api\/?/, '').replace(/\/+$/, '');
+  req.query = { path: route };
+  Promise.resolve(dispatch(req, res)).catch(function (err) {
+    console.error('[dev-server]', err);
+    if (!res.headersSent) sendJson(res, 500, { error: 'Server error.' });
+  });
 }
 
 /** Never serve secrets or local-only material: .env*, .data/, .git/, my-sheet*,

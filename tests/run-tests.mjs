@@ -3390,17 +3390,39 @@ const brokenRoutes = Object.keys(devServer.HANDLERS).filter(function (route) {
 eq(brokenRoutes, [], 'every route resolves to a handler function');
 
 /* The Hobby plan rejects a deployment with more than 12 Serverless
-   Functions, so the whole API is served by one catch-all function and the
-   handlers live outside api/. Keep both facts true. */
+   Functions, so the whole API is served by one function and the handlers
+   live outside api/. Keep both facts true. */
 const apiFiles = walkApi('api');
-eq(apiFiles, ['api/[...path].js'], 'api/ holds a single catch-all Serverless Function');
+eq(apiFiles, ['api/index.js'], 'api/ holds a single Serverless Function');
 ok(apiFiles.length <= 12, 'the deployment stays inside the Hobby plan limit of 12 functions');
-const routerApi = require('../api/[...path].js');
+const routerApi = require('../api/index.js');
 const unknownRoute = await apiCall(routerApi, 'GET', '/api/nope', {});
-eq(unknownRoute.status, 404, 'the catch-all answers 404 for an unknown route');
-const dispatched = await apiCall(routerApi, 'GET', '/api/health', { query: { path: ['health'] } });
+eq(unknownRoute.status, 404, 'the function answers 404 for an unknown route');
+const dispatched = await apiCall(routerApi, 'GET', '/api/health', {});
 ok(dispatched.status === 200 || dispatched.status === 500,
-  'the catch-all dispatches req.query.path like Vercel does');
+  'the function dispatches a path read from the request URL');
+
+/* Production only reaches this function through the rewrite, and a rewrite
+   hands the URL destination plus the captured segments in the query string.
+   Nested paths used to 404 in production while every test passed, because a
+   catch-all under api/ was only matched one segment deep. */
+const rewriteConfig = JSON.parse(fs.readFileSync(path.join(root, 'vercel.json'), 'utf8'));
+const apiRewrite = (rewriteConfig.rewrites || []).filter(function (rule) {
+  return rule && rule.source === '/api/:path*';
+})[0];
+ok(!!apiRewrite, 'vercel.json rewrites every /api/:path* request');
+ok(!!apiRewrite && /^\/api(\/index)?\?p=:path\*$/.test(apiRewrite.destination),
+  'the rewrite forwards the captured segments as a query parameter');
+ok(!!apiRewrite && !/\.js\b/.test(apiRewrite.destination),
+  'the destination is an extension-less function path (Vercel does not route /api/x.js)');
+const nestedAdmin = await apiCall(routerApi, 'GET', '/api/index.js', { query: { p: 'admin/users' } });
+eq(nestedAdmin.status, 401, 'a rewritten nested path reaches its handler (not a 404)');
+const nestedSegments = await apiCall(routerApi, 'GET', '/api/index.js', { query: { p: ['auth', 'me'] } });
+eq(nestedSegments.status, 401, 'a rewritten path given as segments reaches its handler too');
+const nestedFromUrl = await apiCall(routerApi, 'GET', '/api/auth/me', {});
+eq(nestedFromUrl.status, 401, 'a nested path is dispatched from the request URL as well');
+const emptyRewrite = await apiCall(routerApi, 'GET', '/api/index.js', { query: { p: ':path*' } });
+eq(emptyRewrite.status, 404, 'an unsubstituted rewrite placeholder is refused');
 ok(fs.existsSync(path.join(root, 'package.json')) &&
   /"dev:local": "node scripts\/dev-server\.mjs"/.test(fs.readFileSync(path.join(root, 'package.json'), 'utf8')),
   'npm run dev:local points at the local server');

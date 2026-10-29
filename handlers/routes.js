@@ -3,11 +3,12 @@
    The whole API surface in one table.
 
    Vercel turns every file under api/ into a Serverless Function,
-   and the Hobby plan allows 12 per deployment — so api/ holds a
-   single catch-all function (api/[...path].js) that looks the
-   request up here. Every handler is a *static* require so
-   Vercel's bundler traces it into that one function; a dynamic
-   require would be invisible to it and fail at runtime.
+   and the Hobby plan allows 12 per deployment — so api/ holds one
+   function (api/index.js) that looks the request up here, and
+   vercel.json rewrites every /api/:path* to it. Every handler is a
+   *static* require so Vercel's bundler traces it into that one
+   function; a dynamic require would be invisible to it and fail at
+   runtime.
 
    Adding an endpoint: drop the file in handlers/, add one line.
    ========================================================= */
