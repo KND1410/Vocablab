@@ -13,7 +13,7 @@
     "dev:local": "node scripts/dev-server.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": "24.x"
   },
   "dependencies": {
     "mongodb": "^6.21.0"
