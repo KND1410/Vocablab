@@ -10,6 +10,7 @@
 
   const U = Util;
   let data = null;
+  let scripts = [];
   let busy = false;
   let requestId = 0;
   let notice = '';
@@ -226,6 +227,58 @@
     users.forEach(function (user) { body.appendChild(userRow(user)); });
   }
 
+  /** One collapsible editor per exam paper, for the examiner's reference brief. */
+  function paintScripts(host) {
+    const card = node('section', 'card admin-scripts');
+    card.appendChild(node('h2', 'admin-h2', I18n.t('admin.scripts')));
+    card.appendChild(node('p', 'muted small', I18n.t('admin.scriptsBody')));
+
+    const exams = (window.ExamData && window.ExamData.list) || [];
+    if (!exams.length) {
+      card.appendChild(node('p', 'muted small', I18n.t('admin.scriptsNoExam')));
+      host.appendChild(card);
+      return;
+    }
+    const byId = Object.create(null);
+    scripts.forEach(function (row) { byId[row.examId] = row; });
+
+    exams.forEach(function (exam) {
+      const saved = byId[exam.id];
+      const box = node('details', 'admin-script');
+      if (saved) box.open = true;
+
+      const summary = node('summary', 'admin-script-summary');
+      summary.appendChild(node('strong', '', exam.title || exam.name || exam.id));
+      summary.appendChild(node('span', 'admin-script-meta', saved
+        ? I18n.t('admin.scriptChars', { n: saved.chars })
+        : I18n.t('admin.scriptEmpty')));
+      box.appendChild(summary);
+
+      const area = node('textarea', 'input admin-script-text');
+      area.rows = 9;
+      area.value = saved ? saved.text : '';
+      area.placeholder = I18n.t('admin.scriptPlaceholder');
+      area.setAttribute('aria-label', I18n.t('admin.scripts') + ' — ' + (exam.title || exam.id));
+      area.disabled = busy;
+      box.appendChild(area);
+
+      const actions = node('div', 'admin-script-actions');
+      const save = node('button', 'btn btn-primary btn-sm', I18n.t('admin.scriptSave'));
+      save.type = 'button';
+      save.disabled = busy;
+      save.addEventListener('click', function () { saveScript(exam.id, area.value, 'admin.scriptSaved'); });
+      const clear = node('button', 'btn btn-danger-ghost btn-sm', I18n.t('admin.scriptClear'));
+      clear.type = 'button';
+      clear.disabled = busy || !saved;
+      clear.addEventListener('click', function () { saveScript(exam.id, '', 'admin.scriptCleared'); });
+      actions.appendChild(save);
+      actions.appendChild(clear);
+      box.appendChild(actions);
+      card.appendChild(box);
+    });
+    host.appendChild(card);
+  }
+
   function paintSettings(host) {
     const card = node('section', 'card admin-settings');
     card.appendChild(node('h2', 'admin-h2', I18n.t('admin.settings')));
@@ -303,6 +356,7 @@
     paintNotice(host);
     paintStats(host);
     paintUsers(host);
+    paintScripts(host);
     const split = node('div', 'admin-split');
     paintSettings(split);
     paintAudit(split);
@@ -325,9 +379,13 @@
     busy = true;
     const mine = ++requestId;
     try {
-      const fresh = await Account.api('/admin/users');
+      const [fresh, scriptData] = await Promise.all([
+        Account.api('/admin/users'),
+        Account.api('/admin/script')
+      ]);
       if (mine !== requestId) return;
       data = fresh;
+      scripts = (scriptData && scriptData.scripts) || [];
       // Clear the flag before painting: every control is disabled while busy,
       // so a paint that runs first would leave the panel inert.
       busy = false;
@@ -360,6 +418,29 @@
       setNotice((err && err.message) || I18n.t('admin.actionFailed'), 'is-bad');
       paint();
     }
+  }
+
+  async function saveScript(examId, text, doneKey) {
+    if (busy) return;
+    busy = true;
+    paint();
+    try {
+      const fresh = await Account.api('/admin/script', {
+        method: 'POST',
+        body: { examId: examId, text: text }
+      });
+      scripts = scripts.filter(function (row) { return row.examId !== examId; });
+      if (fresh && fresh.chars) scripts.push(fresh);
+      toast(I18n.t(doneKey), 'ok');
+      setNotice('', '');
+    } catch (err) {
+      busy = false;
+      setNotice((err && err.message) || I18n.t('admin.actionFailed'), 'is-bad');
+      paint();
+      return;
+    }
+    busy = false;
+    await load({ force: true });
   }
 
   async function saveSettings(value) {
@@ -404,6 +485,7 @@
   /** Forget cached panel data (sign-out, account switch). */
   function reset() {
     data = null;
+    scripts = [];
     query = '';
     notice = '';
     const host = root();

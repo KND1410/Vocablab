@@ -122,6 +122,8 @@
       'Tu corriges avec bienveillance et exigence, sans réécrire le texte à la place du candidat et sans inventer d’erreur. ' +
       'Tu réponds uniquement en ' + language + '.';
 
+    const reference = String((opts && opts.reference) || '').trim();
+
     const prompt = [
       'MÉTHODE DE RÉFÉRENCE',
       '« ' + GUIDE.title + ' », ' + GUIDE.author + ', ' + GUIDE.year + ' — ' + GUIDE.method + '.',
@@ -129,7 +131,24 @@
       '',
       'CONSIGNE DE L’ÉPREUVE',
       task,
-      '',
+      ''
+    ];
+
+    // The examiner's brief (transcript, model answer, expected arguments) is
+    // added only when one was saved: without it the prompt is unchanged.
+    if (reference) {
+      prompt.push(
+        'DOCUMENT DE RÉFÉRENCE — fourni par l’examinateur',
+        '"""',
+        reference,
+        '"""',
+        'Ce document fait foi pour le fond : il contient les faits, les consignes et le corrigé attendu. ' +
+          'Utilise-le pour juger la fidélité du texte au sujet, mais ne le recopie pas et ne le cite pas mot pour mot.',
+        ''
+      );
+    }
+
+    prompt.push(
       'PRODUCTION DU CANDIDAT (' + words + ' mots)',
       '"""',
       essay,
@@ -158,9 +177,9 @@
       '5. Deux priorités de travail, classées par impact sur la note.',
       '6. Rappelle la longueur et, si nécessaire, ce qui manque dans la consigne.',
       'Sois concret et limite-toi à environ 300 mots.'
-    ].join('\n');
+    );
 
-    return { system: system, prompt: prompt };
+    return { system: system, prompt: prompt.join('\n') };
   }
 
   global.ExamGuide = {

@@ -195,6 +195,13 @@ exam**.
 - **AI feedback** follows the Wattier *Production écrite DELF B2* grid: content
   14/25 + form 11/25, 250 words (225–275 accepted), the required article or letter
   layout, plus targeted corrections and priorities.
+- **Reference brief** (admin only): paste a transcript, a model answer or the
+  expected arguments for a paper in **Admin → Exam reference briefs**. The AI then
+  receives it as the source of truth for that paper’s essay — the facts, the task
+  and the expected content — and is told not to copy it. Without a brief, the
+  correction prompt is exactly what it was before. Text is normalised, capped at
+  20 000 characters and stored per paper, so it is written once instead of being
+  retyped into every prompt.
 - To add a paper: append it to `EXAMS` in `js/exam-data.js` and put its audio under
   `exam/No.N/`. PDFs are git-ignored; the MP3s are tracked.
 
@@ -222,6 +229,9 @@ ordinary learners.
   cannot be locked out.
 - **Signup approval** — off by default. Turn it on when you are opening the app to a
   class: new accounts wait for you instead of walking in.
+- **Exam reference briefs** — one editor per paper, for the material the AI should
+  correct against (see [Exam room](#exam-room)). Saving or clearing a brief is
+  written to the log.
 - **Admin log** — the last 20 actions with who, what, who it was done to and when.
 
 Passwords and recovery hashes never leave the database; the panel only receives the

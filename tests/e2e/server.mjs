@@ -83,13 +83,14 @@ function resetDailyIfNeeded() {
 /* ---------- Admin panel fixture ----------
    Three seeded accounts so the table always has one of each status to act on,
    plus whichever account the test signed up as. */
-const panel = { settings: { signupApproval: false }, audit: [], members: [] };
+const panel = { settings: { signupApproval: false }, audit: [], members: [], scripts: {} };
 
 function resetPanel(role) {
   account.user.role = role === 'admin' ? 'admin' : 'user';
   account.user.status = 'active';
   panel.settings = { signupApproval: false };
   panel.audit = [];
+  panel.scripts = {};
   const day = 24 * 3600 * 1000;
   panel.members = [
     {
@@ -229,6 +230,35 @@ async function apiHandler(req, res) {
     return send(res, 200, { ok: true, user: Object.assign({}, target, { status: next }) });
   }
 
+  if (route === '/api/admin/script') {
+    if (!adminGuard(res)) return;
+    if (req.method === 'POST') {
+      const body = await readBody(req);
+      const examId = String(body.examId || '');
+      const text = typeof body.text === 'string' ? body.text.trim() : '';
+      if (!examId) return send(res, 400, { error: 'Choose an exam.' });
+      if (text) panel.scripts[examId] = text;
+      else delete panel.scripts[examId];
+      logAction('script', null, (text ? 'Brief saved: ' : 'Brief cleared: ') + examId);
+      return send(res, 200, { examId: examId, text: text, chars: text.length, updatedAt: new Date().toISOString() });
+    }
+    const scripts = Object.keys(panel.scripts).sort().map(function (examId) {
+      return { examId: examId, text: panel.scripts[examId], chars: panel.scripts[examId].length, updatedAt: new Date().toISOString() };
+    });
+    return send(res, 200, { scripts: scripts, maxChars: 20000 });
+  }
+
+  if (route === '/api/exam-script') {
+    if (!account.signedIn) return send(res, 401, { error: 'Please sign in.' });
+    const examId = url.searchParams.get('exam') || '';
+    if (!examId) return send(res, 400, { error: 'Choose an exam.' });
+    return send(res, 200, {
+      examId: examId,
+      text: panel.scripts[examId] || '',
+      updatedAt: panel.scripts[examId] ? new Date().toISOString() : null
+    });
+  }
+
   if (route === '/api/admin/settings') {
     if (!adminGuard(res)) return;
     if (req.method === 'PATCH') {
@@ -298,6 +328,19 @@ const server = http.createServer(function (req, res) {
     resetPanel(new URL(req.url, 'http://127.0.0.1').searchParams.get('role'));
     res.writeHead(200, { 'content-type': 'text/plain' });
     res.end('ok');
+    return;
+  }
+  if (req.url === '/__e2e__/script') {
+    // Test-only seeding: the panel itself writes through /api/admin/script.
+    let raw = '';
+    req.on('data', function (chunk) { raw += chunk; });
+    req.on('end', function () {
+      let body = {};
+      try { body = raw ? JSON.parse(raw) : {}; } catch (e) { body = {}; }
+      if (body.examId && body.text) panel.scripts[String(body.examId)] = String(body.text);
+      res.writeHead(200, { 'content-type': 'text/plain' });
+      res.end('ok');
+    });
     return;
   }
   if (req.url.indexOf('/api/') === 0) {

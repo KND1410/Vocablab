@@ -234,7 +234,18 @@
     'admin.forbiddenTitle': 'Admins only',
     'admin.forbiddenBody': 'This account does not have admin access.',
     'admin.noMatch': 'No account matches that search.',
-    'admin.noAccounts': 'No accounts yet.'
+    'admin.noAccounts': 'No accounts yet.',
+    'admin.scripts': 'Exam reference briefs',
+    'admin.scriptsBody': 'Paste a transcript, a model answer or the expected arguments for a paper. The AI reads it as the source of truth when correcting that paper’s essay.',
+    'admin.scriptsNoExam': 'No exam paper is loaded.',
+    'admin.scriptChars': '{n} characters saved',
+    'admin.scriptEmpty': 'No brief yet',
+    'admin.scriptPlaceholder': 'Paste the script here — transcript, model answer, expected points…',
+    'admin.scriptSave': 'Save brief',
+    'admin.scriptClear': 'Clear',
+    'admin.scriptSaved': 'Reference brief saved.',
+    'admin.scriptCleared': 'Reference brief removed.',
+    'admin.act.script': 'Reference brief'
   };
 
   const VI = {
@@ -465,7 +476,18 @@
     'admin.forbiddenTitle': 'Chỉ dành cho quản trị',
     'admin.forbiddenBody': 'Tài khoản này không có quyền quản trị.',
     'admin.noMatch': 'Không có tài khoản nào khớp.',
-    'admin.noAccounts': 'Chưa có tài khoản nào.'
+    'admin.noAccounts': 'Chưa có tài khoản nào.',
+    'admin.scripts': 'Bản tham chiếu bài thi',
+    'admin.scriptsBody': 'Dán bản gỡ băng, bài mẫu hoặc các ý cần có của một đề. AI dùng nó làm chuẩn khi chấm bài luận của đề đó.',
+    'admin.scriptsNoExam': 'Chưa nạp đề thi nào.',
+    'admin.scriptChars': 'Đã lưu {n} ký tự',
+    'admin.scriptEmpty': 'Chưa có bản tham chiếu',
+    'admin.scriptPlaceholder': 'Dán kịch bản ở đây — bản gỡ băng, bài mẫu, các ý cần có…',
+    'admin.scriptSave': 'Lưu bản tham chiếu',
+    'admin.scriptClear': 'Xoá',
+    'admin.scriptSaved': 'Đã lưu bản tham chiếu.',
+    'admin.scriptCleared': 'Đã xoá bản tham chiếu.',
+    'admin.act.script': 'Bản tham chiếu'
   };
 
   const FR = {
@@ -696,7 +718,18 @@
     'admin.forbiddenTitle': 'Réservé à l’administration',
     'admin.forbiddenBody': 'Ce compte n’a pas les droits d’administration.',
     'admin.noMatch': 'Aucun compte ne correspond.',
-    'admin.noAccounts': 'Aucun compte pour le moment.'
+    'admin.noAccounts': 'Aucun compte pour le moment.',
+    'admin.scripts': 'Trames de référence',
+    'admin.scriptsBody': 'Collez une transcription, un corrigé type ou les arguments attendus d’un sujet. L’IA s’en sert comme référence pour corriger la production écrite de ce sujet.',
+    'admin.scriptsNoExam': 'Aucun sujet chargé.',
+    'admin.scriptChars': '{n} caractères enregistrés',
+    'admin.scriptEmpty': 'Pas encore de trame',
+    'admin.scriptPlaceholder': 'Collez la trame ici — transcription, corrigé type, points attendus…',
+    'admin.scriptSave': 'Enregistrer la trame',
+    'admin.scriptClear': 'Effacer',
+    'admin.scriptSaved': 'Trame de référence enregistrée.',
+    'admin.scriptCleared': 'Trame de référence supprimée.',
+    'admin.act.script': 'Trame de référence'
   };
 
   const CATALOGUES = { en: EN, vi: VI, fr: FR };

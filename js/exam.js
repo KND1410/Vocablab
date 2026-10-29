@@ -601,23 +601,42 @@
 
   /* ---------- AI feedback ---------- */
 
-  function feedbackPrompt() {
+  /* The examiner's brief, one fetch per paper per page load. A failure is not
+     an error: correction simply runs without the reference. */
+  const referenceCache = Object.create(null);
+
+  async function loadReference(examId) {
+    if (referenceCache[examId] !== undefined) return referenceCache[examId];
+    referenceCache[examId] = '';
+    try {
+      if (global.Account && global.Account.api) {
+        const data = await global.Account.api('/exam-script?exam=' + encodeURIComponent(examId));
+        referenceCache[examId] = String((data && data.text) || '');
+      }
+    } catch (e) { /* no brief, offline, signed out */ }
+    return referenceCache[examId];
+  }
+
+  async function feedbackPrompt() {
     const essay = exam.parts.filter(function (p) { return p.essay; })[0].essay;
     const words = wordCount(state.essay);
     const lang = global.I18n ? global.I18n.lang() : 'en';
+    const reference = await loadReference(exam.id);
     if (global.ExamGuide && global.ExamGuide.buildFeedbackPrompt) {
       return global.ExamGuide.buildFeedbackPrompt({
         task: essay.prompt,
         essay: state.essay,
         words: words,
         language: lang,
-        type: essay.type
+        type: essay.type,
+        reference: reference
       });
     }
     // Fallback if the guide did not load: still score content and form.
     return {
       system: 'Tu es un examinateur du DELF B2. Réponds uniquement en ' + (LANG_NAMES[lang] || 'English') + '.',
-      prompt: 'CONSIGNE :\n' + essay.prompt + '\n\nPRODUCTION DU CANDIDAT (' + words + ' mots) :\n"""\n' + state.essay + '\n"""\n\n' +
+      prompt: (reference ? 'DOCUMENT DE RÉFÉRENCE :\n"""\n' + reference + '\n"""\n\n' : '') +
+        'CONSIGNE :\n' + essay.prompt + '\n\nPRODUCTION DU CANDIDAT (' + words + ' mots) :\n"""\n' + state.essay + '\n"""\n\n' +
         'Évalue le contenu (14 points) et la forme (11 points), donne une estimation sur 25, trois corrections précises et deux priorités.'
     };
   }
@@ -635,7 +654,7 @@
     feedbackBusy = true;
     render();
     try {
-      const built = feedbackPrompt();
+      const built = await feedbackPrompt();
       const res = await api.askTutor(built.prompt, { system: built.system, maxTokens: 1400, temperature: 0.35 });
       state.feedback = String((res && res.text) || '').trim();
       save();

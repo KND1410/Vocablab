@@ -222,6 +222,22 @@ test('the essay autosaves, counts words and can ask for AI feedback', async ({ p
   await expect(page.locator('#examWordCount')).toHaveText('250 / 250 words');
 });
 
+test('the AI reads the examiner’s brief when correcting an essay', async ({ page, request }) => {
+  await request.post('/__e2e__/script', {
+    data: { examId: 'blanc-1', text: 'SCRIPT — Ludivine ouvre un café pour chats à Tours.' }
+  });
+  await openExam(page);
+
+  const text = Array.from({ length: 250 }, function (_, i) { return 'mot' + (i + 1); }).join(' ');
+  await page.locator('#examEssay').fill(text);
+  await page.getByRole('button', { name: 'AI feedback' }).first().click();
+  await expect(page.locator('#examFeedback')).toBeVisible();
+
+  expect(lastTutorPrompt).toContain('DOCUMENT DE RÉFÉRENCE');
+  expect(lastTutorPrompt).toContain('café pour chats');
+  expect(lastTutorPrompt).toContain('ne le recopie pas');
+});
+
 test('review lists every answer and marks the unanswered ones', async ({ page }) => {
   await openExam(page);
   const first = page.locator('.exam-q').first();

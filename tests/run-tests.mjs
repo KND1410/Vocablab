@@ -3205,6 +3205,56 @@ ok(afterAll.data.audit.some(function (row) { return row.action === 'ban'; }), 't
 ok(afterAll.data.audit.some(function (row) { return row.action === 'approve'; }), 'the approval is in the log');
 ok(afterAll.data.audit.every(function (row) { return row.at && row.actorName; }), 'log rows carry a time and an author');
 
+/* ---- Exam reference briefs ---- */
+const Script = require('../lib/script.js');
+const scriptApi = require('../api/exam-script.js');
+const adminScriptApi = require('../api/admin/script.js');
+
+eq(Script.cleanExamId(' Blanc-1 '), 'blanc-1', 'exam ids are normalised');
+ok(!/[./]/.test(Script.cleanExamId('../../etc/passwd')), 'a brief id cannot contain a path');
+eq(Script.docId('blanc-2'), 'script:blanc-2', 'a brief is stored under its paper id');
+eq(Script.normalize('  a\r\nb \t\n'), 'a\nb', 'briefs normalise line endings and trailing spaces');
+eq(Script.normalize('x'.repeat(25000)).length, 20000, 'a brief is capped at 20 000 characters');
+ok(Script.isEmpty('  \n\t '), 'a blank brief counts as empty');
+ok(!Script.isEmpty('Bonjour'), 'real text is not empty');
+
+const learnerAgain = await apiCall(loginApi, 'POST', '/api/auth/login', {
+  body: { email: learnerEmail, password: 'longpassword' }
+});
+const readerCookie = String(learnerAgain.headers['set-cookie'] || '').split(';')[0];
+const anonBrief = await apiCall(scriptApi, 'GET', '/api/exam-script?exam=blanc-1', {});
+eq(anonBrief.status, 401, 'the brief needs a session');
+const noExamBrief = await apiCall(scriptApi, 'GET', '/api/exam-script?exam=', { headers: { cookie: readerCookie } });
+eq(noExamBrief.status, 400, 'the brief endpoint needs an exam id');
+const emptyBrief = await apiCall(scriptApi, 'GET', '/api/exam-script?exam=blanc-1', { headers: { cookie: readerCookie } });
+eq(emptyBrief.status, 200, 'a learner can ask for a brief');
+eq(emptyBrief.data.text, '', 'there is no brief until an admin saves one');
+const briefText = 'SCRIPT DE RÉFÉRENCE\nLudivine ouvre un café pour chats à Tours.\nAttendu : décrire le projet et ses raisons.';
+const learnerWrite = await apiCall(adminScriptApi, 'POST', '/api/admin/script', {
+  body: { examId: 'blanc-1', text: briefText }, headers: { cookie: readerCookie }
+});
+eq(learnerWrite.status, 403, 'only an admin can edit a brief');
+const savedBrief = await apiCall(adminScriptApi, 'POST', '/api/admin/script', {
+  body: { examId: 'blanc-1', text: briefText }, headers: { cookie: adminCookie }
+});
+eq(savedBrief.status, 200, 'an admin can save a brief');
+eq(savedBrief.data.chars, briefText.length, 'the saved character count is returned');
+const readBrief = await apiCall(scriptApi, 'GET', '/api/exam-script?exam=blanc-1', { headers: { cookie: readerCookie } });
+eq(readBrief.data.text, briefText, 'a learner reads the saved brief');
+const otherBrief = await apiCall(scriptApi, 'GET', '/api/exam-script?exam=blanc-2', { headers: { cookie: readerCookie } });
+eq(otherBrief.data.text, '', 'a brief belongs to one paper only');
+const briefList = await apiCall(adminScriptApi, 'GET', '/api/admin/script', { headers: { cookie: adminCookie } });
+eq(briefList.data.scripts.length, 1, 'the panel lists saved briefs');
+eq(briefList.data.scripts[0].examId, 'blanc-1', 'the listed brief keeps its paper id');
+const clearedBrief = await apiCall(adminScriptApi, 'POST', '/api/admin/script', {
+  body: { examId: 'blanc-1', text: '   ' }, headers: { cookie: adminCookie }
+});
+eq(clearedBrief.data.chars, 0, 'an empty brief clears it');
+const afterClear = await apiCall(scriptApi, 'GET', '/api/exam-script?exam=blanc-1', { headers: { cookie: readerCookie } });
+eq(afterClear.data.text, '', 'the cleared brief is gone');
+const scriptAudit = await apiCall(adminUsersApi, 'GET', '/api/admin/users', { headers: { cookie: adminCookie } });
+ok(scriptAudit.data.audit.some(function (row) { return row.action === 'script'; }), 'brief edits are logged');
+
 section('Local account store (no MongoDB)');
 
 ok(!process.env.MONGODB_URI, 'the logic suite runs without a MongoDB connection string');
@@ -3653,6 +3703,21 @@ const shortGuide = ExamGuide.buildFeedbackPrompt({ task: essayPrompt, essay: 'Tr
 ok(/trop court/i.test(shortGuide.prompt), 'a short essay is flagged against the 225-word minimum');
 ok(/EXIGENCES DE L’ARTICLE/.test(shortGuide.prompt), 'the article task is graded against article rules');
 ok(!/EXIGENCES DE LA LETTRE/.test(shortGuide.prompt), 'the article task never asks for letter rules');
+
+/* The examiner's brief rides along with the correction prompt when saved. */
+const briefReference = 'Ludivine ouvre un café pour chats à Tours. Il faut 3 arguments.';
+const promptedGuide = ExamGuide.buildFeedbackPrompt({
+  task: essayPrompt,
+  essay: 'Mon article explique pourquoi notre association existe.',
+  words: 240,
+  language: 'en',
+  reference: briefReference
+});
+ok(promptedGuide.prompt.indexOf('DOCUMENT DE RÉFÉRENCE') !== -1, 'a saved brief is added to the prompt');
+ok(promptedGuide.prompt.indexOf('café pour chats') !== -1, 'the brief text reaches the examiner');
+ok(promptedGuide.prompt.indexOf('ne le recopie pas') !== -1, 'the examiner is told not to copy the brief');
+ok(builtGuide.prompt.indexOf('DOCUMENT DE RÉFÉRENCE') === -1,
+  'without a brief the correction prompt is unchanged');
 
 /* The réclamation of Examen 2 must not be graded against press-article rules. */
 const letterGuide = ExamGuide.buildFeedbackPrompt({

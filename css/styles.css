@@ -2261,3 +2261,28 @@ h1, h2, h3, h4 { font-weight: 800; }
 @media (max-width: 560px) {
   .admin-stats { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Admin — exam reference briefs */
+.admin-scripts { padding: 1.1rem 1.25rem 1.35rem; margin-top: 1rem; display: flex; flex-direction: column; gap: .55rem; }
+.admin-script { border-top: 1px dashed color-mix(in srgb, var(--border) 30%, transparent); padding: .55rem 0 0; }
+.admin-script:first-of-type { border-top: 0; }
+.admin-script-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  align-items: baseline;
+  cursor: pointer;
+  list-style: none;
+}
+.admin-script-summary::-webkit-details-marker { display: none; }
+.admin-script-summary::before { content: "▸"; margin-right: .4rem; color: var(--muted); }
+.admin-script[open] .admin-script-summary::before { content: "▾"; }
+.admin-script-meta { color: var(--muted); font-size: .8rem; white-space: nowrap; }
+.admin-script-text {
+  width: 100%;
+  margin-top: .5rem;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.5;
+}
+.admin-script-actions { display: flex; gap: .5rem; margin-top: .5rem; }

@@ -57,6 +57,27 @@ test('an admin approves, suspends and reads the log', async ({ page, request }) 
   await expect(page.locator('.admin-row')).toHaveCount(4);
 });
 
+test('the admin can paste an exam brief and the panel keeps it', async ({ page, request }) => {
+  await request.post('/__e2e__/reset?role=admin');
+  await signIn(request);
+  await seedApp(page, { deck: null });
+  await openRoute(page, 'admin');
+
+  const card = page.locator('.admin-scripts');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.admin-script')).toHaveCount(2);
+
+  const first = card.locator('.admin-script').first();
+  await first.locator('summary').click();
+  await first.locator('textarea').fill('SCRIPT — Ludivine ouvre un café pour chats à Tours.');
+  await first.getByRole('button', { name: 'Save brief' }).click();
+  await expect(first.locator('.admin-script-meta')).toContainText('characters saved');
+  await expect(page.locator('.admin-audit-row').first()).toContainText('Reference brief');
+
+  await page.reload();
+  await expect(page.locator('.admin-script').first().locator('textarea')).toHaveValue(/Ludivine/);
+});
+
 test('the approval setting survives a reload', async ({ page, request }) => {
   await request.post('/__e2e__/reset?role=admin');
   await signIn(request);
